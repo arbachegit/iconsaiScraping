@@ -1,0 +1,4998 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scraping - Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg" />
+    <link rel="icon" type="image/png" href="/static/images/favicon.png" />
+    <link rel="apple-touch-icon" href="/static/images/apple-icon.png" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #0a0e1a;
+        min-height: 100vh;
+        color: #fff;
+      }
+
+      .header {
+        background: rgba(15, 22, 41, 0.8);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid rgba(6, 182, 212, 0.1);
+        padding: 1rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .header-logo {
+        height: 2.5rem;
+        width: auto;
+      }
+
+      .header h1 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        background: linear-gradient(to right, #22d3ee, #60a5fa, #a78bfa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .version-badge {
+        font-size: 12px;
+        color: #94a3b8;
+        background: rgba(148, 163, 184, 0.1);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        display: flex;
+        align-items: center;
+      }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .user-email {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 3rem;
+        padding: 0 1rem;
+        background: rgba(100, 116, 139, 0.15);
+        border: 2px solid #64748b;
+        border-radius: 0.75rem;
+        color: #e2e8f0;
+        font-size: 0.95rem;
+        font-weight: 500;
+      }
+
+      /* =============================================
+         SISTEMA DE BOTÕES - skill-ui-button v1.0
+         Padrão: altura 3rem, borda 2px, background claro,
+         hover intensifica cor, ícone obrigatório
+         ============================================= */
+
+      /* Base para todos os botões */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        padding: 0 1rem;
+        border-radius: 0.75rem;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        text-decoration: none;
+        border: 2px solid;
+        white-space: nowrap;
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn svg, .btn .btn-icon {
+        width: 1.125rem;
+        height: 1.125rem;
+        flex-shrink: 0;
+      }
+
+      /* Botão Primário (cyan) - Ações principais */
+      .btn-primary {
+        background: rgba(6, 182, 212, 0.15);
+        border-color: #06b6d4;
+        color: #06b6d4;
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: #06b6d4;
+        color: #fff;
+      }
+
+      /* Botão Sucesso (green) - Aprovar, Confirmar */
+      .btn-success {
+        background: rgba(34, 197, 94, 0.15);
+        border-color: #22c55e;
+        color: #22c55e;
+      }
+
+      .btn-success:hover:not(:disabled) {
+        background: #22c55e;
+        color: #fff;
+      }
+
+      /* Botão Accent (purple) - Ações especiais */
+      .btn-accent {
+        background: rgba(139, 92, 246, 0.15);
+        border-color: #8b5cf6;
+        color: #8b5cf6;
+      }
+
+      .btn-accent:hover:not(:disabled) {
+        background: #8b5cf6;
+        color: #fff;
+      }
+
+      /* Botão Secundário (slate) - Cancelar, Voltar */
+      .btn-secondary {
+        background: rgba(100, 116, 139, 0.15);
+        border-color: #64748b;
+        color: #94a3b8;
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background: #64748b;
+        color: #fff;
+      }
+
+      /* Botão Ghost (slate) - Links, ações sutis */
+      .btn-ghost {
+        background: rgba(148, 163, 184, 0.1);
+        border-color: rgba(148, 163, 184, 0.3);
+        color: #94a3b8;
+      }
+
+      .btn-ghost:hover:not(:disabled) {
+        background: #475569;
+        color: #fff;
+      }
+
+      /* Botão Danger (red) - Excluir, Sair */
+      .btn-danger {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
+        color: #ef4444;
+      }
+
+      .btn-danger:hover:not(:disabled) {
+        background: #ef4444;
+        color: #fff;
+      }
+
+      /* Botão Warning (yellow) - Atenção */
+      .btn-warning {
+        background: rgba(234, 179, 8, 0.15);
+        border-color: #eab308;
+        color: #eab308;
+      }
+
+      .btn-warning:hover:not(:disabled) {
+        background: #eab308;
+        color: #fff;
+      }
+
+      /* Botão Outline Cyan - Admin */
+      .btn-outline-cyan {
+        background: rgba(6, 182, 212, 0.15);
+        border-color: #06b6d4;
+        color: #22d3ee;
+      }
+
+      .btn-outline-cyan:hover:not(:disabled) {
+        background: #06b6d4;
+        color: #fff;
+      }
+
+      /* Tamanhos de botão */
+      .btn-sm {
+        height: 2.25rem;
+        padding: 0 0.75rem;
+        font-size: 0.875rem;
+      }
+
+      .btn-lg {
+        height: 3.5rem;
+        padding: 0 1.5rem;
+        font-size: 1rem;
+      }
+
+      .btn-block {
+        width: 100%;
+      }
+
+      /* Manter compatibilidade com classes antigas */
+      .btn-admin {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(6, 182, 212, 0.15);
+        border: 2px solid #06b6d4;
+        color: #22d3ee;
+        padding: 0 1rem;
+        border-radius: 0.75rem;
+        text-decoration: none;
+        font-size: 0.95rem;
+        font-weight: 600;
+        transition: all 0.2s;
+        white-space: nowrap;
+        width: auto;
+      }
+
+      .btn-admin:hover {
+        background: #06b6d4;
+        color: #fff;
+      }
+
+      .btn-admin svg {
+        flex-shrink: 0;
+      }
+
+      .btn-admin span {
+        line-height: 1;
+      }
+
+      .btn-logout {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(239, 68, 68, 0.15);
+        border: 2px solid #ef4444;
+        color: #ef4444;
+        padding: 0 1rem;
+        border-radius: 0.75rem;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 500;
+        transition: all 0.2s ease-in-out;
+      }
+
+      .btn-logout:hover {
+        background: #ef4444;
+        color: #fff;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+
+      .page-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #d1d5db;
+        margin-bottom: 2rem;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+      }
+
+      .card {
+        background: rgba(15, 22, 41, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        opacity: 0.6;
+        transition: all 0.3s ease;
+      }
+
+      .card.active {
+        opacity: 1;
+        cursor: pointer;
+        border-color: rgba(6, 182, 212, 0.3);
+      }
+
+      .card.active:hover {
+        border-color: rgba(6, 182, 212, 0.6);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(6, 182, 212, 0.15);
+      }
+
+      .card-badge.ready {
+        background: rgba(34, 197, 94, 0.1);
+        border-color: rgba(34, 197, 94, 0.3);
+        color: #4ade80;
+      }
+
+      /* Modal */
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal.show {
+        display: flex;
+      }
+
+      .modal-content {
+        background: linear-gradient(180deg, #0f1629 0%, #0a0e1a 100%);
+        border: 1px solid rgba(6, 182, 212, 0.15);
+        border-radius: 1.25rem;
+        width: 90%;
+        max-width: 720px;
+        max-height: 85vh;
+        overflow-y: auto;
+        padding: 2rem;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.75rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .modal-header h2 {
+        color: #fff;
+        font-size: 1.35rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .modal-header h2::before {
+        content: "";
+        width: 4px;
+        height: 1.25rem;
+        background: linear-gradient(180deg, #22d3ee, #3b82f6);
+        border-radius: 2px;
+      }
+
+      .modal-close {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+        font-size: 1.25rem;
+        width: 36px;
+        height: 36px;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+      }
+
+      .modal-close:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #f87171;
+      }
+
+      .search-box {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+      }
+
+      .search-box input {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.75rem;
+        padding: 0.9rem 1.25rem;
+        color: #fff;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+      }
+
+      .search-box input::placeholder {
+        color: #64748b;
+      }
+
+      .search-box input:focus {
+        outline: none;
+        border-color: rgba(6, 182, 212, 0.5);
+        background: rgba(6, 182, 212, 0.05);
+      }
+
+      /* Input com botão interno */
+      .input-with-button {
+        position: relative;
+        flex: 1;
+        min-width: 150px;
+        display: flex;
+        align-items: center;
+      }
+
+      .input-with-button input {
+        width: 100%;
+        padding-right: 7rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.75rem;
+        padding: 0.9rem 1.25rem;
+        padding-right: 7.5rem;
+        color: #fff;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+      }
+
+      .input-with-button input::placeholder {
+        color: #64748b;
+      }
+
+      .input-with-button input:focus {
+        outline: none;
+        border-color: rgba(6, 182, 212, 0.5);
+        background: rgba(6, 182, 212, 0.05);
+      }
+
+      .btn-inside-input {
+        position: absolute;
+        right: 0.5rem;
+        height: 2.25rem;
+        padding: 0 0.75rem;
+        background: rgba(139, 92, 246, 0.15);
+        border: 1px solid #8b5cf6;
+        border-radius: 0.5rem;
+        color: #8b5cf6;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .btn-inside-input:hover {
+        background: #8b5cf6;
+        color: #fff;
+      }
+
+      /* Modal CNAE */
+      .cnae-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 1200;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .cnae-modal.show {
+        display: flex;
+      }
+
+      .cnae-modal-content {
+        background: linear-gradient(180deg, #0f1629 0%, #0a0e1a 100%);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-radius: 1rem;
+        width: 95%;
+        max-width: 1100px;
+        max-height: 85vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .cnae-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+      }
+
+      .cnae-modal-header h3 {
+        color: #fff;
+        font-size: 1.125rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .cnae-modal-header h3::before {
+        content: "";
+        width: 4px;
+        height: 1.25rem;
+        background: linear-gradient(180deg, #8b5cf6, #a78bfa);
+        border-radius: 2px;
+      }
+
+      .cnae-search-box {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .cnae-search-box input {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        color: #fff;
+        font-size: 0.875rem;
+      }
+
+      .cnae-search-box input::placeholder {
+        color: #64748b;
+      }
+
+      .cnae-search-box input:focus {
+        outline: none;
+        border-color: rgba(139, 92, 246, 0.5);
+      }
+
+      .cnae-table-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 1.5rem 1.5rem;
+      }
+
+      .cnae-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+      }
+
+      .cnae-table th {
+        background: rgba(139, 92, 246, 0.1);
+        color: #a78bfa;
+        padding: 0.75rem 0.5rem;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+
+      .cnae-table td {
+        padding: 0.6rem 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: #d1d5db;
+        vertical-align: top;
+      }
+
+      .cnae-table tr:hover td {
+        background: rgba(139, 92, 246, 0.05);
+      }
+
+      .cnae-table tr {
+        cursor: pointer;
+      }
+
+      .cnae-code {
+        font-family: monospace;
+        color: #8b5cf6;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .cnae-desc {
+        color: #fff;
+        font-weight: 500;
+      }
+
+      .cnae-secao {
+        color: #22d3ee;
+        font-size: 0.75rem;
+      }
+
+      .cnae-divisao, .cnae-grupo, .cnae-classe {
+        color: #94a3b8;
+        font-size: 0.75rem;
+      }
+
+      .cnae-loading {
+        text-align: center;
+        padding: 3rem;
+        color: #94a3b8;
+      }
+
+      .cnae-empty {
+        text-align: center;
+        padding: 3rem;
+        color: #64748b;
+      }
+
+      /* Filtros hierárquicos CNAE */
+      .cnae-filters {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0 1.5rem 1rem;
+        flex-wrap: wrap;
+      }
+
+      .cnae-filter-select {
+        flex: 1;
+        min-width: 150px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        color: #fff;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+
+      .cnae-filter-select:focus {
+        outline: none;
+        border-color: rgba(139, 92, 246, 0.5);
+      }
+
+      .cnae-filter-select option {
+        background: #0f1629;
+        color: #fff;
+      }
+
+      /* Modal Regime Tributário */
+      .regime-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 1200;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .regime-modal.show {
+        display: flex;
+      }
+
+      .regime-modal-content {
+        background: linear-gradient(180deg, #0f1629 0%, #0a0e1a 100%);
+        border: 1px solid rgba(34, 197, 94, 0.2);
+        border-radius: 1rem;
+        width: 95%;
+        max-width: 500px;
+        overflow: hidden;
+      }
+
+      .regime-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid rgba(34, 197, 94, 0.15);
+      }
+
+      .regime-modal-header h3 {
+        color: #fff;
+        font-size: 1.125rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .regime-modal-header h3::before {
+        content: "";
+        width: 4px;
+        height: 1.25rem;
+        background: linear-gradient(180deg, #22c55e, #4ade80);
+        border-radius: 2px;
+      }
+
+      .regime-list {
+        padding: 1rem 1.5rem;
+      }
+
+      .regime-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .regime-item:hover {
+        background: rgba(34, 197, 94, 0.1);
+        border-color: rgba(34, 197, 94, 0.3);
+      }
+
+      .regime-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .regime-item-name {
+        font-weight: 500;
+        color: #fff;
+      }
+
+      .regime-item-limit {
+        font-size: 0.8rem;
+        color: #94a3b8;
+      }
+
+      .regime-item-code {
+        font-family: monospace;
+        font-size: 0.75rem;
+        color: #22c55e;
+        background: rgba(34, 197, 94, 0.1);
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+      }
+
+      .btn-search {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(6, 182, 212, 0.15);
+        border: 2px solid #06b6d4;
+        border-radius: 0.75rem;
+        padding: 0 1.25rem;
+        color: #06b6d4;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+      }
+
+      .btn-search:hover:not(:disabled) {
+        background: #06b6d4;
+        color: #fff;
+      }
+
+      .btn-search:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .results {
+        margin-top: 1rem;
+      }
+
+      .result-item {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 0.75rem;
+        padding: 0.875rem 1rem;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .result-item:hover {
+        border-color: rgba(6, 182, 212, 0.4);
+        background: rgba(6, 182, 212, 0.05);
+      }
+
+      .result-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.75rem;
+        margin-bottom: 0.4rem;
+      }
+
+      .result-item-name {
+        color: #e2e8f0;
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1.3;
+        flex: 1;
+      }
+
+      .result-item-city {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        background: rgba(148, 163, 184, 0.12);
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .result-item-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .result-item-cnpj {
+        color: #64748b;
+        font-size: 0.8rem;
+      }
+
+      .result-item-fantasia {
+        color: #64748b;
+        font-size: 0.8rem;
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: right;
+      }
+
+      .company-details {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 0.875rem;
+        padding: 1.5rem;
+      }
+
+      .detail-row {
+        display: flex;
+        padding: 0.65rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      }
+
+      .detail-row:last-child {
+        border-bottom: none;
+      }
+
+      .detail-label {
+        color: #64748b;
+        width: 130px;
+        flex-shrink: 0;
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+
+      .detail-value {
+        color: #d1d5db;
+        font-size: 0.9rem;
+        flex: 1;
+      }
+
+      .detail-value a {
+        color: #22d3ee;
+        text-decoration: none;
+      }
+
+      .detail-value a:hover {
+        text-decoration: underline;
+      }
+
+      .socios-section {
+        margin-top: 1.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .socios-title {
+        color: #94a3b8;
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .socios-title span {
+        background: rgba(139, 92, 246, 0.15);
+        color: #a78bfa;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+      }
+
+      .socios-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+      }
+
+      .socio-item {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        display: flex;
+        gap: 0.875rem;
+        align-items: flex-start;
+      }
+
+      .socio-avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: rgba(139, 92, 246, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+      }
+
+      .socio-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .socio-avatar-initial {
+        color: #a78bfa;
+        font-weight: 600;
+        font-size: 1rem;
+      }
+
+      .socio-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .socio-name {
+        color: #e2e8f0;
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+      }
+
+      .socio-role {
+        color: #64748b;
+        font-size: 0.8rem;
+        margin-bottom: 0.35rem;
+      }
+
+      .socio-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        font-size: 0.8rem;
+      }
+
+      .socio-meta span {
+        color: #64748b;
+      }
+
+      .btn-approve {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(34, 197, 94, 0.15);
+        border: 2px solid #22c55e;
+        border-radius: 0.75rem;
+        padding: 0 1.25rem;
+        color: #22c55e;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+      }
+
+      .btn-approve:hover:not(:disabled) {
+        background: #22c55e;
+        color: #fff;
+      }
+
+      .btn-approve:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-action-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+      }
+
+      /* btn-secondary redefinido para consistência */
+      .btn-action-group .btn-secondary,
+      .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(100, 116, 139, 0.15);
+        border: 2px solid #64748b;
+        border-radius: 0.75rem;
+        padding: 0 1rem;
+        color: #94a3b8;
+        font-weight: 500;
+        font-size: 0.95rem;
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background: #64748b;
+        color: #fff;
+      }
+
+      .btn-socios {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(139, 92, 246, 0.15);
+        border: 2px solid #8b5cf6;
+        border-radius: 0.75rem;
+        padding: 0 1.25rem;
+        color: #8b5cf6;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+      }
+
+      .btn-socios:hover:not(:disabled) {
+        background: #8b5cf6;
+        color: #fff;
+      }
+
+      .btn-socios:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .no-linkedin {
+        color: #f87171;
+        font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .has-linkedin {
+        color: #22d3ee;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .has-linkedin:hover {
+        text-decoration: underline;
+      }
+
+      .loading {
+        text-align: center;
+        color: #94a3b8;
+        padding: 2.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(6, 182, 212, 0.1);
+        border-top-color: #22d3ee;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .loading-text {
+        font-size: 0.9rem;
+      }
+
+      .message {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .message.success {
+        background: rgba(34, 197, 94, 0.1);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        color: #4ade80;
+      }
+
+      .message.error {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #f87171;
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      .card-icon {
+        width: 3rem;
+        height: 3rem;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .card-icon svg {
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+
+      .card-icon.red {
+        background: rgba(239, 68, 68, 0.1);
+      }
+      .card-icon.red svg {
+        stroke: #f87171;
+      }
+
+      .card-icon.orange {
+        background: rgba(249, 115, 22, 0.1);
+      }
+      .card-icon.orange svg {
+        stroke: #fb923c;
+      }
+
+      .card-icon.blue {
+        background: rgba(59, 130, 246, 0.1);
+      }
+      .card-icon.blue svg {
+        stroke: #60a5fa;
+      }
+
+      .card-icon.green {
+        background: rgba(34, 197, 94, 0.1);
+      }
+      .card-icon.green svg {
+        stroke: #4ade80;
+      }
+
+      .card-icon.cyan {
+        background: rgba(6, 182, 212, 0.1);
+      }
+      .card-icon.cyan svg {
+        stroke: #22d3ee;
+      }
+
+      .card-icon.purple {
+        background: rgba(168, 85, 247, 0.1);
+      }
+      .card-icon.purple svg {
+        stroke: #a78bfa;
+      }
+
+      .card h3 {
+        color: #d1d5db;
+        font-size: 1.125rem;
+        font-weight: 600;
+      }
+
+      .card p {
+        color: rgba(148, 163, 184, 0.8);
+        font-size: 0.875rem;
+        line-height: 1.5;
+      }
+
+      .card-badge {
+        display: inline-block;
+        margin-top: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        background: rgba(148, 163, 184, 0.1);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        color: #94a3b8;
+      }
+
+      @media (max-width: 640px) {
+        .header {
+          padding: 1rem;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .container {
+          padding: 1rem;
+        }
+        .cards {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Atlas Agent Styles */
+      .atlas-fab {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+      }
+      .atlas-fab:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 30px rgba(59, 130, 246, 0.6);
+      }
+      .atlas-fab svg { width: 28px; height: 28px; color: white; }
+
+      .atlas-window {
+        position: fixed;
+        bottom: 6rem;
+        right: 2rem;
+        width: 500px;
+        max-width: calc(100vw - 4rem);
+        height: 600px;
+        max-height: calc(100vh - 8rem);
+        background: linear-gradient(180deg, #0f1629 0%, #0a0e1a 100%);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 1rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        display: none;
+        flex-direction: column;
+        z-index: 999;
+        overflow: hidden;
+      }
+      .atlas-window.show { display: flex; }
+
+      .atlas-header {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        padding: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .atlas-header-info { flex: 1; }
+      .atlas-header-info h3 { color: white; font-size: 1rem; font-weight: 600; margin: 0; }
+      .atlas-header-info span { color: rgba(255,255,255,0.7); font-size: 0.75rem; }
+      .atlas-close {
+        background: rgba(255,255,255,0.1);
+        border: none;
+        color: white;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 1.25rem;
+      }
+      .atlas-close:hover { background: rgba(255,255,255,0.2); }
+
+      .atlas-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .atlas-msg {
+        max-width: 85%;
+        padding: 0.75rem 1rem;
+        border-radius: 1rem;
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+      .atlas-msg.bot {
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: #e2e8f0;
+        align-self: flex-start;
+        border-bottom-left-radius: 0.25rem;
+      }
+      .atlas-msg.user {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        align-self: flex-end;
+        border-bottom-right-radius: 0.25rem;
+      }
+
+      .atlas-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .atlas-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.2s;
+        border: 1px solid;
+      }
+      .atlas-badge svg { width: 16px; height: 16px; flex-shrink: 0; }
+      .atlas-badge-empresas { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #60a5fa; }
+      .atlas-badge-pessoas { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.4); color: #4ade80; }
+      .atlas-badge-noticias { background: rgba(249,115,22,0.15); border-color: rgba(249,115,22,0.4); color: #fb923c; }
+      .atlas-badge-politicos { background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.4); color: #c084fc; }
+      .atlas-badge:hover { transform: translateY(-2px); }
+
+      .atlas-input {
+        padding: 1rem;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        display: flex;
+        gap: 0.5rem;
+      }
+      .atlas-input input {
+        flex: 1;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 1.5rem;
+        padding: 0.75rem 1rem;
+        color: white;
+        font-size: 0.9rem;
+      }
+      .atlas-input input::placeholder { color: #64748b; }
+      .atlas-input input:focus { outline: none; border-color: rgba(59,130,246,0.5); }
+      .atlas-send {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        border: none;
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .atlas-send:hover { transform: scale(1.1); }
+      .atlas-send svg { width: 18px; height: 18px; }
+
+      .atlas-typing {
+        display: flex;
+        gap: 4px;
+        padding: 0.5rem;
+      }
+      .atlas-typing span {
+        width: 8px;
+        height: 8px;
+        background: #60a5fa;
+        border-radius: 50%;
+        animation: atlas-bounce 1.4s infinite;
+      }
+      .atlas-typing span:nth-child(2) { animation-delay: 0.2s; }
+      .atlas-typing span:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes atlas-bounce {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-8px); }
+      }
+
+      .atlas-result {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        margin-top: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .atlas-result:hover { border-color: rgba(59,130,246,0.4); background: rgba(59,130,246,0.05); }
+      .atlas-result-name { color: #e2e8f0; font-weight: 500; font-size: 0.85rem; }
+      .atlas-result-meta { color: #64748b; font-size: 0.75rem; }
+
+      .atlas-suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .atlas-suggestion {
+        background: rgba(59,130,246,0.1);
+        border: 1px solid rgba(59,130,246,0.3);
+        color: #60a5fa;
+        padding: 0.4rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .atlas-suggestion:hover { background: rgba(59,130,246,0.2); }
+
+      /* People & News Modal Styles */
+      .btn-back {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(100, 116, 139, 0.15);
+        border: 2px solid #64748b;
+        color: #94a3b8;
+        padding: 0 1rem;
+        border-radius: 0.75rem;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+      }
+
+      .btn-back:hover:not(:disabled) {
+        background: #64748b;
+        color: #fff;
+      }
+
+      .results-header {
+        color: #94a3b8;
+        font-size: 0.875rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .results-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+      }
+
+      .result-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .result-card:hover {
+        background: rgba(6, 182, 212, 0.05);
+        border-color: rgba(6, 182, 212, 0.2);
+        transform: translateY(-2px);
+      }
+
+      .result-card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .result-avatar {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #f97316, #ea580c);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: #fff;
+        font-size: 1rem;
+      }
+
+      .result-info strong {
+        color: #fff;
+        display: block;
+        font-size: 0.95rem;
+      }
+
+      .result-meta {
+        color: #64748b;
+        font-size: 0.8rem;
+      }
+
+      .result-detail {
+        color: #94a3b8;
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+      }
+
+      .result-detail .label {
+        color: #64748b;
+      }
+
+      .linkedin-link {
+        color: #0077b5;
+        text-decoration: none;
+        font-size: 0.85rem;
+      }
+
+      .linkedin-link:hover {
+        text-decoration: underline;
+      }
+
+      .detail-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .detail-avatar {
+        width: 60px;
+        height: 60px;
+        background: linear-gradient(135deg, #f97316, #ea580c);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: #fff;
+        font-size: 1.5rem;
+      }
+
+      .detail-header h3 {
+        color: #fff;
+        font-size: 1.25rem;
+        margin: 0;
+      }
+
+      .detail-meta {
+        color: #64748b;
+        font-size: 0.9rem;
+      }
+
+      .detail-grid {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .detail-item {
+        color: #94a3b8;
+        font-size: 0.9rem;
+      }
+
+      .detail-item .label {
+        color: #64748b;
+        margin-right: 0.5rem;
+      }
+
+      .experiences-list, .companies-list {
+        margin-top: 0.75rem;
+      }
+
+      .experience-item, .company-item {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .experience-item strong, .company-item strong {
+        color: #fff;
+      }
+
+      .experience-item span, .company-item span {
+        color: #94a3b8;
+      }
+
+      .exp-period, .company-location {
+        color: #64748b;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+      }
+
+      /* News specific styles */
+      .news-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .news-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .news-card:hover {
+        background: rgba(16, 185, 129, 0.05);
+        border-color: rgba(16, 185, 129, 0.2);
+      }
+
+      .news-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .news-title {
+        color: #fff;
+        font-size: 1rem;
+        line-height: 1.4;
+      }
+
+      .news-source {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        white-space: nowrap;
+      }
+
+      .news-summary {
+        color: #94a3b8;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        margin: 0;
+      }
+
+      .news-date {
+        color: #64748b;
+        font-size: 0.8rem;
+        margin-top: 0.5rem;
+        display: block;
+      }
+
+      .news-detail-header h3 {
+        color: #fff;
+        font-size: 1.25rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .news-detail-meta {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .news-detail-meta .source {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.25rem;
+        font-size: 0.85rem;
+      }
+
+      .news-detail-meta .date {
+        color: #64748b;
+        font-size: 0.85rem;
+      }
+
+      .news-detail-summary, .news-detail-content {
+        color: #94a3b8;
+        line-height: 1.7;
+        margin-bottom: 1.5rem;
+      }
+
+      .news-detail-summary p, .news-detail-content p {
+        margin: 0;
+      }
+
+      .news-detail-link {
+        margin-top: 1.5rem;
+      }
+
+      .btn-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(59, 130, 246, 0.15);
+        border: 2px solid #3b82f6;
+        color: #3b82f6;
+        padding: 0 1rem;
+        border-radius: 0.75rem;
+        text-decoration: none;
+        font-size: 0.95rem;
+        font-weight: 500;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+      }
+
+      .btn-link:hover {
+        background: #3b82f6;
+        color: #fff;
+      }
+
+      .loading {
+        text-align: center;
+        color: #64748b;
+        padding: 2rem;
+      }
+
+      .error {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #f87171;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        text-align: center;
+      }
+
+      .no-results {
+        text-align: center;
+        color: #64748b;
+        padding: 2rem;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 0.5rem;
+      }
+
+      /* Card Form Styles */
+      .card-form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1rem;
+      }
+
+      .card-form-row {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .card-form input,
+      .card-form select {
+        flex: 1;
+        min-width: 120px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        padding: 0.6rem 0.75rem;
+        color: #fff;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+      }
+
+      .card-form input::placeholder {
+        color: rgba(148, 163, 184, 0.4);
+      }
+
+      .card-form input:focus,
+      .card-form select:focus {
+        outline: none;
+        border-color: rgba(6, 182, 212, 0.5);
+        background: rgba(6, 182, 212, 0.05);
+      }
+
+      .card-form select {
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.5rem center;
+        background-size: 1rem;
+        padding-right: 2rem;
+      }
+
+      .card-form select option {
+        background: #0f1629;
+        color: #fff;
+      }
+
+      .card-form input[type="date"] {
+        color-scheme: dark;
+      }
+
+      .card-form .form-label {
+        font-size: 0.75rem;
+        color: #64748b;
+        margin-bottom: 0.25rem;
+        display: block;
+      }
+
+      .card-form .form-group {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .btn-list {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 3rem;
+        background: rgba(16, 185, 129, 0.15);
+        border: 2px solid #10b981;
+        border-radius: 0.75rem;
+        padding: 0 1.25rem;
+        color: #10b981;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        white-space: nowrap;
+      }
+
+      .btn-list:hover:not(:disabled) {
+        background: #10b981;
+        color: #fff;
+      }
+
+      .btn-list:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Listing Modal (Stackable) */
+      .listing-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 1100;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .listing-modal.show {
+        display: flex;
+      }
+
+      .listing-modal-content {
+        background: linear-gradient(180deg, #0f1629 0%, #0a0e1a 100%);
+        border: 1px solid rgba(6, 182, 212, 0.2);
+        border-radius: 1rem;
+        width: 95%;
+        max-width: 1200px;
+        max-height: 90vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+      }
+
+      .listing-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(0, 0, 0, 0.2);
+      }
+
+      .listing-modal-header h2 {
+        color: #fff;
+        font-size: 1.25rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .listing-modal-header h2 .count-badge {
+        background: rgba(6, 182, 212, 0.15);
+        color: #22d3ee;
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+
+      .listing-filters {
+        display: flex;
+        gap: 0.75rem;
+        padding: 1rem 1.5rem;
+        background: rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .listing-filters input {
+        flex: 1;
+        min-width: 200px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        padding: 0.6rem 1rem;
+        color: #fff;
+        font-size: 0.9rem;
+      }
+
+      .listing-filters input::placeholder {
+        color: #64748b;
+      }
+
+      .listing-filters input:focus {
+        outline: none;
+        border-color: rgba(6, 182, 212, 0.5);
+      }
+
+      .listing-filters .filter-info {
+        color: #64748b;
+        font-size: 0.85rem;
+      }
+
+      .listing-table-container {
+        flex: 1;
+        overflow: auto;
+        padding: 0 1.5rem 1.5rem;
+      }
+
+      .listing-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+      }
+
+      .listing-table th,
+      .listing-table td {
+        padding: 0.875rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .listing-table th {
+        background: rgba(255, 255, 255, 0.02);
+        color: #94a3b8;
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        user-select: none;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        transition: background 0.2s;
+      }
+
+      .listing-table th:hover {
+        background: rgba(6, 182, 212, 0.1);
+      }
+
+      .listing-table th.sortable::after {
+        content: '↕';
+        margin-left: 0.5rem;
+        opacity: 0.4;
+      }
+
+      .listing-table th.sort-asc::after {
+        content: '↑';
+        opacity: 1;
+        color: #22d3ee;
+      }
+
+      .listing-table th.sort-desc::after {
+        content: '↓';
+        opacity: 1;
+        color: #22d3ee;
+      }
+
+      .listing-table td {
+        color: #d1d5db;
+        font-size: 0.9rem;
+      }
+
+      .listing-table tbody tr {
+        transition: background 0.2s;
+      }
+
+      .listing-table tbody tr:hover {
+        background: rgba(6, 182, 212, 0.05);
+      }
+
+      .listing-table .cell-link {
+        color: #22d3ee;
+        text-decoration: none;
+      }
+
+      .listing-table .cell-link:hover {
+        text-decoration: underline;
+      }
+
+      .listing-table .cell-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+
+      .listing-table .cell-badge.success {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+      }
+
+      .listing-table .cell-badge.warning {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+      }
+
+      .listing-table .cell-badge.info {
+        background: rgba(59, 130, 246, 0.15);
+        color: #3b82f6;
+      }
+
+      .listing-empty {
+        text-align: center;
+        padding: 3rem;
+        color: #64748b;
+      }
+
+      .listing-loading {
+        text-align: center;
+        padding: 3rem;
+        color: #64748b;
+      }
+
+      /* =============================================
+         BADGES DE ESTATISTICAS - Dashboard
+         ============================================= */
+
+      .stats-badges-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        justify-content: center;
+      }
+
+      .stats-badge {
+        width: 270px;
+        height: 100px;
+        background: rgba(15, 22, 41, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: all 0.3s ease;
+      }
+
+      .stats-badge:hover {
+        border-color: rgba(6, 182, 212, 0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(6, 182, 212, 0.1);
+      }
+
+      /* Header - 1/6 (~17px) */
+      .stats-badge-header {
+        height: 17px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 0.75rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .stats-badge-title {
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #94a3b8;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .stats-badge-title-icon {
+        width: 10px;
+        height: 10px;
+      }
+
+      .stats-badge-date {
+        font-size: 0.6rem;
+        color: #64748b;
+      }
+
+      .stats-badge-online {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.55rem;
+        color: #22c55e;
+        font-weight: 600;
+      }
+
+      .stats-badge-online-dot {
+        width: 6px;
+        height: 6px;
+        background: #22c55e;
+        border-radius: 50%;
+        animation: pulse-online 1.5s infinite;
+      }
+
+      @keyframes pulse-online {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(0.9); }
+      }
+
+      /* Body - 4/6 (~66px) */
+      .stats-badge-body {
+        height: 66px;
+        position: relative;
+        padding: 0.25rem;
+      }
+
+      .stats-badge-chart {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Cronometro Pizza */
+      .stats-badge-countdown {
+        position: absolute;
+        bottom: 4px;
+        right: 4px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .countdown-ring {
+        transform: rotate(-90deg);
+      }
+
+      .countdown-ring-bg {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.1);
+        stroke-width: 2;
+      }
+
+      .countdown-ring-progress {
+        fill: none;
+        stroke: #22c55e;
+        stroke-width: 2;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 1s linear;
+      }
+
+      /* Footer - 1/6 (~17px) */
+      .stats-badge-footer {
+        height: 17px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 0.75rem;
+        background: rgba(255, 255, 255, 0.02);
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .stats-badge-total {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #fff;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .stats-badge-growth {
+        font-size: 0.6rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.15rem;
+      }
+
+      .stats-badge-growth.positive {
+        color: #22c55e;
+      }
+
+      .stats-badge-growth.negative {
+        color: #ef4444;
+      }
+
+      .stats-badge-growth.neutral {
+        color: #64748b;
+      }
+
+      .stats-badge-growth svg {
+        width: 8px;
+        height: 8px;
+      }
+
+      /* Cores por categoria */
+      .stats-badge.empresas { border-left: 3px solid #ef4444; }
+      .stats-badge.pessoas { border-left: 3px solid #f97316; }
+      .stats-badge.politicos { border-left: 3px solid #3b82f6; }
+      .stats-badge.noticias { border-left: 3px solid #22c55e; }
+
+      .stats-badge.empresas .stats-badge-title-icon { color: #ef4444; }
+      .stats-badge.pessoas .stats-badge-title-icon { color: #f97316; }
+      .stats-badge.politicos .stats-badge-title-icon { color: #3b82f6; }
+      .stats-badge.noticias .stats-badge-title-icon { color: #22c55e; }
+
+      /* =============================================
+         LINHA DE CONTAGEM ANIMADA
+         ============================================= */
+
+      .stats-counter-line {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+        padding: 1rem 0;
+        margin-bottom: 1.5rem;
+        background: rgba(15, 22, 41, 0.6);
+        border-radius: 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        flex-wrap: wrap;
+      }
+
+      .stats-counter-item {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+      }
+
+      .stats-counter-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #fff;
+        font-variant-numeric: tabular-nums;
+        min-width: 80px;
+        text-align: right;
+      }
+
+      .stats-counter-label {
+        font-size: 0.85rem;
+        color: #64748b;
+        text-transform: lowercase;
+      }
+
+      .stats-counter-separator {
+        width: 1px;
+        height: 24px;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      /* Cores dos contadores */
+      .stats-counter-item.empresas .stats-counter-value { color: #ef4444; }
+      .stats-counter-item.pessoas .stats-counter-value { color: #f97316; }
+      .stats-counter-item.politicos .stats-counter-value { color: #3b82f6; }
+      .stats-counter-item.noticias .stats-counter-value { color: #22c55e; }
+
+      /* Animacao de contagem */
+      @keyframes count-up {
+        from { opacity: 0.5; }
+        to { opacity: 1; }
+      }
+
+      .stats-counter-value.counting {
+        animation: count-up 0.1s ease-out;
+      }
+
+      /* Responsivo */
+      @media (max-width: 768px) {
+        .stats-badges-container {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .stats-badge {
+          width: 100%;
+          max-width: 320px;
+        }
+
+        .stats-counter-line {
+          gap: 1rem;
+          padding: 0.75rem;
+        }
+
+        .stats-counter-item {
+          flex-direction: column;
+          align-items: center;
+          gap: 0.25rem;
+        }
+
+        .stats-counter-separator {
+          display: none;
+        }
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div class="header">
+      <div class="header-left">
+        <picture>
+          <source srcset="/static/images/iconsai-logo.webp" type="image/webp">
+          <img src="/static/images/iconsai-logo.png" alt="Iconsai" class="header-logo">
+        </picture>
+        <h1>Scraping Hub</h1>
+        <span class="version-badge" id="versionBadge">v1.14.2026</span>
+      </div>
+      <div class="header-right">
+        <a href="/admin" class="btn-admin" id="btnAdmin" style="display: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Gerenciar Usuarios</span></a>
+        <span class="user-email" id="userEmail">-</span>
+        <button class="btn-logout" onclick="logout()">Sair</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <h2 class="page-title">Módulos de Inteligência</h2>
+
+      <!-- Badges de Estatisticas -->
+      <div class="stats-badges-container" id="statsBadges">
+        <!-- Badge Empresas -->
+        <div class="stats-badge empresas" id="badgeEmpresas">
+          <div class="stats-badge-header">
+            <span class="stats-badge-title">
+              <svg class="stats-badge-title-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+              </svg>
+              Empresas
+            </span>
+            <span class="stats-badge-date" id="badgeEmpresasDate">--/--/----</span>
+            <span class="stats-badge-online" id="badgeEmpresasOnline">
+              <span class="stats-badge-online-dot"></span>
+              ONLINE
+            </span>
+          </div>
+          <div class="stats-badge-body">
+            <canvas class="stats-badge-chart" id="chartEmpresas"></canvas>
+            <div class="stats-badge-countdown">
+              <svg class="countdown-ring" viewBox="0 0 20 20">
+                <circle class="countdown-ring-bg" cx="10" cy="10" r="8"/>
+                <circle class="countdown-ring-progress" id="countdownEmpresas" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="0"/>
+              </svg>
+            </div>
+          </div>
+          <div class="stats-badge-footer">
+            <span class="stats-badge-total" id="totalEmpresas">0</span>
+            <span class="stats-badge-growth neutral" id="growthEmpresas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M5 12h14"/>
+              </svg>
+              0,00%
+            </span>
+          </div>
+        </div>
+
+        <!-- Badge Pessoas -->
+        <div class="stats-badge pessoas" id="badgePessoas">
+          <div class="stats-badge-header">
+            <span class="stats-badge-title">
+              <svg class="stats-badge-title-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+              Pessoas
+            </span>
+            <span class="stats-badge-date" id="badgePessoasDate">--/--/----</span>
+            <span class="stats-badge-online" id="badgePessoasOnline">
+              <span class="stats-badge-online-dot"></span>
+              ONLINE
+            </span>
+          </div>
+          <div class="stats-badge-body">
+            <canvas class="stats-badge-chart" id="chartPessoas"></canvas>
+            <div class="stats-badge-countdown">
+              <svg class="countdown-ring" viewBox="0 0 20 20">
+                <circle class="countdown-ring-bg" cx="10" cy="10" r="8"/>
+                <circle class="countdown-ring-progress" id="countdownPessoas" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="0"/>
+              </svg>
+            </div>
+          </div>
+          <div class="stats-badge-footer">
+            <span class="stats-badge-total" id="totalPessoas">0</span>
+            <span class="stats-badge-growth neutral" id="growthPessoas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M5 12h14"/>
+              </svg>
+              0,00%
+            </span>
+          </div>
+        </div>
+
+        <!-- Badge Politicos -->
+        <div class="stats-badge politicos" id="badgePoliticos">
+          <div class="stats-badge-header">
+            <span class="stats-badge-title">
+              <svg class="stats-badge-title-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"/>
+              </svg>
+              Políticos
+            </span>
+            <span class="stats-badge-date" id="badgePoliticosDate">--/--/----</span>
+            <span class="stats-badge-online" id="badgePoliticosOnline">
+              <span class="stats-badge-online-dot"></span>
+              ONLINE
+            </span>
+          </div>
+          <div class="stats-badge-body">
+            <canvas class="stats-badge-chart" id="chartPoliticos"></canvas>
+            <div class="stats-badge-countdown">
+              <svg class="countdown-ring" viewBox="0 0 20 20">
+                <circle class="countdown-ring-bg" cx="10" cy="10" r="8"/>
+                <circle class="countdown-ring-progress" id="countdownPoliticos" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="0"/>
+              </svg>
+            </div>
+          </div>
+          <div class="stats-badge-footer">
+            <span class="stats-badge-total" id="totalPoliticos">0</span>
+            <span class="stats-badge-growth neutral" id="growthPoliticos">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M5 12h14"/>
+              </svg>
+              0,00%
+            </span>
+          </div>
+        </div>
+
+        <!-- Badge Noticias -->
+        <div class="stats-badge noticias" id="badgeNoticias">
+          <div class="stats-badge-header">
+            <span class="stats-badge-title">
+              <svg class="stats-badge-title-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+              </svg>
+              Notícias
+            </span>
+            <span class="stats-badge-date" id="badgeNoticiasDate">--/--/----</span>
+            <span class="stats-badge-online" id="badgeNoticiasOnline">
+              <span class="stats-badge-online-dot"></span>
+              ONLINE
+            </span>
+          </div>
+          <div class="stats-badge-body">
+            <canvas class="stats-badge-chart" id="chartNoticias"></canvas>
+            <div class="stats-badge-countdown">
+              <svg class="countdown-ring" viewBox="0 0 20 20">
+                <circle class="countdown-ring-bg" cx="10" cy="10" r="8"/>
+                <circle class="countdown-ring-progress" id="countdownNoticias" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="0"/>
+              </svg>
+            </div>
+          </div>
+          <div class="stats-badge-footer">
+            <span class="stats-badge-total" id="totalNoticias">0</span>
+            <span class="stats-badge-growth neutral" id="growthNoticias">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M5 12h14"/>
+              </svg>
+              0,00%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Linha de Contagem Animada -->
+      <div class="stats-counter-line" id="statsCounterLine">
+        <div class="stats-counter-item empresas">
+          <span class="stats-counter-value" id="counterEmpresas">0</span>
+          <span class="stats-counter-label">empresas</span>
+        </div>
+        <div class="stats-counter-separator"></div>
+        <div class="stats-counter-item pessoas">
+          <span class="stats-counter-value" id="counterPessoas">0</span>
+          <span class="stats-counter-label">pessoas</span>
+        </div>
+        <div class="stats-counter-separator"></div>
+        <div class="stats-counter-item politicos">
+          <span class="stats-counter-value" id="counterPoliticos">0</span>
+          <span class="stats-counter-label">políticos</span>
+        </div>
+        <div class="stats-counter-separator"></div>
+        <div class="stats-counter-item noticias">
+          <span class="stats-counter-value" id="counterNoticias">0</span>
+          <span class="stats-counter-label">notícias</span>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card active" onclick="openCompanyModal()">
+          <div class="card-header">
+            <div class="card-icon red">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                />
+              </svg>
+            </div>
+            <h3>Empresas</h3>
+          </div>
+          <p>
+            Busque por CNPJ via BrasilAPI + Serper. Dados oficiais da Receita
+            Federal.
+          </p>
+        </div>
+
+        <div class="card active" onclick="openPeopleModal()">
+          <div class="card-header">
+            <div class="card-icon orange">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </div>
+            <h3>Pessoas</h3>
+          </div>
+          <p>Pesquise perfis profissionais e analise talentos.</p>
+        </div>
+
+        <div class="card active" onclick="openPoliticosFromCard()">
+          <div class="card-header">
+            <div class="card-icon blue">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"
+                />
+              </svg>
+            </div>
+            <h3>Políticos</h3>
+          </div>
+          <p>Perfis de políticos e percepção pública.</p>
+          <span class="card-badge ready">Ativo</span>
+        </div>
+
+        <div class="card active" onclick="openNewsModal()">
+          <div class="card-header">
+            <div class="card-icon green">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+                />
+              </svg>
+            </div>
+            <h3>Notícias</h3>
+          </div>
+          <p>Monitore notícias e cenário econômico.</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Atlas Agent FAB -->
+    <button class="atlas-fab" id="atlasFab" onclick="Atlas.toggle()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+        <line x1="9" y1="9" x2="9.01" y2="9"/>
+        <line x1="15" y1="9" x2="15.01" y2="9"/>
+      </svg>
+    </button>
+
+    <!-- Atlas Chat Window -->
+    <div class="atlas-window" id="atlasWindow">
+      <div class="atlas-header">
+        <div class="atlas-header-info">
+          <h3>Atlas</h3>
+          <span>Assistente de Inteligencia</span>
+        </div>
+        <button class="atlas-close" onclick="Atlas.toggle()">&times;</button>
+      </div>
+      <div class="atlas-messages" id="atlasMessages"></div>
+      <div class="atlas-input">
+        <input type="text" id="atlasInput" placeholder="Digite sua mensagem..." onkeypress="if(event.key==='Enter')Atlas.send()"/>
+        <button class="atlas-send" onclick="Atlas.send()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal CNAE -->
+    <div class="cnae-modal" id="cnaeModal">
+      <div class="cnae-modal-content">
+        <div class="cnae-modal-header">
+          <h3>Lista de CNAEs</h3>
+          <button class="modal-close" onclick="closeCnaeModal()">&times;</button>
+        </div>
+        <div class="cnae-search-box">
+          <input
+            type="text"
+            id="cnaeSearchInput"
+            placeholder="Buscar por código ou descrição..."
+            oninput="filterCnaeTable()"
+          />
+        </div>
+        <div class="cnae-filters">
+          <select id="cnaeFilterSecao" class="cnae-filter-select" onchange="filterCnaeByHierarchy()">
+            <option value="">Todas as Seções</option>
+          </select>
+          <select id="cnaeFilterDivisao" class="cnae-filter-select" onchange="filterCnaeByHierarchy()">
+            <option value="">Todas as Divisões</option>
+          </select>
+          <select id="cnaeFilterGrupo" class="cnae-filter-select" onchange="filterCnaeByHierarchy()">
+            <option value="">Todos os Grupos</option>
+          </select>
+          <select id="cnaeFilterClasse" class="cnae-filter-select" onchange="filterCnaeByHierarchy()">
+            <option value="">Todas as Classes</option>
+          </select>
+        </div>
+        <div class="cnae-table-container">
+          <div id="cnaeTableContent">
+            <div class="cnae-loading">Carregando CNAEs...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Regime Tributário -->
+    <div class="regime-modal" id="regimeModal">
+      <div class="regime-modal-content">
+        <div class="regime-modal-header">
+          <h3>Regime Tributário</h3>
+          <button class="modal-close" onclick="closeRegimeModal()">&times;</button>
+        </div>
+        <div class="regime-list">
+          <div class="regime-item" onclick="selectRegime('MEI', 'Microempreendedor Individual')">
+            <div>
+              <div class="regime-item-name">Microempreendedor Individual</div>
+              <div class="regime-item-limit">Limite: R$ 81.000/ano</div>
+            </div>
+            <div class="regime-item-code">MEI</div>
+          </div>
+          <div class="regime-item" onclick="selectRegime('SIMPLES_NACIONAL', 'Simples Nacional')">
+            <div>
+              <div class="regime-item-name">Simples Nacional</div>
+              <div class="regime-item-limit">Limite: R$ 4.800.000/ano</div>
+            </div>
+            <div class="regime-item-code">SIMPLES</div>
+          </div>
+          <div class="regime-item" onclick="selectRegime('LUCRO_PRESUMIDO', 'Lucro Presumido')">
+            <div>
+              <div class="regime-item-name">Lucro Presumido</div>
+              <div class="regime-item-limit">Limite: R$ 78.000.000/ano</div>
+            </div>
+            <div class="regime-item-code">PRESUMIDO</div>
+          </div>
+          <div class="regime-item" onclick="selectRegime('LUCRO_REAL', 'Lucro Real')">
+            <div>
+              <div class="regime-item-name">Lucro Real</div>
+              <div class="regime-item-limit">Obrigatório acima de R$ 78 milhões</div>
+            </div>
+            <div class="regime-item-code">REAL</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Empresas -->
+    <div class="modal" id="companyModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Buscar Empresa</h2>
+          <button class="modal-close" onclick="closeCompanyModal()">
+            &times;
+          </button>
+        </div>
+
+        <div id="searchView">
+          <div class="search-box" style="flex-wrap: wrap">
+            <input
+              type="text"
+              id="companyName"
+              placeholder="Nome da empresa *"
+              style="flex: 2; min-width: 200px"
+              onkeypress="if (event.key === 'Enter') searchCompany();"
+            />
+            <input
+              type="text"
+              id="companyCidade"
+              placeholder="Cidade"
+              style="flex: 1; min-width: 120px"
+              onkeypress="if (event.key === 'Enter') searchCompany();"
+            />
+          </div>
+          <div class="search-box" style="flex-wrap: wrap; margin-top: 0.5rem;">
+            <div class="input-with-button">
+              <input
+                type="text"
+                id="companySegmento"
+                placeholder="Segmento / CNAE"
+                onkeypress="if (event.key === 'Enter') searchCompany();"
+              />
+              <button class="btn-inside-input" onclick="openCnaeModal()" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18M3 12h18M3 18h18"/>
+                </svg>
+                Listar CNAE
+              </button>
+            </div>
+            <div class="input-with-button">
+              <input
+                type="text"
+                id="companyRegime"
+                placeholder="Regime Tributário"
+                onkeypress="if (event.key === 'Enter') searchCompany();"
+              />
+              <button class="btn-inside-input" onclick="openRegimeModal()" type="button" style="background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.3); color: #4ade80;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18M3 12h18M3 18h18"/>
+                </svg>
+                Listar
+              </button>
+            </div>
+          </div>
+          <div class="search-box" style="flex-wrap: wrap; margin-top: 0.5rem;">
+            <button class="btn-search" onclick="searchCompany()" id="btnSearch">
+              Buscar
+            </button>
+            <button class="btn-list" onclick="openEmpresasListingModal()">
+              Listar
+            </button>
+          </div>
+          <div id="searchResults"></div>
+        </div>
+
+        <div id="detailsView" style="display: none">
+          <div id="companyDetails"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Pessoas -->
+    <div class="modal" id="peopleModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Buscar Pessoas</h2>
+          <button class="modal-close" onclick="closePeopleModal()">
+            &times;
+          </button>
+        </div>
+
+        <div id="peopleSearchView">
+          <div class="search-box" style="flex-wrap: wrap">
+            <input
+              type="text"
+              id="personName"
+              placeholder="Nome da pessoa *"
+              style="flex: 2; min-width: 200px"
+              onkeypress="if (event.key === 'Enter') searchPeople();"
+            />
+            <input
+              type="text"
+              id="personCidade"
+              placeholder="Cidade"
+              style="flex: 1; min-width: 120px"
+              onkeypress="if (event.key === 'Enter') searchPeople();"
+            />
+            <button class="btn-search" onclick="searchPeople()" id="btnSearchPeople">
+              Buscar
+            </button>
+            <button class="btn-list" onclick="openPessoasListingModal()">
+              Listar
+            </button>
+          </div>
+          <div id="peopleResults"></div>
+        </div>
+
+        <div id="personDetailsView" style="display: none">
+          <button class="btn-back" onclick="backToPeopleSearch()">← Voltar</button>
+          <div id="personDetails"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Noticias -->
+    <div class="modal" id="newsModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Notícias</h2>
+          <button class="modal-close" onclick="closeNewsModal()">
+            &times;
+          </button>
+        </div>
+
+        <div id="newsSearchView">
+          <div class="search-box" style="flex-wrap: wrap">
+            <input
+              type="text"
+              id="newsQuery"
+              placeholder="Termo(s) / query"
+              style="flex: 2; min-width: 200px"
+              onkeypress="if (event.key === 'Enter') searchNews();"
+            />
+          </div>
+          <div class="search-box" style="flex-wrap: wrap; margin-top: 0.5rem; gap: 0.5rem; align-items: flex-end;">
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; color: #64748b;">Data inicial</label>
+              <input type="date" id="newsDataInicio" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: #fff;" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; color: #64748b;">Data final</label>
+              <input type="date" id="newsDataFim" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: #fff;" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; color: #64748b;">Idioma</label>
+              <select id="newsIdioma" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: #fff; min-width: 100px;">
+                <option value="pt" selected>Português</option>
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; color: #64748b;">País</label>
+              <select id="newsPais" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: #fff; min-width: 100px;">
+                <option value="BR" selected>Brasil</option>
+                <option value="US">Estados Unidos</option>
+                <option value="PT">Portugal</option>
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+          <div class="search-box" style="flex-wrap: wrap; margin-top: 0.5rem; gap: 0.5rem; align-items: flex-end;">
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; color: #64748b;">Fonte</label>
+              <select id="newsFonte" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: #fff; min-width: 180px;">
+                <option value="">Todas as fontes</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; color: #64748b;">Tipo</label>
+              <select id="newsTipo" style="padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: #fff; min-width: 140px;">
+                <option value="">Todos os tipos</option>
+                <option value="noticia">Notícia</option>
+                <option value="opiniao">Opinião</option>
+                <option value="editorial">Editorial</option>
+                <option value="press_release">Press Release</option>
+                <option value="blog">Blog</option>
+                <option value="post_social">Post Social</option>
+              </select>
+            </div>
+            <button class="btn-search" onclick="searchNews()" id="btnSearchNews">
+              Buscar
+            </button>
+            <button class="btn-list" onclick="openNoticiasListingModal()">
+              Listar
+            </button>
+          </div>
+          <div id="newsResults"></div>
+        </div>
+
+        <div id="newsDetailsView" style="display: none">
+          <button class="btn-back" onclick="backToNewsSearch()">← Voltar</button>
+          <div id="newsDetails"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Listing Modal - Empresas -->
+    <div class="listing-modal" id="empresasListingModal">
+      <div class="listing-modal-content">
+        <div class="listing-modal-header">
+          <h2>Empresas <span class="count-badge" id="empresasListingCount">0</span></h2>
+          <button class="modal-close" onclick="closeEmpresasListingModal()">&times;</button>
+        </div>
+        <div class="listing-filters">
+          <input type="text" id="empresasListingSearch" placeholder="Filtrar resultados..." oninput="filterEmpresasListing()" />
+          <span class="filter-info" id="empresasFilterInfo"></span>
+        </div>
+        <div class="listing-table-container">
+          <table class="listing-table" id="empresasListingTable">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="razao_social" onclick="sortEmpresasListing('razao_social')">Razão Social</th>
+                <th class="sortable" data-sort="nome_fantasia" onclick="sortEmpresasListing('nome_fantasia')">Nome Fantasia</th>
+                <th class="sortable" data-sort="cidade" onclick="sortEmpresasListing('cidade')">Cidade</th>
+                <th class="sortable" data-sort="estado" onclick="sortEmpresasListing('estado')">UF</th>
+                <th class="sortable" data-sort="cnae_descricao" onclick="sortEmpresasListing('cnae_descricao')">Segmento</th>
+                <th class="sortable" data-sort="regime_tributario" onclick="sortEmpresasListing('regime_tributario')">Regime</th>
+                <th>LinkedIn</th>
+              </tr>
+            </thead>
+            <tbody id="empresasListingBody"></tbody>
+          </table>
+          <div class="listing-empty" id="empresasListingEmpty" style="display: none;">Nenhuma empresa encontrada com os filtros aplicados.</div>
+          <div class="listing-loading" id="empresasListingLoading">Carregando empresas...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Listing Modal - Pessoas -->
+    <div class="listing-modal" id="pessoasListingModal">
+      <div class="listing-modal-content">
+        <div class="listing-modal-header">
+          <h2>Pessoas <span class="count-badge" id="pessoasListingCount">0</span></h2>
+          <button class="modal-close" onclick="closePessoasListingModal()">&times;</button>
+        </div>
+        <div class="listing-filters">
+          <input type="text" id="pessoasListingSearch" placeholder="Filtrar resultados..." oninput="filterPessoasListing()" />
+          <span class="filter-info" id="pessoasFilterInfo"></span>
+        </div>
+        <div class="listing-table-container">
+          <table class="listing-table" id="pessoasListingTable">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="nome_completo" onclick="sortPessoasListing('nome_completo')">Nome</th>
+                <th class="sortable" data-sort="email" onclick="sortPessoasListing('email')">Email</th>
+                <th class="sortable" data-sort="pais" onclick="sortPessoasListing('pais')">País</th>
+                <th class="sortable" data-sort="faixa_etaria" onclick="sortPessoasListing('faixa_etaria')">Faixa Etária</th>
+                <th>LinkedIn</th>
+              </tr>
+            </thead>
+            <tbody id="pessoasListingBody"></tbody>
+          </table>
+          <div class="listing-empty" id="pessoasListingEmpty" style="display: none;">Nenhuma pessoa encontrada com os filtros aplicados.</div>
+          <div class="listing-loading" id="pessoasListingLoading">Carregando pessoas...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Listing Modal - Notícias -->
+    <div class="listing-modal" id="noticiasListingModal">
+      <div class="listing-modal-content">
+        <div class="listing-modal-header">
+          <h2>Notícias <span class="count-badge" id="noticiasListingCount">0</span></h2>
+          <button class="modal-close" onclick="closeNoticiasListingModal()">&times;</button>
+        </div>
+        <div class="listing-filters">
+          <input type="text" id="noticiasListingSearch" placeholder="Filtrar resultados..." oninput="filterNoticiasListing()" />
+          <span class="filter-info" id="noticiasFilterInfo"></span>
+        </div>
+        <div class="listing-table-container">
+          <table class="listing-table" id="noticiasListingTable">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="titulo" onclick="sortNoticiasListing('titulo')">Título</th>
+                <th class="sortable" data-sort="fonte_nome" onclick="sortNoticiasListing('fonte_nome')">Fonte</th>
+                <th class="sortable" data-sort="data_publicacao" onclick="sortNoticiasListing('data_publicacao')">Data</th>
+                <th class="sortable" data-sort="tipo" onclick="sortNoticiasListing('tipo')">Tipo</th>
+                <th>Link</th>
+              </tr>
+            </thead>
+            <tbody id="noticiasListingBody"></tbody>
+          </table>
+          <div class="listing-empty" id="noticiasListingEmpty" style="display: none;">Nenhuma notícia encontrada com os filtros aplicados.</div>
+          <div class="listing-loading" id="noticiasListingLoading">Carregando notícias...</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const token = localStorage.getItem("token");
+      if (!token) window.location.href = "/";
+
+      async function fetchWithAuth(url, options = {}) {
+        return fetch(url, {
+          ...options,
+          headers: { ...options.headers, Authorization: `Bearer ${token}` },
+        });
+      }
+
+      async function loadUser() {
+        try {
+          const r = await fetchWithAuth("/auth/me");
+          if (r.ok) {
+            const user = await r.json();
+            document.getElementById("userEmail").textContent = user.name || user.email;
+            if (user.role === "super_admin") {
+              document.getElementById("btnAdmin").style.display =
+                "inline-flex";
+            }
+          } else if (r.status === 401) {
+            logout();
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function loadVersion() {
+        try {
+          const r = await fetch("/health");
+          const data = await r.json();
+          document.getElementById("versionBadge").textContent =
+            "v" + data.version;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      function logout() {
+        localStorage.removeItem("token");
+        localStorage.removeItem("tokenType");
+        window.location.href = "/";
+      }
+
+      loadUser();
+      loadVersion();
+
+      // =============================================
+      // STATS BADGES - Dashboard
+      // =============================================
+
+      const STATS_UPDATE_INTERVAL = 300000; // 5 minutos em ms
+      const COUNTDOWN_TOTAL = 300; // 5 minutos em segundos
+      let statsCharts = {};
+      let countdownSeconds = COUNTDOWN_TOTAL;
+      let countdownInterval = null;
+      let statsData = {
+        empresas: { total: 0, history: [] },
+        pessoas: { total: 0, history: [] },
+        politicos: { total: 0, history: [] },
+        noticias: { total: 0, history: [] }
+      };
+
+      // Cores por categoria
+      const categoryColors = {
+        empresas: { line: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
+        pessoas: { line: '#f97316', bg: 'rgba(249, 115, 22, 0.1)' },
+        politicos: { line: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
+        noticias: { line: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' }
+      };
+
+      // Formatar numero com pontos
+      function formatNumber(num) {
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      }
+
+      // Formatar data brasileira
+      function formatDateBR(dateStr) {
+        if (!dateStr) return '--/--/----';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('pt-BR');
+      }
+
+      // Animacao de contagem
+      function animateCounter(elementId, targetValue, duration = 1000) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+
+        const startValue = parseInt(element.textContent.replace(/\./g, '')) || 0;
+        const increment = (targetValue - startValue) / (duration / 16);
+        let currentValue = startValue;
+
+        const animate = () => {
+          currentValue += increment;
+          if ((increment > 0 && currentValue >= targetValue) ||
+              (increment < 0 && currentValue <= targetValue) ||
+              increment === 0) {
+            element.textContent = formatNumber(targetValue);
+            element.classList.remove('counting');
+            return;
+          }
+          element.textContent = formatNumber(Math.round(currentValue));
+          element.classList.add('counting');
+          requestAnimationFrame(animate);
+        };
+
+        requestAnimationFrame(animate);
+      }
+
+      // Atualizar badge individual
+      function updateBadge(categoria, data) {
+        const dateEl = document.getElementById(`badge${capitalize(categoria)}Date`);
+        const totalEl = document.getElementById(`total${capitalize(categoria)}`);
+        const growthEl = document.getElementById(`growth${capitalize(categoria)}`);
+        const counterEl = document.getElementById(`counter${capitalize(categoria)}`);
+
+        if (dateEl) dateEl.textContent = formatDateBR(data.data_referencia || new Date().toISOString());
+        if (totalEl) totalEl.textContent = formatNumber(data.total);
+        if (counterEl) animateCounter(`counter${capitalize(categoria)}`, data.total);
+
+        if (growthEl) {
+          const growth = data.crescimento_percentual || 0;
+          const growthText = growth.toFixed(2).replace('.', ',') + '%';
+          let growthClass = 'neutral';
+          let arrowSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14"/></svg>';
+
+          if (growth > 0) {
+            growthClass = 'positive';
+            arrowSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 15l7-7 7 7"/></svg>';
+          } else if (growth < 0) {
+            growthClass = 'negative';
+            arrowSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 9l7 7 7-7"/></svg>';
+          }
+
+          growthEl.className = `stats-badge-growth ${growthClass}`;
+          growthEl.innerHTML = `${arrowSvg} ${growth >= 0 ? '+' : ''}${growthText}`;
+        }
+      }
+
+      function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      // Criar ou atualizar grafico
+      function updateChart(categoria, historyData) {
+        const canvas = document.getElementById(`chart${capitalize(categoria)}`);
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const colors = categoryColors[categoria];
+
+        // Preparar dados
+        const labels = historyData.map(d => {
+          const date = new Date(d.data);
+          return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        });
+        const values = historyData.map(d => d.total);
+
+        // Destruir grafico existente
+        if (statsCharts[categoria]) {
+          statsCharts[categoria].destroy();
+        }
+
+        // Criar novo grafico
+        statsCharts[categoria] = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: values,
+              borderColor: colors.line,
+              backgroundColor: colors.bg,
+              borderWidth: 1.5,
+              fill: true,
+              tension: 0.4,
+              pointRadius: 0,
+              pointHoverRadius: 3
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                enabled: true,
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(15, 22, 41, 0.9)',
+                titleColor: '#fff',
+                bodyColor: '#94a3b8',
+                borderColor: colors.line,
+                borderWidth: 1,
+                padding: 8,
+                displayColors: false,
+                callbacks: {
+                  label: function(context) {
+                    return formatNumber(context.parsed.y);
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { display: false },
+              y: { display: false }
+            },
+            interaction: {
+              mode: 'nearest',
+              axis: 'x',
+              intersect: false
+            }
+          }
+        });
+      }
+
+      // Atualizar countdown pizza
+      function updateCountdown() {
+        const circumference = 50.27; // 2 * PI * 8
+        const progress = (countdownSeconds / COUNTDOWN_TOTAL) * circumference;
+
+        ['Empresas', 'Pessoas', 'Politicos', 'Noticias'].forEach(cat => {
+          const ring = document.getElementById(`countdown${cat}`);
+          if (ring) {
+            ring.style.strokeDashoffset = circumference - progress;
+          }
+        });
+
+        countdownSeconds--;
+
+        if (countdownSeconds < 0) {
+          countdownSeconds = COUNTDOWN_TOTAL;
+          loadStats(); // Recarregar stats
+        }
+      }
+
+      // Carregar estatisticas atuais
+      async function loadStats() {
+        try {
+          const response = await fetchWithAuth('/api/stats/current');
+          if (!response.ok) throw new Error('Erro ao carregar stats');
+
+          const data = await response.json();
+
+          if (data.success && data.stats) {
+            data.stats.forEach(stat => {
+              updateBadge(stat.categoria, {
+                ...stat,
+                data_referencia: data.data_referencia
+              });
+              statsData[stat.categoria].total = stat.total;
+            });
+          }
+
+          // Reset countdown
+          countdownSeconds = COUNTDOWN_TOTAL;
+        } catch (error) {
+          console.error('Erro ao carregar stats:', error);
+          // Em caso de erro, mostrar offline
+          ['Empresas', 'Pessoas', 'Politicos', 'Noticias'].forEach(cat => {
+            const onlineEl = document.getElementById(`badge${cat}Online`);
+            if (onlineEl) {
+              onlineEl.innerHTML = '<span style="color: #64748b;">OFFLINE</span>';
+            }
+          });
+        }
+      }
+
+      // Carregar historico
+      async function loadStatsHistory() {
+        try {
+          const response = await fetchWithAuth('/api/stats/history');
+          if (!response.ok) throw new Error('Erro ao carregar historico');
+
+          const data = await response.json();
+
+          if (data.success && data.historico) {
+            Object.keys(data.historico).forEach(categoria => {
+              const history = data.historico[categoria];
+              statsData[categoria].history = history;
+              updateChart(categoria, history);
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao carregar historico:', error);
+        }
+      }
+
+      // Inicializar stats badges
+      async function initStatsBadges() {
+        // Carregar dados
+        await loadStats();
+        await loadStatsHistory();
+
+        // Iniciar countdown
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(updateCountdown, 1000);
+
+        // Atualizar a cada 5 minutos
+        setInterval(async () => {
+          await loadStats();
+          await loadStatsHistory();
+        }, STATS_UPDATE_INTERVAL);
+      }
+
+      // Inicializar ao carregar pagina
+      initStatsBadges();
+
+      // Company Modal Functions
+      let currentEmpresa = null;
+      let currentSocios = [];
+
+      function openCompanyModal() {
+        document.getElementById("companyModal").classList.add("show");
+        document.getElementById("companyName").focus();
+      }
+
+      function closeCompanyModal() {
+        document.getElementById("companyModal").classList.remove("show");
+        document.getElementById("searchResults").innerHTML = "";
+        document.getElementById("companyName").value = "";
+        document.getElementById("companyCidade").value = "";
+        document.getElementById("companySegmento").value = "";
+        document.getElementById("companyRegime").value = "";
+        document.getElementById("searchView").style.display = "block";
+        document.getElementById("detailsView").style.display = "none";
+        currentEmpresa = null;
+        currentSocios = [];
+      }
+
+      async function searchCompany() {
+        const nome = document.getElementById("companyName").value.trim();
+        const cidade = document.getElementById("companyCidade").value.trim();
+        const segmento = document.getElementById("companySegmento").value.trim();
+        const regime = document.getElementById("companyRegime").value.trim();
+
+        // Contar campos preenchidos (mínimo 2 caracteres cada)
+        const campos = [
+          { nome: "Nome", valor: nome },
+          { nome: "Cidade", valor: cidade },
+          { nome: "Segmento/CNAE", valor: segmento },
+          { nome: "Regime", valor: regime }
+        ];
+        const preenchidos = campos.filter(c => c.valor && c.valor.length >= 2);
+
+        if (preenchidos.length < 3) {
+          const vazios = campos.filter(c => !c.valor || c.valor.length < 2).map(c => c.nome);
+          alert(`Preencha pelo menos 3 dos 4 campos.\n\nCampos vazios ou incompletos: ${vazios.join(", ")}`);
+          return;
+        }
+
+        const btn = document.getElementById("btnSearch");
+        const results = document.getElementById("searchResults");
+
+        btn.disabled = true;
+        btn.textContent = "Buscando...";
+        results.innerHTML =
+          '<div class="loading"><div class="loading-spinner"></div><span class="loading-text">Buscando empresas...</span></div>';
+
+        try {
+          const payload = {};
+          if (nome) payload.nome = nome;
+          if (cidade) payload.cidade = cidade;
+          if (segmento) payload.segmento = segmento;
+          if (regime) payload.regime = regime;
+
+          const r = await fetch("/api/companies/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await r.json();
+
+          if (!data.found) {
+            results.innerHTML =
+              '<div class="message error">Nenhuma empresa encontrada</div>';
+            return;
+          }
+
+          if (data.single_match) {
+            // Single match found - get full details via /details endpoint
+            selectCompany(data.company.cnpj);
+            return;
+          } else {
+            results.innerHTML = data.candidates
+              .map(
+                (c) => `
+                        <div class="result-item" onclick="selectCompany('${c.cnpj}')">
+                            <div class="result-item-header">
+                                <div class="result-item-name">${c.razao_social || "Sem nome"}</div>
+                                ${c.localizacao ? `<span class="result-item-city">${c.localizacao}</span>` : ""}
+                            </div>
+                            <div class="result-item-footer">
+                                <span class="result-item-cnpj">${c.cnpj_formatted}</span>
+                                ${c.nome_fantasia ? `<span class="result-item-fantasia">${c.nome_fantasia}</span>` : ""}
+                            </div>
+                        </div>
+                    `,
+              )
+              .join("");
+          }
+        } catch (e) {
+          results.innerHTML =
+            '<div class="message error">Erro ao buscar: ' +
+            e.message +
+            "</div>";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Buscar";
+        }
+      }
+
+      async function selectCompany(cnpj) {
+        const results = document.getElementById("searchResults");
+        results.innerHTML =
+          '<div class="loading"><div class="loading-spinner"></div><span class="loading-text">Buscando detalhes da empresa...</span></div>';
+
+        try {
+          const r = await fetch("/api/companies/details", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cnpj }),
+          });
+
+          const data = await r.json();
+
+          if (data.exists) {
+            results.innerHTML =
+              '<div class="message success">Empresa ja cadastrada no sistema</div>';
+            return;
+          }
+
+          // New structure: empresa and socios are separate
+          currentEmpresa = data.empresa;
+          currentSocios = data.socios || [];
+          showCompanyDetails();
+        } catch (e) {
+          results.innerHTML =
+            '<div class="message error">Erro: ' + e.message + "</div>";
+        }
+      }
+
+      function showCompanyDetails() {
+        const empresa = currentEmpresa;
+        document.getElementById("searchView").style.display = "none";
+        document.getElementById("detailsView").style.display = "block";
+
+        // Format LinkedIn display
+        let linkedinDisplay = '<span class="no-linkedin">Nao informado</span>';
+        if (empresa.linkedin && empresa.linkedin !== "NAO_POSSUI") {
+          linkedinDisplay = `<a href="${empresa.linkedin}" target="_blank" class="has-linkedin">Ver perfil</a>`;
+        } else if (empresa.linkedin === "NAO_POSSUI") {
+          linkedinDisplay = '<span class="no-linkedin">Nao possui</span>';
+        }
+
+        // Format website display
+        let websiteDisplay = '<span style="color:#64748b">Nao informado</span>';
+        if (empresa.website && empresa.website !== "NAO_POSSUI") {
+          websiteDisplay = `<a href="${empresa.website}" target="_blank">${empresa.website}</a>`;
+        }
+
+        document.getElementById("companyDetails").innerHTML = `
+                <div class="company-details">
+                    <div class="detail-row">
+                        <span class="detail-label">CNPJ</span>
+                        <span class="detail-value">${formatCnpj(empresa.cnpj)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Razao Social</span>
+                        <span class="detail-value">${empresa.razao_social || "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Nome Fantasia</span>
+                        <span class="detail-value">${empresa.nome_fantasia || "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">CNAE</span>
+                        <span class="detail-value">${empresa.cnae_principal || "-"} - ${empresa.cnae_descricao || ""}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Porte</span>
+                        <span class="detail-value">${empresa.porte || "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Situacao</span>
+                        <span class="detail-value">${empresa.situacao_cadastral || "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Capital Social</span>
+                        <span class="detail-value">${empresa.capital_social ? "R$ " + Number(empresa.capital_social).toLocaleString("pt-BR") : "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Endereco</span>
+                        <span class="detail-value">${[empresa.logradouro, empresa.numero, empresa.bairro, empresa.cidade, empresa.estado].filter(Boolean).join(", ") || "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Telefone</span>
+                        <span class="detail-value">${empresa.telefone_1 || "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Email</span>
+                        <span class="detail-value">${empresa.email || "-"}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Website</span>
+                        <span class="detail-value">${websiteDisplay}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">LinkedIn</span>
+                        <span class="detail-value">${linkedinDisplay}</span>
+                    </div>
+                    <div id="sociosContainer"></div>
+                </div>
+                <div class="btn-action-group">
+                    ${
+                      currentSocios.length > 0
+                        ? `
+                        <button class="btn-socios" onclick="loadSocios()" id="btnVerSocios">
+                            Ver Socios (${currentSocios.length})
+                        </button>
+                    `
+                        : ""
+                    }
+                    <button class="btn-approve" onclick="approveCompany()" id="btnApprove">Aprovar e Cadastrar</button>
+                    <button class="btn-secondary" onclick="backToSearch()">Voltar a Busca</button>
+                </div>
+            `;
+      }
+
+      async function loadSocios() {
+        const btn = document.getElementById("btnVerSocios");
+        const container = document.getElementById("sociosContainer");
+
+        btn.disabled = true;
+        btn.textContent = "Buscando LinkedIn...";
+        container.innerHTML =
+          '<div class="loading"><div class="loading-spinner"></div><span class="loading-text">Enriquecendo dados dos socios...</span></div>';
+
+        try {
+          const r = await fetch("/api/companies/socios", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              socios: currentSocios,
+              empresa_nome:
+                currentEmpresa.nome_fantasia || currentEmpresa.razao_social,
+            }),
+          });
+
+          const data = await r.json();
+
+          if (data.success && data.socios) {
+            currentSocios = data.socios;
+            renderSocios();
+            btn.style.display = "none";
+          } else {
+            throw new Error(data.error || "Erro ao buscar socios");
+          }
+        } catch (e) {
+          container.innerHTML = `<div class="message error">Erro: ${e.message}</div>`;
+          btn.disabled = false;
+          btn.textContent = `Ver Socios (${currentSocios.length})`;
+        }
+      }
+
+      function renderSocios() {
+        const container = document.getElementById("sociosContainer");
+
+        if (currentSocios.length === 0) {
+          container.innerHTML = "";
+          return;
+        }
+
+        container.innerHTML = `
+                <div class="socios-section">
+                    <div class="socios-title">Socios <span>${currentSocios.length}</span></div>
+                    <div class="socios-list">
+                        ${currentSocios
+                          .map((s) => {
+                            const initial = s.nome
+                              ? s.nome.charAt(0).toUpperCase()
+                              : "?";
+
+                            let linkedinHtml =
+                              '<span class="no-linkedin">Sem LinkedIn</span>';
+                            if (s.linkedin && s.linkedin !== "NAO_POSSUI") {
+                              linkedinHtml = `<a href="${s.linkedin}" target="_blank" class="has-linkedin">LinkedIn</a>`;
+                            } else if (s.linkedin === "NAO_POSSUI") {
+                              linkedinHtml =
+                                '<span class="no-linkedin">Nao possui LinkedIn</span>';
+                            }
+
+                            return `
+                                <div class="socio-item">
+                                    <div class="socio-avatar">
+                                        ${
+                                          s.foto_url
+                                            ? `<img src="${s.foto_url}" alt="${s.nome}">`
+                                            : `<span class="socio-avatar-initial">${initial}</span>`
+                                        }
+                                    </div>
+                                    <div class="socio-info">
+                                        <div class="socio-name">${s.nome}</div>
+                                        <div class="socio-role">${s.qualificacao || s.cargo || "Socio"}</div>
+                                        <div class="socio-meta">
+                                            ${s.cpf ? `<span>CPF: ***${s.cpf.slice(-6, -2)}**-${s.cpf.slice(-2)}</span>` : ""}
+                                            ${s.email ? `<span>${s.email}</span>` : ""}
+                                            ${linkedinHtml}
+                                        </div>
+                                        ${s.headline ? `<div style="color:#94a3b8;font-size:0.75rem;margin-top:0.35rem;">${s.headline}</div>` : ""}
+                                    </div>
+                                </div>
+                            `;
+                          })
+                          .join("")}
+                    </div>
+                </div>
+            `;
+      }
+
+      function backToSearch() {
+        document.getElementById("searchView").style.display = "block";
+        document.getElementById("detailsView").style.display = "none";
+        document.getElementById("searchResults").innerHTML = "";
+        currentEmpresa = null;
+        currentSocios = [];
+      }
+
+      async function approveCompany() {
+        if (!currentEmpresa) {
+          alert("Nenhuma empresa selecionada");
+          return;
+        }
+
+        const btn = document.getElementById("btnApprove");
+        btn.disabled = true;
+        btn.textContent = "Salvando...";
+
+        try {
+          const user = document.getElementById("userEmail").textContent;
+          const r = await fetch("/api/companies/approve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              empresa: currentEmpresa,
+              socios: currentSocios,
+              aprovado_por: user,
+            }),
+          });
+
+          const data = await r.json();
+
+          if (!r.ok) {
+            throw new Error(
+              data.error || data.details || `Erro HTTP ${r.status}`,
+            );
+          }
+
+          if (data.success) {
+            document.getElementById("companyDetails").innerHTML = `
+                        <div class="message success" style="text-align:center;padding:2rem;">
+                            <div style="font-size:2rem;margin-bottom:0.5rem;">&#10003;</div>
+                            <div style="font-size:1.1rem;font-weight:600;">Empresa cadastrada com sucesso!</div>
+                            <div style="margin-top:0.5rem;opacity:0.8;">${data.socios?.length || 0} socio(s) adicionado(s)</div>
+                        </div>
+                        <div class="btn-action-group">
+                            <button class="btn-secondary" onclick="closeCompanyModal()">Fechar</button>
+                        </div>
+                    `;
+          } else {
+            throw new Error(data.error || "Erro desconhecido ao aprovar");
+          }
+        } catch (e) {
+          console.error("Approve error:", e);
+          btn.disabled = false;
+          btn.textContent = "Aprovar e Cadastrar";
+          document.getElementById("companyDetails").innerHTML += `
+                    <div class="message error" style="margin-top:1rem;">
+                        Erro: ${e.message}
+                    </div>
+                `;
+        }
+      }
+
+      function formatCnpj(cnpj) {
+        if (!cnpj) return "-";
+        const c = cnpj.replace(/\D/g, "");
+        return c.replace(
+          /(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,
+          "$1.$2.$3/$4-$5",
+        );
+      }
+
+      // Close modal on ESC
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeCompanyModal();
+      });
+
+      // ============================================
+      // PEOPLE MODAL FUNCTIONS
+      // ============================================
+      let currentPerson = null;
+      let peopleList = [];
+
+      function openPeopleModal() {
+        document.getElementById("peopleModal").classList.add("show");
+        document.getElementById("personName").focus();
+        // Load initial list
+        listAllPeople();
+      }
+
+      function closePeopleModal() {
+        document.getElementById("peopleModal").classList.remove("show");
+        document.getElementById("peopleResults").innerHTML = "";
+        document.getElementById("personName").value = "";
+        document.getElementById("peopleSearchView").style.display = "block";
+        document.getElementById("personDetailsView").style.display = "none";
+        currentPerson = null;
+      }
+
+      function backToPeopleSearch() {
+        document.getElementById("peopleSearchView").style.display = "block";
+        document.getElementById("personDetailsView").style.display = "none";
+      }
+
+      async function listAllPeople() {
+        const resultsDiv = document.getElementById("peopleResults");
+        resultsDiv.innerHTML = '<div class="loading">Carregando pessoas...</div>';
+
+        try {
+          const r = await fetch("/api/people/list?limit=50");
+          const data = await r.json();
+
+          if (!data.success) {
+            resultsDiv.innerHTML = `<div class="error">Erro: ${data.error}</div>`;
+            return;
+          }
+
+          if (data.count === 0) {
+            resultsDiv.innerHTML = '<div class="no-results">Nenhuma pessoa encontrada na base.</div>';
+            return;
+          }
+
+          peopleList = data.people;
+          renderPeopleList(data.people, data.count);
+        } catch (e) {
+          resultsDiv.innerHTML = `<div class="error">Erro ao carregar: ${e.message}</div>`;
+        }
+      }
+
+      async function searchPeople() {
+        const nome = document.getElementById("personName").value.trim();
+        if (!nome) {
+          listAllPeople();
+          return;
+        }
+
+        const resultsDiv = document.getElementById("peopleResults");
+        resultsDiv.innerHTML = '<div class="loading">Buscando...</div>';
+
+        try {
+          const r = await fetch("/api/people/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome })
+          });
+          const data = await r.json();
+
+          if (!data.success) {
+            resultsDiv.innerHTML = `<div class="error">Erro: ${data.error}</div>`;
+            return;
+          }
+
+          if (data.count === 0) {
+            resultsDiv.innerHTML = `<div class="no-results">Nenhuma pessoa encontrada com "${nome}".</div>`;
+            return;
+          }
+
+          peopleList = data.people;
+          renderPeopleList(data.people, data.count);
+        } catch (e) {
+          resultsDiv.innerHTML = `<div class="error">Erro ao buscar: ${e.message}</div>`;
+        }
+      }
+
+      function renderPeopleList(people, total) {
+        const resultsDiv = document.getElementById("peopleResults");
+        let html = `<div class="results-header"><strong>${total}</strong> pessoa(s) encontrada(s)</div>`;
+        html += '<div class="results-grid">';
+
+        people.forEach(p => {
+          const nome = p.nome_completo || p.nome || 'Nome não disponível';
+          const faixa = p.faixa_etaria || '';
+          const pais = p.pais || '';
+          const linkedin = p.linkedin_url && p.linkedin_url !== 'inexistente' ? p.linkedin_url : null;
+
+          html += `
+            <div class="result-card" onclick="showPersonDetails('${p.id}')">
+              <div class="result-card-header">
+                <div class="result-avatar">${nome.charAt(0).toUpperCase()}</div>
+                <div class="result-info">
+                  <strong>${nome}</strong>
+                  ${faixa ? `<span class="result-meta">${faixa}</span>` : ''}
+                </div>
+              </div>
+              ${pais ? `<div class="result-detail"><span class="label">País:</span> ${pais}</div>` : ''}
+              ${linkedin ? `<div class="result-detail"><a href="${linkedin}" target="_blank" class="linkedin-link">Ver LinkedIn</a></div>` : ''}
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        resultsDiv.innerHTML = html;
+      }
+
+      async function showPersonDetails(personId) {
+        document.getElementById("peopleSearchView").style.display = "none";
+        document.getElementById("personDetailsView").style.display = "block";
+        const detailsDiv = document.getElementById("personDetails");
+        detailsDiv.innerHTML = '<div class="loading">Carregando detalhes...</div>';
+
+        try {
+          const r = await fetch(`/api/people/${personId}`);
+          const data = await r.json();
+
+          if (!data.success) {
+            detailsDiv.innerHTML = `<div class="error">Erro: ${data.error}</div>`;
+            return;
+          }
+
+          const p = data.pessoa;
+          const nome = p.nome_completo || p.nome || 'Nome não disponível';
+
+          let html = `
+            <div class="detail-header">
+              <div class="detail-avatar">${nome.charAt(0).toUpperCase()}</div>
+              <div>
+                <h3>${nome}</h3>
+                ${p.faixa_etaria ? `<span class="detail-meta">${p.faixa_etaria}</span>` : ''}
+              </div>
+            </div>
+            <div class="detail-grid">
+              ${p.email ? `<div class="detail-item"><span class="label">Email:</span> ${p.email}</div>` : ''}
+              ${p.pais ? `<div class="detail-item"><span class="label">País:</span> ${p.pais}</div>` : ''}
+              ${p.linkedin_url && p.linkedin_url !== 'inexistente' ? `<div class="detail-item"><a href="${p.linkedin_url}" target="_blank" class="linkedin-link">Ver LinkedIn</a></div>` : ''}
+            </div>
+          `;
+
+          // Show experiences if available
+          if (data.experiencias && data.experiencias.length > 0) {
+            html += '<h4 style="margin-top: 1.5rem; color: #94a3b8;">Experiências</h4><div class="experiences-list">';
+            data.experiencias.forEach(exp => {
+              html += `
+                <div class="experience-item">
+                  <strong>${exp.titulo || 'Cargo não informado'}</strong>
+                  ${exp.instituicao ? `<span> - ${exp.instituicao}</span>` : ''}
+                  ${exp.data_inicio ? `<div class="exp-period">${exp.data_inicio}${exp.data_fim ? ' - ' + exp.data_fim : ' - Atual'}</div>` : ''}
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+
+          // Show company relationships if available
+          if (data.empresas && data.empresas.length > 0) {
+            html += '<h4 style="margin-top: 1.5rem; color: #94a3b8;">Empresas Relacionadas</h4><div class="companies-list">';
+            data.empresas.forEach(emp => {
+              const empresa = emp.dim_empresas;
+              if (empresa) {
+                html += `
+                  <div class="company-item">
+                    <strong>${empresa.razao_social || empresa.nome_fantasia || 'Empresa'}</strong>
+                    ${emp.cargo ? `<span> - ${emp.cargo}</span>` : ''}
+                    ${empresa.cidade ? `<div class="company-location">${empresa.cidade}/${empresa.estado}</div>` : ''}
+                  </div>
+                `;
+              }
+            });
+            html += '</div>';
+          }
+
+          detailsDiv.innerHTML = html;
+        } catch (e) {
+          detailsDiv.innerHTML = `<div class="error">Erro ao carregar detalhes: ${e.message}</div>`;
+        }
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closePeopleModal();
+      });
+
+      // ============================================
+      // NEWS MODAL FUNCTIONS
+      // ============================================
+      let currentNews = null;
+      let newsList = [];
+
+      function openPoliticosFromCard() {
+        // Atlas agent stub - will be implemented in Phase 4
+        console.log('Atlas: Politicos module clicked');
+      }
+
+      function openNewsModal() {
+        document.getElementById("newsModal").classList.add("show");
+        document.getElementById("newsQuery").focus();
+
+        // Define datas da última semana como default
+        const hoje = new Date();
+        const umaSemanaAtras = new Date();
+        umaSemanaAtras.setDate(hoje.getDate() - 7);
+
+        document.getElementById("newsDataFim").value = hoje.toISOString().split('T')[0];
+        document.getElementById("newsDataInicio").value = umaSemanaAtras.toISOString().split('T')[0];
+
+        // Load sources dropdown and initial list
+        loadNewsSources();
+        listAllNews();
+      }
+
+      function closeNewsModal() {
+        document.getElementById("newsModal").classList.remove("show");
+        document.getElementById("newsResults").innerHTML = "";
+        document.getElementById("newsQuery").value = "";
+        document.getElementById("newsSearchView").style.display = "block";
+        document.getElementById("newsDetailsView").style.display = "none";
+        currentNews = null;
+      }
+
+      function backToNewsSearch() {
+        document.getElementById("newsSearchView").style.display = "block";
+        document.getElementById("newsDetailsView").style.display = "none";
+      }
+
+      async function loadNewsSources() {
+        try {
+          const r = await fetch("/api/news/sources/list");
+          const data = await r.json();
+
+          if (data.success && data.sources && data.sources.length > 0) {
+            const selectFonte = document.getElementById("newsFonte");
+            // Mantém a opção "Todas" e adiciona as fontes
+            selectFonte.innerHTML = '<option value="">Todas as fontes</option>';
+            data.sources.forEach(fonte => {
+              const option = document.createElement("option");
+              option.value = fonte.nome || fonte.id;
+              option.textContent = fonte.nome || fonte.url;
+              selectFonte.appendChild(option);
+            });
+          }
+        } catch (e) {
+          console.error("Error loading news sources:", e);
+        }
+      }
+
+      async function listAllNews() {
+        const resultsDiv = document.getElementById("newsResults");
+        resultsDiv.innerHTML = '<div class="loading">Carregando notícias...</div>';
+
+        try {
+          const r = await fetch("/api/news/list?limit=50");
+          const data = await r.json();
+
+          if (!data.success) {
+            resultsDiv.innerHTML = `<div class="error">Erro: ${data.error}</div>`;
+            return;
+          }
+
+          if (data.count === 0) {
+            resultsDiv.innerHTML = '<div class="no-results">Nenhuma notícia encontrada na base. Execute o scraping para coletar notícias.</div>';
+            return;
+          }
+
+          newsList = data.news;
+          renderNewsList(data.news, data.count);
+        } catch (e) {
+          resultsDiv.innerHTML = `<div class="error">Erro ao carregar: ${e.message}</div>`;
+        }
+      }
+
+      async function searchNews() {
+        const query = document.getElementById("newsQuery").value.trim();
+        if (!query) {
+          listAllNews();
+          return;
+        }
+
+        // Get filter values
+        const fonte = document.getElementById("newsFonte").value;
+        const idioma = document.getElementById("newsIdioma").value || 'pt';
+        const pais = document.getElementById("newsPais").value || 'BR';
+        const dataInicio = document.getElementById("newsDataInicio").value;
+        const dataFim = document.getElementById("newsDataFim").value;
+
+        const resultsDiv = document.getElementById("newsResults");
+        resultsDiv.innerHTML = '<div class="loading">Buscando com IA em tempo real...</div>';
+
+        try {
+          // Build query params
+          const params = new URLSearchParams({
+            q: query,
+            idioma: idioma,
+            pais: pais
+          });
+
+          if (fonte) params.append('fonte', fonte);
+          if (dataInicio) params.append('data_inicio', dataInicio);
+          if (dataFim) params.append('data_fim', dataFim);
+
+          const r = await fetch(`/api/news/search-ai?${params.toString()}`);
+          const data = await r.json();
+
+          if (!data.success) {
+            resultsDiv.innerHTML = `<div class="error">Erro: ${data.error}</div>`;
+            return;
+          }
+
+          if (data.count === 0) {
+            let msg = `<div class="no-results">Nenhuma notícia encontrada para "${query}".`;
+            if (data.transformed_query && data.transformed_query !== query) {
+              msg += `<br><small style="color: #64748b;">Query expandida: "${data.transformed_query}"</small>`;
+            }
+            msg += `</div>`;
+            resultsDiv.innerHTML = msg;
+            return;
+          }
+
+          // Show query transformation info
+          let infoHtml = '';
+          if (data.transformed_query && data.transformed_query !== query) {
+            infoHtml = `<div style="margin-bottom: 1rem; padding: 0.5rem; background: rgba(59, 130, 246, 0.1); border-radius: 0.5rem; font-size: 0.8rem; color: #60a5fa;">
+              <strong>IA expandiu:</strong> "${data.transformed_query}"
+              ${data.query_context ? `<br><small>${data.query_context}</small>` : ''}
+            </div>`;
+          }
+
+          newsList = data.news;
+          renderNewsListAI(data.news, data.count, infoHtml, data.citations);
+        } catch (e) {
+          resultsDiv.innerHTML = `<div class="error">Erro ao buscar: ${e.message}</div>`;
+        }
+      }
+
+      function renderNewsListAI(news, total, infoHtml = '', citations = []) {
+        const resultsDiv = document.getElementById("newsResults");
+        let html = infoHtml;
+        html += `<div class="results-header"><strong>${total}</strong> notícia(s) encontrada(s) em tempo real</div>`;
+        html += '<div class="news-list">';
+
+        news.forEach(n => {
+          const titulo = n.titulo || 'Sem título';
+          const resumo = n.resumo ? n.resumo.substring(0, 200) + '...' : '';
+          const fonte = n.fonte || '';
+          const data = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '';
+          const url = n.url || '#';
+          const relevancia = n.relevancia || 'media';
+          const relevanciaColor = relevancia === 'alta' ? '#10b981' : relevancia === 'baixa' ? '#f59e0b' : '#64748b';
+
+          html += `
+            <div class="news-card" style="cursor: pointer;" onclick="window.open('${url}', '_blank')">
+              <div class="news-header">
+                <strong class="news-title">${titulo}</strong>
+                ${fonte ? `<span class="news-source">${fonte}</span>` : ''}
+              </div>
+              ${resumo ? `<p class="news-summary">${resumo}</p>` : ''}
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                ${data ? `<span class="news-date">${data}</span>` : ''}
+                <span style="font-size: 0.7rem; color: ${relevanciaColor}; text-transform: uppercase;">${relevancia}</span>
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+
+        // Show citations if available
+        if (citations && citations.length > 0) {
+          html += `<div style="margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.03); border-radius: 0.5rem;">
+            <strong style="font-size: 0.75rem; color: #64748b;">Fontes consultadas:</strong>
+            <div style="font-size: 0.7rem; color: #475569; margin-top: 0.25rem;">
+              ${citations.slice(0, 5).map(c => `<a href="${c}" target="_blank" style="color: #60a5fa; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c}</a>`).join('')}
+            </div>
+          </div>`;
+        }
+
+        resultsDiv.innerHTML = html;
+      }
+
+      function renderNewsList(news, total) {
+        const resultsDiv = document.getElementById("newsResults");
+        let html = `<div class="results-header"><strong>${total}</strong> notícia(s) encontrada(s)</div>`;
+        html += '<div class="news-list">';
+
+        news.forEach(n => {
+          const titulo = n.titulo || 'Sem título';
+          const resumo = n.resumo ? n.resumo.substring(0, 150) + '...' : '';
+          const fonte = n.fonte_nome || n.fonte || '';
+          const data = n.data_publicacao ? new Date(n.data_publicacao).toLocaleDateString('pt-BR') : '';
+
+          html += `
+            <div class="news-card" onclick="showNewsDetails('${n.id}')">
+              <div class="news-header">
+                <strong class="news-title">${titulo}</strong>
+                ${fonte ? `<span class="news-source">${fonte}</span>` : ''}
+              </div>
+              ${resumo ? `<p class="news-summary">${resumo}</p>` : ''}
+              ${data ? `<span class="news-date">${data}</span>` : ''}
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        resultsDiv.innerHTML = html;
+      }
+
+      async function showNewsDetails(newsId) {
+        document.getElementById("newsSearchView").style.display = "none";
+        document.getElementById("newsDetailsView").style.display = "block";
+        const detailsDiv = document.getElementById("newsDetails");
+        detailsDiv.innerHTML = '<div class="loading">Carregando detalhes...</div>';
+
+        try {
+          const r = await fetch(`/api/news/${newsId}`);
+          const data = await r.json();
+
+          if (!data.success) {
+            detailsDiv.innerHTML = `<div class="error">Erro: ${data.error}</div>`;
+            return;
+          }
+
+          const n = data.news;
+          const titulo = n.titulo || 'Sem título';
+          const data_pub = n.data_publicacao ? new Date(n.data_publicacao).toLocaleDateString('pt-BR') : '';
+
+          let html = `
+            <div class="news-detail-header">
+              <h3>${titulo}</h3>
+              <div class="news-detail-meta">
+                ${n.fonte_nome ? `<span class="source">${n.fonte_nome}</span>` : ''}
+                ${data_pub ? `<span class="date">${data_pub}</span>` : ''}
+              </div>
+            </div>
+            ${n.resumo ? `<div class="news-detail-summary"><p>${n.resumo}</p></div>` : ''}
+            ${n.conteudo ? `<div class="news-detail-content"><p>${n.conteudo}</p></div>` : ''}
+            ${n.url ? `<div class="news-detail-link"><a href="${n.url}" target="_blank" class="btn-link">Ver notícia original</a></div>` : ''}
+          `;
+
+          detailsDiv.innerHTML = html;
+        } catch (e) {
+          detailsDiv.innerHTML = `<div class="error">Erro ao carregar detalhes: ${e.message}</div>`;
+        }
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeNewsModal();
+      });
+
+      // ============================================
+      // LISTING MODALS - Empresas, Pessoas, Notícias
+      // ============================================
+
+      // State for listings
+      let empresasListingData = [];
+      let pessoasListingData = [];
+      let noticiasListingData = [];
+      let empresasSortColumn = null;
+      let empresasSortDirection = 'asc';
+      let pessoasSortColumn = null;
+      let pessoasSortDirection = 'asc';
+      let noticiasSortColumn = null;
+      let noticiasSortDirection = 'asc';
+
+      // ---- CNAE MODAL ----
+      let allCnaes = [];
+      let cnaeLoaded = false;
+
+      async function openCnaeModal() {
+        document.getElementById("cnaeModal").classList.add("show");
+
+        if (!cnaeLoaded) {
+          await loadCnaes();
+        }
+      }
+
+      function closeCnaeModal() {
+        document.getElementById("cnaeModal").classList.remove("show");
+      }
+
+      async function loadCnaes() {
+        const container = document.getElementById("cnaeTableContent");
+        container.innerHTML = '<div class="cnae-loading">Carregando CNAEs...</div>';
+
+        try {
+          const response = await fetch("/api/companies/cnae?limit=2000");
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.detail || "Erro ao carregar CNAEs");
+          }
+
+          allCnaes = data.data || [];
+          cnaeLoaded = true;
+          renderCnaeTable(allCnaes);
+          populateCnaeFilters();
+        } catch (error) {
+          container.innerHTML = `<div class="cnae-empty">Erro: ${error.message}</div>`;
+        }
+      }
+
+      function renderCnaeTable(cnaes) {
+        const container = document.getElementById("cnaeTableContent");
+
+        if (cnaes.length === 0) {
+          container.innerHTML = '<div class="cnae-empty">Nenhum CNAE encontrado</div>';
+          return;
+        }
+
+        let html = `
+          <table class="cnae-table">
+            <thead>
+              <tr>
+                <th style="width: 90px;">Código</th>
+                <th>Descrição</th>
+                <th>Seção</th>
+                <th>Divisão</th>
+                <th>Grupo</th>
+                <th>Classe</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        for (const cnae of cnaes) {
+          html += `
+            <tr onclick="selectCnae('${cnae.codigo || cnae.subclasse}', '${(cnae.descricao || '').replace(/'/g, "\\'")}')">
+              <td class="cnae-code">${cnae.codigo || cnae.subclasse || '-'}</td>
+              <td class="cnae-desc">${cnae.descricao || '-'}</td>
+              <td class="cnae-secao">${cnae.descricao_secao || '-'}</td>
+              <td class="cnae-divisao">${cnae.descricao_divisao || '-'}</td>
+              <td class="cnae-grupo">${cnae.descricao_grupo || '-'}</td>
+              <td class="cnae-classe">${cnae.descricao_classe || '-'}</td>
+            </tr>
+          `;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      }
+
+      function filterCnaeTable() {
+        const search = document.getElementById("cnaeSearchInput").value.toLowerCase().trim();
+
+        if (!search) {
+          renderCnaeTable(allCnaes);
+          return;
+        }
+
+        const filtered = allCnaes.filter(cnae => {
+          return (
+            (cnae.codigo || '').toLowerCase().includes(search) ||
+            (cnae.subclasse || '').toLowerCase().includes(search) ||
+            (cnae.descricao || '').toLowerCase().includes(search) ||
+            (cnae.descricao_secao || '').toLowerCase().includes(search) ||
+            (cnae.descricao_divisao || '').toLowerCase().includes(search) ||
+            (cnae.descricao_grupo || '').toLowerCase().includes(search) ||
+            (cnae.descricao_classe || '').toLowerCase().includes(search)
+          );
+        });
+
+        renderCnaeTable(filtered);
+      }
+
+      function selectCnae(codigo, descricao) {
+        document.getElementById("companySegmento").value = codigo;
+        closeCnaeModal();
+      }
+
+      // Close CNAE modal on outside click
+      document.getElementById("cnaeModal").addEventListener("click", (e) => {
+        if (e.target === e.currentTarget) closeCnaeModal();
+      });
+
+      // ---- CNAE HIERARCHY FILTERS ----
+      function populateCnaeFilters() {
+        if (allCnaes.length === 0) return;
+
+        // Extract unique values for each level
+        const secoes = [...new Set(allCnaes.map(c => c.descricao_secao).filter(Boolean))].sort();
+
+        const secaoSelect = document.getElementById("cnaeFilterSecao");
+        secaoSelect.innerHTML = '<option value="">Todas as Seções</option>';
+        secoes.forEach(s => {
+          secaoSelect.innerHTML += `<option value="${s}">${s.substring(0, 50)}${s.length > 50 ? '...' : ''}</option>`;
+        });
+      }
+
+      function filterCnaeByHierarchy() {
+        const secao = document.getElementById("cnaeFilterSecao").value;
+        const divisao = document.getElementById("cnaeFilterDivisao").value;
+        const grupo = document.getElementById("cnaeFilterGrupo").value;
+        const classe = document.getElementById("cnaeFilterClasse").value;
+        const search = document.getElementById("cnaeSearchInput").value.toLowerCase().trim();
+
+        let filtered = allCnaes;
+
+        // Apply hierarchy filters
+        if (secao) {
+          filtered = filtered.filter(c => c.descricao_secao === secao);
+          // Update divisão options
+          const divisoes = [...new Set(filtered.map(c => c.descricao_divisao).filter(Boolean))].sort();
+          const divisaoSelect = document.getElementById("cnaeFilterDivisao");
+          divisaoSelect.innerHTML = '<option value="">Todas as Divisões</option>';
+          divisoes.forEach(d => {
+            divisaoSelect.innerHTML += `<option value="${d}" ${d === divisao ? 'selected' : ''}>${d.substring(0, 40)}${d.length > 40 ? '...' : ''}</option>`;
+          });
+        } else {
+          document.getElementById("cnaeFilterDivisao").innerHTML = '<option value="">Todas as Divisões</option>';
+          document.getElementById("cnaeFilterGrupo").innerHTML = '<option value="">Todos os Grupos</option>';
+          document.getElementById("cnaeFilterClasse").innerHTML = '<option value="">Todas as Classes</option>';
+        }
+
+        if (divisao) {
+          filtered = filtered.filter(c => c.descricao_divisao === divisao);
+          // Update grupo options
+          const grupos = [...new Set(filtered.map(c => c.descricao_grupo).filter(Boolean))].sort();
+          const grupoSelect = document.getElementById("cnaeFilterGrupo");
+          grupoSelect.innerHTML = '<option value="">Todos os Grupos</option>';
+          grupos.forEach(g => {
+            grupoSelect.innerHTML += `<option value="${g}" ${g === grupo ? 'selected' : ''}>${g.substring(0, 40)}${g.length > 40 ? '...' : ''}</option>`;
+          });
+        } else if (secao) {
+          document.getElementById("cnaeFilterGrupo").innerHTML = '<option value="">Todos os Grupos</option>';
+          document.getElementById("cnaeFilterClasse").innerHTML = '<option value="">Todas as Classes</option>';
+        }
+
+        if (grupo) {
+          filtered = filtered.filter(c => c.descricao_grupo === grupo);
+          // Update classe options
+          const classes = [...new Set(filtered.map(c => c.descricao_classe).filter(Boolean))].sort();
+          const classeSelect = document.getElementById("cnaeFilterClasse");
+          classeSelect.innerHTML = '<option value="">Todas as Classes</option>';
+          classes.forEach(cl => {
+            classeSelect.innerHTML += `<option value="${cl}" ${cl === classe ? 'selected' : ''}>${cl.substring(0, 40)}${cl.length > 40 ? '...' : ''}</option>`;
+          });
+        } else if (divisao) {
+          document.getElementById("cnaeFilterClasse").innerHTML = '<option value="">Todas as Classes</option>';
+        }
+
+        if (classe) {
+          filtered = filtered.filter(c => c.descricao_classe === classe);
+        }
+
+        // Apply text search on filtered results
+        if (search) {
+          filtered = filtered.filter(cnae => {
+            return (
+              (cnae.codigo || '').toLowerCase().includes(search) ||
+              (cnae.subclasse || '').toLowerCase().includes(search) ||
+              (cnae.descricao || '').toLowerCase().includes(search)
+            );
+          });
+        }
+
+        renderCnaeTable(filtered);
+      }
+
+      // Override filterCnaeTable to work with hierarchy
+      function filterCnaeTable() {
+        filterCnaeByHierarchy();
+      }
+
+      // ---- REGIME TRIBUTARIO MODAL ----
+      function openRegimeModal() {
+        document.getElementById("regimeModal").classList.add("show");
+      }
+
+      function closeRegimeModal() {
+        document.getElementById("regimeModal").classList.remove("show");
+      }
+
+      function selectRegime(codigo, descricao) {
+        document.getElementById("companyRegime").value = codigo;
+        closeRegimeModal();
+      }
+
+      // Close Regime modal on outside click
+      document.getElementById("regimeModal").addEventListener("click", (e) => {
+        if (e.target === e.currentTarget) closeRegimeModal();
+      });
+
+      // Format regime for display
+      function formatRegime(regime) {
+        if (!regime) return '<span style="color:#64748b">-</span>';
+        const regimeMap = {
+          'MEI': '<span style="color:#22c55e">MEI</span>',
+          'SIMPLES_NACIONAL': '<span style="color:#3b82f6">Simples</span>',
+          'LUCRO_PRESUMIDO': '<span style="color:#f59e0b">Presumido</span>',
+          'LUCRO_REAL': '<span style="color:#ef4444">Real</span>',
+          'DESCONHECIDO': '<span style="color:#64748b">?</span>'
+        };
+        return regimeMap[regime] || `<span style="color:#94a3b8">${regime}</span>`;
+      }
+
+      // ---- EMPRESAS LISTING ----
+      async function openEmpresasListingModal() {
+        document.getElementById("empresasListingModal").classList.add("show");
+        document.getElementById("empresasListingLoading").style.display = "block";
+        document.getElementById("empresasListingTable").style.display = "none";
+        document.getElementById("empresasListingEmpty").style.display = "none";
+
+        // Get filters from modal
+        const nome = document.getElementById("companyName").value.trim();
+        const cidade = document.getElementById("companyCidade").value.trim();
+        const segmento = (document.getElementById("companySegmento")?.value || "").trim();
+        const regime = (document.getElementById("companyRegime")?.value || "").trim();
+
+        // Show filter info
+        let filterParts = [];
+        if (nome) filterParts.push(`Nome: "${nome}"`);
+        if (cidade) filterParts.push(`Cidade: "${cidade}"`);
+        if (segmento) filterParts.push(`Segmento: "${segmento}"`);
+        if (regime) filterParts.push(`Regime: "${regime}"`);
+        document.getElementById("empresasFilterInfo").textContent = filterParts.length > 0 ? `Filtros: ${filterParts.join(", ")}` : "";
+
+        try {
+          let url = "/api/companies/list?limit=500";
+          if (nome) url += `&nome=${encodeURIComponent(nome)}`;
+          if (cidade) url += `&cidade=${encodeURIComponent(cidade)}`;
+          if (segmento) url += `&segmento=${encodeURIComponent(segmento)}`;
+          if (regime) url += `&regime=${encodeURIComponent(regime)}`;
+
+          const r = await fetch(url);
+          const data = await r.json();
+
+          if (data.success) {
+            empresasListingData = data.empresas || [];
+            document.getElementById("empresasListingCount").textContent = empresasListingData.length;
+            renderEmpresasListing();
+          } else {
+            throw new Error(data.error || "Erro ao buscar empresas");
+          }
+        } catch (e) {
+          document.getElementById("empresasListingBody").innerHTML = `<tr><td colspan="7" class="error">Erro: ${e.message}</td></tr>`;
+        } finally {
+          document.getElementById("empresasListingLoading").style.display = "none";
+          document.getElementById("empresasListingTable").style.display = "table";
+        }
+      }
+
+      function closeEmpresasListingModal() {
+        document.getElementById("empresasListingModal").classList.remove("show");
+        empresasListingData = [];
+        document.getElementById("empresasListingSearch").value = "";
+      }
+
+      function renderEmpresasListing(filteredData = null) {
+        const data = filteredData || empresasListingData;
+        const tbody = document.getElementById("empresasListingBody");
+        const empty = document.getElementById("empresasListingEmpty");
+
+        if (data.length === 0) {
+          tbody.innerHTML = "";
+          empty.style.display = "block";
+          return;
+        }
+
+        empty.style.display = "none";
+        tbody.innerHTML = data.map(e => `
+          <tr>
+            <td>${e.razao_social || '-'}</td>
+            <td>${e.nome_fantasia || '-'}</td>
+            <td>${e.cidade || '-'}</td>
+            <td>${e.estado || '-'}</td>
+            <td>${e.cnae_descricao || '-'}</td>
+            <td>${formatRegime(e.regime_tributario)}</td>
+            <td>${e.linkedin && e.linkedin !== 'NAO_POSSUI' && e.linkedin !== 'inexistente'
+              ? `<a href="${e.linkedin}" target="_blank" class="cell-link">Ver</a>`
+              : '<span style="color:#64748b">-</span>'}</td>
+          </tr>
+        `).join("");
+      }
+
+      function filterEmpresasListing() {
+        const search = document.getElementById("empresasListingSearch").value.toLowerCase().trim();
+        if (!search) {
+          renderEmpresasListing();
+          return;
+        }
+
+        const filtered = empresasListingData.filter(e =>
+          (e.razao_social || '').toLowerCase().includes(search) ||
+          (e.nome_fantasia || '').toLowerCase().includes(search) ||
+          (e.cidade || '').toLowerCase().includes(search) ||
+          (e.cnae_descricao || '').toLowerCase().includes(search) ||
+          (e.regime_tributario || '').toLowerCase().includes(search)
+        );
+        renderEmpresasListing(filtered);
+      }
+
+      function sortEmpresasListing(column) {
+        // Update sort direction
+        if (empresasSortColumn === column) {
+          empresasSortDirection = empresasSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          empresasSortColumn = column;
+          empresasSortDirection = 'asc';
+        }
+
+        // Update header classes
+        document.querySelectorAll("#empresasListingTable th").forEach(th => {
+          th.classList.remove("sort-asc", "sort-desc");
+          if (th.dataset.sort === column) {
+            th.classList.add(empresasSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+          }
+        });
+
+        // Sort data
+        empresasListingData.sort((a, b) => {
+          const valA = (a[column] || '').toString().toLowerCase();
+          const valB = (b[column] || '').toString().toLowerCase();
+          if (empresasSortDirection === 'asc') {
+            return valA.localeCompare(valB);
+          } else {
+            return valB.localeCompare(valA);
+          }
+        });
+
+        renderEmpresasListing();
+      }
+
+      // ---- PESSOAS LISTING ----
+      async function openPessoasListingModal() {
+        document.getElementById("pessoasListingModal").classList.add("show");
+        document.getElementById("pessoasListingLoading").style.display = "block";
+        document.getElementById("pessoasListingTable").style.display = "none";
+        document.getElementById("pessoasListingEmpty").style.display = "none";
+
+        // Get filters from modal
+        const nome = document.getElementById("personName").value.trim();
+        const cidade = (document.getElementById("personCidade")?.value || "").trim();
+
+        // Show filter info
+        let filterParts = [];
+        if (nome) filterParts.push(`Nome: "${nome}"`);
+        if (cidade) filterParts.push(`Cidade: "${cidade}"`);
+        document.getElementById("pessoasFilterInfo").textContent = filterParts.length > 0 ? `Filtros: ${filterParts.join(", ")}` : "";
+
+        try {
+          let url = "/api/people/list?limit=500";
+          if (nome) url += `&nome=${encodeURIComponent(nome)}`;
+          if (cidade) url += `&cidade=${encodeURIComponent(cidade)}`;
+
+          const r = await fetch(url);
+          const data = await r.json();
+
+          if (data.success) {
+            pessoasListingData = data.people || [];
+            document.getElementById("pessoasListingCount").textContent = pessoasListingData.length;
+            renderPessoasListing();
+          } else {
+            throw new Error(data.error || "Erro ao buscar pessoas");
+          }
+        } catch (e) {
+          document.getElementById("pessoasListingBody").innerHTML = `<tr><td colspan="5" class="error">Erro: ${e.message}</td></tr>`;
+        } finally {
+          document.getElementById("pessoasListingLoading").style.display = "none";
+          document.getElementById("pessoasListingTable").style.display = "table";
+        }
+      }
+
+      function closePessoasListingModal() {
+        document.getElementById("pessoasListingModal").classList.remove("show");
+        pessoasListingData = [];
+        document.getElementById("pessoasListingSearch").value = "";
+      }
+
+      function renderPessoasListing(filteredData = null) {
+        const data = filteredData || pessoasListingData;
+        const tbody = document.getElementById("pessoasListingBody");
+        const empty = document.getElementById("pessoasListingEmpty");
+
+        if (data.length === 0) {
+          tbody.innerHTML = "";
+          empty.style.display = "block";
+          return;
+        }
+
+        empty.style.display = "none";
+        tbody.innerHTML = data.map(p => `
+          <tr>
+            <td>${p.nome_completo || p.nome || '-'}</td>
+            <td>${p.email || '-'}</td>
+            <td>${p.pais || '-'}</td>
+            <td>${p.faixa_etaria || '-'}</td>
+            <td>${p.linkedin_url && p.linkedin_url !== 'inexistente'
+              ? `<a href="${p.linkedin_url}" target="_blank" class="cell-link">Ver</a>`
+              : '<span style="color:#64748b">-</span>'}</td>
+          </tr>
+        `).join("");
+      }
+
+      function filterPessoasListing() {
+        const search = document.getElementById("pessoasListingSearch").value.toLowerCase().trim();
+        if (!search) {
+          renderPessoasListing();
+          return;
+        }
+
+        const filtered = pessoasListingData.filter(p =>
+          (p.nome_completo || p.nome || '').toLowerCase().includes(search) ||
+          (p.email || '').toLowerCase().includes(search) ||
+          (p.pais || '').toLowerCase().includes(search)
+        );
+        renderPessoasListing(filtered);
+      }
+
+      function sortPessoasListing(column) {
+        if (pessoasSortColumn === column) {
+          pessoasSortDirection = pessoasSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          pessoasSortColumn = column;
+          pessoasSortDirection = 'asc';
+        }
+
+        document.querySelectorAll("#pessoasListingTable th").forEach(th => {
+          th.classList.remove("sort-asc", "sort-desc");
+          if (th.dataset.sort === column) {
+            th.classList.add(pessoasSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+          }
+        });
+
+        pessoasListingData.sort((a, b) => {
+          const valA = (a[column] || '').toString().toLowerCase();
+          const valB = (b[column] || '').toString().toLowerCase();
+          if (pessoasSortDirection === 'asc') {
+            return valA.localeCompare(valB);
+          } else {
+            return valB.localeCompare(valA);
+          }
+        });
+
+        renderPessoasListing();
+      }
+
+      // ---- NOTICIAS LISTING ----
+      async function openNoticiasListingModal() {
+        document.getElementById("noticiasListingModal").classList.add("show");
+        document.getElementById("noticiasListingLoading").style.display = "block";
+        document.getElementById("noticiasListingTable").style.display = "none";
+        document.getElementById("noticiasListingEmpty").style.display = "none";
+
+        // Get filters from modal
+        const query = document.getElementById("newsQuery").value.trim();
+        const dataInicio = (document.getElementById("newsDataInicio")?.value || "");
+        const dataFim = (document.getElementById("newsDataFim")?.value || "");
+        const idioma = (document.getElementById("newsIdioma")?.value || "");
+        const pais = (document.getElementById("newsPais")?.value || "BR");
+        const fonte = (document.getElementById("newsFonte")?.value || "").trim();
+        const tipo = (document.getElementById("newsTipo")?.value || "");
+
+        // Show filter info
+        let filterParts = [];
+        if (query) filterParts.push(`Query: "${query}"`);
+        if (dataInicio) filterParts.push(`De: ${dataInicio}`);
+        if (dataFim) filterParts.push(`Até: ${dataFim}`);
+        if (idioma) filterParts.push(`Idioma: ${idioma}`);
+        if (pais && pais !== 'all') filterParts.push(`País: ${pais}`);
+        if (fonte) filterParts.push(`Fonte: "${fonte}"`);
+        if (tipo) filterParts.push(`Tipo: ${tipo}`);
+        document.getElementById("noticiasFilterInfo").textContent = filterParts.length > 0 ? `Filtros: ${filterParts.join(", ")}` : "";
+
+        try {
+          let url = "/api/news/list?limit=500";
+          if (query) url += `&q=${encodeURIComponent(query)}`;
+          if (dataInicio) url += `&data_inicio=${encodeURIComponent(dataInicio)}`;
+          if (dataFim) url += `&data_fim=${encodeURIComponent(dataFim)}`;
+          if (idioma) url += `&idioma=${encodeURIComponent(idioma)}`;
+          if (pais && pais !== 'all') url += `&pais=${encodeURIComponent(pais)}`;
+          if (fonte) url += `&fonte=${encodeURIComponent(fonte)}`;
+          if (tipo) url += `&tipo=${encodeURIComponent(tipo)}`;
+
+          const r = await fetch(url);
+          const data = await r.json();
+
+          if (data.success) {
+            noticiasListingData = data.news || [];
+            document.getElementById("noticiasListingCount").textContent = noticiasListingData.length;
+            renderNoticiasListing();
+          } else {
+            throw new Error(data.error || "Erro ao buscar notícias");
+          }
+        } catch (e) {
+          document.getElementById("noticiasListingBody").innerHTML = `<tr><td colspan="5" class="error">Erro: ${e.message}</td></tr>`;
+        } finally {
+          document.getElementById("noticiasListingLoading").style.display = "none";
+          document.getElementById("noticiasListingTable").style.display = "table";
+        }
+      }
+
+      function closeNoticiasListingModal() {
+        document.getElementById("noticiasListingModal").classList.remove("show");
+        noticiasListingData = [];
+        document.getElementById("noticiasListingSearch").value = "";
+      }
+
+      function renderNoticiasListing(filteredData = null) {
+        const data = filteredData || noticiasListingData;
+        const tbody = document.getElementById("noticiasListingBody");
+        const empty = document.getElementById("noticiasListingEmpty");
+
+        if (data.length === 0) {
+          tbody.innerHTML = "";
+          empty.style.display = "block";
+          return;
+        }
+
+        empty.style.display = "none";
+        tbody.innerHTML = data.map(n => {
+          const dataPub = n.data_publicacao ? new Date(n.data_publicacao).toLocaleDateString('pt-BR') : '-';
+          return `
+            <tr>
+              <td style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${n.titulo || '-'}</td>
+              <td><span class="cell-badge info">${n.fonte_nome || n.fonte || '-'}</span></td>
+              <td>${dataPub}</td>
+              <td>${n.tipo ? `<span class="cell-badge success">${n.tipo}</span>` : '-'}</td>
+              <td>${n.url ? `<a href="${n.url}" target="_blank" class="cell-link">Abrir</a>` : '-'}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      function filterNoticiasListing() {
+        const search = document.getElementById("noticiasListingSearch").value.toLowerCase().trim();
+        if (!search) {
+          renderNoticiasListing();
+          return;
+        }
+
+        const filtered = noticiasListingData.filter(n =>
+          (n.titulo || '').toLowerCase().includes(search) ||
+          (n.fonte_nome || n.fonte || '').toLowerCase().includes(search) ||
+          (n.resumo || '').toLowerCase().includes(search)
+        );
+        renderNoticiasListing(filtered);
+      }
+
+      function sortNoticiasListing(column) {
+        if (noticiasSortColumn === column) {
+          noticiasSortDirection = noticiasSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          noticiasSortColumn = column;
+          noticiasSortDirection = 'asc';
+        }
+
+        document.querySelectorAll("#noticiasListingTable th").forEach(th => {
+          th.classList.remove("sort-asc", "sort-desc");
+          if (th.dataset.sort === column) {
+            th.classList.add(noticiasSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+          }
+        });
+
+        noticiasListingData.sort((a, b) => {
+          let valA, valB;
+          if (column === 'data_publicacao') {
+            valA = a[column] ? new Date(a[column]).getTime() : 0;
+            valB = b[column] ? new Date(b[column]).getTime() : 0;
+            return noticiasSortDirection === 'asc' ? valA - valB : valB - valA;
+          }
+          valA = (a[column] || '').toString().toLowerCase();
+          valB = (b[column] || '').toString().toLowerCase();
+          if (noticiasSortDirection === 'asc') {
+            return valA.localeCompare(valB);
+          } else {
+            return valB.localeCompare(valA);
+          }
+        });
+
+        renderNoticiasListing();
+      }
+
+      // Close listing modals on ESC
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closeEmpresasListingModal();
+          closePessoasListingModal();
+          closeNoticiasListingModal();
+          Atlas.close();
+        }
+      });
+
+      // ============================================
+      // ATLAS AGENT
+      // ============================================
+      const Atlas = {
+        isOpen: false,
+        sessionId: null,
+        currentModule: null,
+
+        toggle() {
+          this.isOpen = !this.isOpen;
+          document.getElementById('atlasWindow').classList.toggle('show', this.isOpen);
+          if (this.isOpen && !document.getElementById('atlasMessages').children.length) {
+            this.showGreeting();
+          }
+        },
+
+        close() {
+          if (this.isOpen) {
+            this.isOpen = false;
+            document.getElementById('atlasWindow').classList.remove('show');
+          }
+        },
+
+        showGreeting() {
+          this.addMessage(
+            'Posso ajuda-lo com informacoes sobre empresas, pessoas, politicos, seus mandatos e noticias em tempo real. O que gostaria de saber?',
+            true
+          );
+          this.showBadges();
+        },
+
+        showBadges() {
+          const badges = `
+            <div class="atlas-badges">
+              <div class="atlas-badge atlas-badge-empresas" onclick="Atlas.enterModule('empresas')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                <span>Empresas</span>
+              </div>
+              <div class="atlas-badge atlas-badge-pessoas" onclick="Atlas.enterModule('pessoas')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                <span>Pessoas</span>
+              </div>
+              <div class="atlas-badge atlas-badge-noticias" onclick="Atlas.enterModule('noticias')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16"/><path d="M18 14h-8"/><path d="M15 18h-5"/></svg>
+                <span>Notícias</span>
+              </div>
+              <div class="atlas-badge atlas-badge-politicos" onclick="Atlas.enterModule('politicos')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+                <span>Políticos</span>
+              </div>
+            </div>
+          `;
+          this.addMessage(badges, true);
+        },
+
+        enterModule(module) {
+          this.currentModule = module;
+          this.addMessage(module.charAt(0).toUpperCase() + module.slice(1), false);
+
+          const greetings = {
+            empresas: 'Quais dados voce precisa sobre empresas? Posso buscar por nome, CNAE, cidade ou segmento.',
+            pessoas: 'Quais dados voce precisa sobre pessoas? Posso buscar por nome, cargo ou empresa.',
+            noticias: 'Quais noticias voce gostaria de ver? Posso filtrar por empresa ou mostrar as mais recentes.',
+            politicos: 'Aqui consigo buscar qualquer politico do Brasil - nome, cargo, partido, mandatos. Me diz o que voce precisa?'
+          };
+
+          setTimeout(() => {
+            this.addMessage(greetings[module] || 'Como posso ajudar?', true);
+          }, 300);
+        },
+
+        addMessage(content, isBot = true) {
+          const container = document.getElementById('atlasMessages');
+          const div = document.createElement('div');
+          div.className = 'atlas-msg ' + (isBot ? 'bot' : 'user');
+          div.innerHTML = content;
+          container.appendChild(div);
+          container.scrollTop = container.scrollHeight;
+        },
+
+        showTyping() {
+          const container = document.getElementById('atlasMessages');
+          const div = document.createElement('div');
+          div.id = 'atlasTyping';
+          div.className = 'atlas-msg bot';
+          div.innerHTML = '<div class="atlas-typing"><span></span><span></span><span></span></div>';
+          container.appendChild(div);
+          container.scrollTop = container.scrollHeight;
+        },
+
+        hideTyping() {
+          const typing = document.getElementById('atlasTyping');
+          if (typing) typing.remove();
+        },
+
+        async send() {
+          const input = document.getElementById('atlasInput');
+          const message = input.value.trim();
+          if (!message) return;
+
+          input.value = '';
+          this.addMessage(message, false);
+          this.showTyping();
+
+          try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('/api/atlas/chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+              },
+              body: JSON.stringify({
+                message: message,
+                sessionId: this.sessionId
+              })
+            });
+
+            this.hideTyping();
+
+            if (!response.ok) throw new Error('API error');
+
+            const result = await response.json();
+            this.sessionId = result.sessionId;
+
+            // Show response text
+            this.addMessage(result.response?.text || 'Nao foi possivel processar a consulta.', true);
+
+            // Show data results if any
+            if (result.response?.data && Array.isArray(result.response.data) && result.response.data.length > 0) {
+              this.showResults(result.response.data, result.metadata?.intent);
+            }
+
+            // Show suggestions if any
+            if (result.response?.suggestions && result.response.suggestions.length > 0) {
+              this.showSuggestions(result.response.suggestions);
+            }
+
+          } catch (e) {
+            this.hideTyping();
+            this.addMessage('Desculpe, ocorreu um erro ao processar sua mensagem.', true);
+            console.error('Atlas error:', e);
+          }
+        },
+
+        showResults(data, intent) {
+          const items = data.slice(0, 10);
+          let html = '';
+          for (const item of items) {
+            const name = item.nome_completo || item.nome_urna || item.nome_fantasia || item.razao_social || 'Sem nome';
+            const meta = [];
+            if (item.partido_sigla) meta.push(item.partido_sigla);
+            if (item.cargo) meta.push(item.cargo);
+            if (item.municipio) meta.push(item.municipio);
+            if (item.cidade) meta.push(item.cidade);
+            html += '<div class="atlas-result"><div class="atlas-result-name">' + name + '</div>';
+            if (meta.length) html += '<div class="atlas-result-meta">' + meta.join(' - ') + '</div>';
+            html += '</div>';
+          }
+          if (html) this.addMessage(html, true);
+        },
+
+        showSuggestions(suggestions) {
+          let html = '<div class="atlas-suggestions">';
+          for (const s of suggestions.slice(0, 3)) {
+            html += '<button class="atlas-suggestion" onclick="Atlas.askQuestion(\'' + s.replace(/'/g, "\\'") + '\')">' + s + '</button>';
+          }
+          html += '</div>';
+          this.addMessage(html, true);
+        },
+
+        askQuestion(question) {
+          document.getElementById('atlasInput').value = question;
+          this.send();
+        }
+      };
+
+      // Update openPoliticosFromCard to use Atlas
+      function openPoliticosFromCard() {
+        Atlas.toggle();
+        if (Atlas.isOpen) {
+          setTimeout(() => Atlas.enterModule('politicos'), 500);
+        }
+      }
+
+    </script>
+  </body>
+</html>

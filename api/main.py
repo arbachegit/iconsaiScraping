@@ -4,7 +4,7 @@ IconsAI Scraping API - v3.0 (Clean Architecture)
 
 import os
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -602,6 +602,236 @@ async def delete_user(
 
 
 # ===========================================
+# STATS ENDPOINTS (Dashboard Badges)
+# ===========================================
+
+
+class StatsCategory(str, Enum):
+    """Categorias de estatisticas."""
+
+    EMPRESAS = "empresas"
+    PESSOAS = "pessoas"
+    POLITICOS = "politicos"
+    NOTICIAS = "noticias"
+
+
+class StatsHistoryResponse(BaseModel):
+    """Schema de resposta do historico."""
+
+    categoria: str
+    data: list
+    total_atual: int
+    crescimento_percentual: float
+    primeiro_registro: Optional[str]
+    ultimo_registro: Optional[str]
+
+
+@app.get("/api/stats/current", tags=["Stats"])
+async def get_current_stats():
+    """
+    Retorna contagens atuais + % crescimento vs dia anterior.
+    Usado pelos badges do dashboard.
+    """
+    if not settings.supabase_url or not settings.supabase_service_key:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        # Cliente Brasil Data Hub (politicos)
+        brasil_data_hub = None
+        if settings.brasil_data_hub_url and settings.brasil_data_hub_key:
+            brasil_data_hub = create_client(
+                settings.brasil_data_hub_url, settings.brasil_data_hub_key
+            )
+
+        # Contagens atuais
+        empresas_result = supabase.from_("dim_empresas").select(
+            "id", count="exact", head=True
+        ).execute()
+        pessoas_result = supabase.from_("fato_pessoas").select(
+            "id", count="exact", head=True
+        ).execute()
+        noticias_result = supabase.from_("fato_noticias").select(
+            "id", count="exact", head=True
+        ).execute()
+
+        # Politicos do Brasil Data Hub
+        politicos_count = 0
+        if brasil_data_hub:
+            politicos_result = brasil_data_hub.from_("dim_politicos").select(
+                "id", count="exact", head=True
+            ).execute()
+            politicos_count = politicos_result.count or 0
+
+        # Buscar dados de ontem para calcular crescimento
+        from datetime import date, timedelta
+
+        hoje = date.today()
+        ontem = hoje - timedelta(days=1)
+
+        # Buscar historico de ontem
+        historico_ontem = supabase.from_("stats_historico").select("*").eq(
+            "data", ontem.isoformat()
+        ).execute()
+
+        ontem_dict = {}
+        for row in historico_ontem.data or []:
+            ontem_dict[row["categoria"]] = row["total"]
+
+        # Montar resposta com crescimento
+        stats = []
+        categorias = [
+            ("empresas", empresas_result.count or 0),
+            ("pessoas", pessoas_result.count or 0),
+            ("politicos", politicos_count),
+            ("noticias", noticias_result.count or 0),
+        ]
+
+        for cat, total in categorias:
+            total_ontem = ontem_dict.get(cat, total)
+            if total_ontem > 0:
+                crescimento = ((total - total_ontem) / total_ontem) * 100
+            else:
+                crescimento = 0.0
+
+            stats.append({
+                "categoria": cat,
+                "total": total,
+                "total_ontem": total_ontem,
+                "crescimento_percentual": round(crescimento, 2),
+            })
+
+        return {
+            "success": True,
+            "stats": stats,
+            "data_referencia": hoje.isoformat(),
+            "online": True,
+            "proxima_atualizacao_segundos": 300,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error("get_current_stats_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stats/history", tags=["Stats"])
+async def get_stats_history(
+    categoria: Optional[str] = Query(default=None, description="Filtrar por categoria"),
+    limit: int = Query(default=365, ge=1, le=1000),
+):
+    """
+    Retorna historico completo de estatisticas para graficos.
+    """
+    if not settings.supabase_url or not settings.supabase_service_key:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        query = supabase.from_("stats_historico").select("*").order("data", desc=False)
+
+        if categoria:
+            query = query.eq("categoria", categoria)
+
+        query = query.limit(limit)
+        result = query.execute()
+
+        # Agrupar por categoria
+        historico_por_categoria = {}
+        for row in result.data or []:
+            cat = row["categoria"]
+            if cat not in historico_por_categoria:
+                historico_por_categoria[cat] = []
+            historico_por_categoria[cat].append({
+                "data": row["data"],
+                "total": row["total"],
+            })
+
+        return {
+            "success": True,
+            "historico": historico_por_categoria,
+            "categorias": list(historico_por_categoria.keys()),
+            "total_registros": len(result.data or []),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error("get_stats_history_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/stats/snapshot", tags=["Stats"])
+async def create_stats_snapshot():
+    """
+    Cria um snapshot das estatisticas atuais.
+    Chamado pelo cron job a cada 5 minutos.
+    """
+    if not settings.supabase_url or not settings.supabase_service_key:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        # Cliente Brasil Data Hub
+        brasil_data_hub = None
+        if settings.brasil_data_hub_url and settings.brasil_data_hub_key:
+            brasil_data_hub = create_client(
+                settings.brasil_data_hub_url, settings.brasil_data_hub_key
+            )
+
+        from datetime import date
+
+        hoje = date.today()
+
+        # Contagens atuais
+        empresas = supabase.from_("dim_empresas").select(
+            "id", count="exact", head=True
+        ).execute()
+        pessoas = supabase.from_("fato_pessoas").select(
+            "id", count="exact", head=True
+        ).execute()
+        noticias = supabase.from_("fato_noticias").select(
+            "id", count="exact", head=True
+        ).execute()
+
+        politicos_count = 0
+        if brasil_data_hub:
+            politicos = brasil_data_hub.from_("dim_politicos").select(
+                "id", count="exact", head=True
+            ).execute()
+            politicos_count = politicos.count or 0
+
+        # Upsert para cada categoria
+        snapshots = [
+            {"data": hoje.isoformat(), "categoria": "empresas", "total": empresas.count or 0},
+            {"data": hoje.isoformat(), "categoria": "pessoas", "total": pessoas.count or 0},
+            {"data": hoje.isoformat(), "categoria": "politicos", "total": politicos_count},
+            {"data": hoje.isoformat(), "categoria": "noticias", "total": noticias.count or 0},
+        ]
+
+        for snap in snapshots:
+            # Upsert - atualiza se existe, insere se nao
+            supabase.from_("stats_historico").upsert(
+                snap, on_conflict="data,categoria"
+            ).execute()
+
+        logger.info("stats_snapshot_created", date=hoje.isoformat(), snapshots=snapshots)
+
+        return {
+            "success": True,
+            "message": "Snapshot criado com sucesso",
+            "data": hoje.isoformat(),
+            "snapshots": snapshots,
+        }
+
+    except Exception as e:
+        logger.error("create_stats_snapshot_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===========================================
 # STARTUP
 # ===========================================
 
@@ -609,6 +839,27 @@ async def delete_user(
 @app.on_event("startup")
 async def startup():
     logger.info("api_starting", version=APP_VERSION)
+
+    # Iniciar cron job de stats snapshot (a cada 5 min)
+    try:
+        from api.cron.stats_snapshot import stats_snapshot_job
+
+        stats_snapshot_job.start()
+        logger.info("stats_snapshot_cron_started")
+    except Exception as e:
+        logger.warning("stats_snapshot_cron_failed", error=str(e))
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Para cron jobs no shutdown."""
+    try:
+        from api.cron.stats_snapshot import stats_snapshot_job
+
+        stats_snapshot_job.stop()
+        logger.info("stats_snapshot_cron_stopped")
+    except Exception as e:
+        logger.warning("stats_snapshot_cron_stop_failed", error=str(e))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraping - Login</title>
+    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
+    <link rel="icon" type="image/png" href="/static/images/favicon.png">
+    <link rel="apple-touch-icon" href="/static/images/apple-icon.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: #0a0e1a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Background Effects */
+        .bg-effects {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                radial-gradient(circle at 30% 20%, rgba(0, 255, 255, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 70% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+                linear-gradient(rgba(0, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 50px 50px, 50px 50px;
+        }
+
+        /* Glowing orbs */
+        .orb-1 {
+            position: absolute;
+            top: 25%;
+            left: 25%;
+            width: 16rem;
+            height: 16rem;
+            background: rgba(6, 182, 212, 0.1);
+            border-radius: 50%;
+            filter: blur(48px);
+        }
+
+        .orb-2 {
+            position: absolute;
+            bottom: 25%;
+            right: 25%;
+            width: 16rem;
+            height: 16rem;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 50%;
+            filter: blur(48px);
+        }
+
+        /* Login Card */
+        .login-card {
+            position: relative;
+            width: 100%;
+            max-width: 28rem;
+            background: rgba(15, 22, 41, 0.9);
+            backdrop-filter: blur(12px);
+            border-radius: 1rem;
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+            overflow: hidden;
+        }
+
+        /* Header */
+        .card-header {
+            background: linear-gradient(to right, rgba(6, 182, 212, 0.1), rgba(59, 130, 246, 0.1), rgba(168, 85, 247, 0.1));
+            padding: 2rem;
+            border-bottom: 1px solid rgba(6, 182, 212, 0.1);
+            text-align: center;
+        }
+
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .logo {
+            height: 4rem;
+            width: auto;
+            margin-bottom: 1rem;
+        }
+
+        .title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #22d3ee, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: rgba(6, 182, 212, 0.6);
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        /* Form */
+        .card-content {
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #cbd5e1;
+            margin-bottom: 0.5rem;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 1.25rem;
+            height: 1.25rem;
+            color: rgba(6, 182, 212, 0.5);
+        }
+
+        .form-input {
+            width: 100%;
+            height: 3rem;
+            padding-left: 2.75rem;
+            padding-right: 1rem;
+            border-radius: 0.75rem;
+            background: #1a2332;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .form-input::placeholder {
+            color: #64748b;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #22d3ee;
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+        }
+
+        /* Error Message */
+        .error-message {
+            display: none;
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
+            font-size: 0.875rem;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        /* Success Message */
+        .success-message {
+            display: none;
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+            font-size: 0.875rem;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        /* Button - skill-ui-button v1.0 */
+        .btn-primary {
+            width: 100%;
+            height: 3rem;
+            border-radius: 0.75rem;
+            background: rgba(6, 182, 212, 0.15);
+            border: 2px solid #06b6d4;
+            color: #06b6d4;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #06b6d4;
+            color: #fff;
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 1.25rem;
+            height: 1.25rem;
+            border: 2px solid transparent;
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Links */
+        .links {
+            display: flex;
+            justify-content: center;
+            padding-top: 1rem;
+            gap: 1rem;
+        }
+
+        .link {
+            color: #22d3ee;
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: color 0.2s;
+        }
+
+        .link:hover {
+            color: #67e8f9;
+        }
+
+        /* Footer */
+        .card-footer {
+            padding: 0 2rem 1.5rem;
+            text-align: center;
+        }
+
+        .footer-text {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .footer-brand {
+            font-size: 0.75rem;
+            color: #475569;
+            margin-top: 0.25rem;
+        }
+
+        /* SVG Icons */
+        svg {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-effects"></div>
+    <div class="orb-1"></div>
+    <div class="orb-2"></div>
+
+    <div class="login-card">
+        <div class="card-header">
+            <div class="logo-container">
+                <picture>
+                    <source srcset="/static/images/iconsai-logo.webp" type="image/webp">
+                    <img src="/static/images/iconsai-logo.png" alt="Iconsai" class="logo">
+                </picture>
+                <h1 class="title">Scraping Hub</h1>
+                <p class="subtitle">Business Intelligence Brasil</p>
+            </div>
+        </div>
+
+        <div class="card-content">
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <div class="input-wrapper">
+                        <svg class="input-icon" viewBox="0 0 24 24">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                        <input
+                            type="email"
+                            id="email"
+                            class="form-input"
+                            placeholder="seu@email.com"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Senha</label>
+                    <div class="input-wrapper">
+                        <svg class="input-icon" viewBox="0 0 24 24">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <input
+                            type="password"
+                            id="password"
+                            class="form-input"
+                            placeholder="********"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="btnLogin">
+                    <span id="btnText">Entrar</span>
+                    <div class="spinner" id="spinner" style="display: none;"></div>
+                </button>
+            </form>
+
+            <div class="links">
+                <a href="/docs" class="link">API Docs</a>
+                <a href="/redoc" class="link">ReDoc</a>
+            </div>
+        </div>
+
+        <div class="card-footer">
+            <p class="footer-text">Business Intelligence Brasil</p>
+            <p class="footer-brand">Iconsai - Todos os direitos reservados</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const btn = document.getElementById('btnLogin');
+            const btnText = document.getElementById('btnText');
+            const spinner = document.getElementById('spinner');
+            const errorMsg = document.getElementById('errorMessage');
+            const successMsg = document.getElementById('successMessage');
+
+            // Reset messages
+            errorMsg.classList.remove('show');
+            successMsg.classList.remove('show');
+
+            // Show loading
+            btn.disabled = true;
+            btnText.textContent = 'Entrando...';
+            spinner.style.display = 'block';
+
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('email').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('token', data.access_token);
+                    successMsg.textContent = 'Login realizado com sucesso!';
+                    successMsg.classList.add('show');
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 500);
+                } else {
+                    errorMsg.textContent = data.detail || 'Email ou senha incorretos';
+                    errorMsg.classList.add('show');
+                }
+            } catch (err) {
+                errorMsg.textContent = 'Erro de conexao. Tente novamente.';
+                errorMsg.classList.add('show');
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = 'Entrar';
+                spinner.style.display = 'none';
+            }
+        });
+
+        // Check if already logged in
+        const token = localStorage.getItem('token');
+        if (token) {
+            fetch('/auth/me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => {
+                if (r.ok) window.location.href = '/dashboard';
+            });
+        }
+    </script>
+</body>
+</html>

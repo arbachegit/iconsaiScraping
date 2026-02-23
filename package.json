@@ -15,7 +15,12 @@
     "lint": "npm run lint --workspace=iconsai-scraping-web",
     "format": "npm run format --workspace=iconsai-scraping-web",
     "start:web": "npm run start --workspace=iconsai-scraping-web",
-    "start:backend": "npm run start --workspace=iconsai-scraping-backend"
+    "start:backend": "npm run start --workspace=iconsai-scraping-backend",
+    "server": "./scripts/dev-server.sh start",
+    "server:stop": "./scripts/dev-server.sh stop",
+    "server:restart": "./scripts/dev-server.sh restart",
+    "server:logs": "./scripts/dev-server.sh logs",
+    "server:status": "./scripts/dev-server.sh status"
   },
   "engines": {
     "node": ">=18.0.0"
