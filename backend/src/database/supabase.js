@@ -275,7 +275,20 @@ export async function listCompanies(filters = {}) {
     .range(from, to);
 
   if (nome) {
-    query = query.or(`razao_social.ilike.%${nome}%,nome_fantasia.ilike.%${nome}%`);
+    // Split search terms and filter out Portuguese stop words
+    const stopWords = new Set(['e', 'de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'nos', 'nas', 'a', 'o', 'os', 'as', 'um', 'uma', 'para', 'com', 'por']);
+    const words = nome.split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w.toLowerCase()));
+
+    if (words.length > 0) {
+      // Each significant word must match in razao_social OR nome_fantasia
+      // Multiple .or() calls create AND between them
+      for (const word of words) {
+        query = query.or(`razao_social.ilike.%${word}%,nome_fantasia.ilike.%${word}%`);
+      }
+    } else {
+      // Fallback: use full search term (e.g. if all words are stop words)
+      query = query.or(`razao_social.ilike.%${nome}%,nome_fantasia.ilike.%${nome}%`);
+    }
   }
 
   if (cidade) {
