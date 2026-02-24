@@ -4,7 +4,7 @@ import * as perplexity from '../services/perplexity.js';
 import * as brasilapi from '../services/brasilapi.js';
 import * as apollo from '../services/apollo.js';
 import * as cnpja from '../services/cnpja.js';
-import { supabase, insertCompany, insertPerson, insertTransacaoEmpresa, insertRegimeTributario, insertInferenciaLimites, insertRegimeHistorico, findCompanyByCnpj, listCompanies, getCompanyFullData, updateInferenciaLimites, registerDataSource } from '../database/supabase.js';
+import { supabase, insertCompany, insertPerson, insertTransacaoEmpresa, insertRegimeTributario, insertInferenciaLimites, insertRegimeHistorico, findCompanyByCnpj, listCompanies, getCompanyFullData, updateInferenciaLimites, registerDataSource, checkExistingCnpjs } from '../database/supabase.js';
 import { calcularInferenciaVAR, getPesosVAR, getLimitesRegime } from '../services/var_inference.js';
 import { LINKEDIN_STATUS, DATA_SOURCES } from '../constants.js';
 import { searchCompanySchema, detailsCompanySchema, sociosSchema, approveCompanySchema, recalculateSchema, validateBody } from '../validation/schemas.js';
@@ -25,6 +25,8 @@ const router = Router();
  * Search for company by name and optional city, return candidates with CNPJ
  */
 router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
+  const requestId = `search-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const startTime = Date.now();
   try {
     const { nome, cidade, segmento, regime } = req.body;
 
@@ -39,7 +41,13 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
     const searchName = nome || queryParts[0];
     const searchCity = cidade || null;
 
-    console.log(`[SEARCH] Buscando empresa: ${queryParts.join(' | ')}`);
+    logger.info('External search started', {
+      requestId,
+      source: 'external',
+      filters: { nome, cidade, segmento, regime },
+      searchName,
+      searchCity
+    });
 
     // 1. First try: Serper (Google search)
     let candidates = await serper.searchCompanyByName(searchName, searchCity);
@@ -160,12 +168,27 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
       }
     }
 
+    const durationMs = Date.now() - startTime;
+    logger.info('External search completed', {
+      requestId,
+      source: 'external',
+      filters: { nome, cidade, segmento, regime },
+      durationMs,
+      returnedCount: allCandidates.length,
+      internalCount: internalCandidates.length,
+      externalCount: enrichedCandidates.length,
+      searchSource
+    });
+
     if (allCandidates.length === 1) {
       return res.json({
         found: true,
         single_match: true,
         message: 'Empresa encontrada. Selecione para ver detalhes.',
-        company: allCandidates[0]
+        company: allCandidates[0],
+        requestId,
+        source: 'external',
+        durationMs
       });
     }
 
@@ -173,11 +196,24 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
       found: true,
       single_match: false,
       message: `${allCandidates.length} empresas encontradas. Selecione a correta.`,
-      candidates: allCandidates
+      candidates: allCandidates,
+      requestId,
+      source: 'external',
+      durationMs,
+      searchSource,
+      limits: {
+        serperMaxResults: 20,
+        enrichmentLimit: 10,
+        note: 'Serper retorna max 20 resultados orgânicos, enriquecimento BrasilAPI limitado a 10 candidatos'
+      }
     });
 
   } catch (error) {
-    console.error('[SEARCH ERROR]', error);
+    logger.error('External search failed', {
+      requestId,
+      error: error.message,
+      durationMs: Date.now() - startTime
+    });
     res.status(500).json({
       error: 'Erro ao buscar empresa',
       details: error.message
@@ -698,22 +734,35 @@ router.post('/approve', validateBody(approveCompanySchema), async (req, res) => 
 /**
  * GET /api/companies/list
  * List all approved companies with optional filters
- * Query params: nome, cidade, segmento, regime, limit
+ * Query params: nome, cidade, segmento, regime, limit, offset
  */
 router.get('/list', async (req, res) => {
+  const requestId = `list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const startTime = Date.now();
   try {
     const { nome, cidade, segmento, regime, limit, offset } = req.query;
 
     const filters = {
-      limit: limit && !isNaN(parseInt(limit)) ? parseInt(limit) : 100,
+      limit: limit && !isNaN(parseInt(limit)) ? Math.min(parseInt(limit), 200) : 100,
       offset: offset && !isNaN(parseInt(offset)) ? parseInt(offset) : 0
     };
     if (nome) filters.nome = nome;
     if (cidade) filters.cidade = cidade;
-    if (segmento) filters.segmento = segmento;
-    if (regime) filters.regime = regime;
 
     const { data: companies, total } = await listCompanies(filters);
+
+    const durationMs = Date.now() - startTime;
+    logger.info('DB search completed', {
+      requestId,
+      source: 'db',
+      filters: { nome, cidade, segmento, regime },
+      page: Math.floor(filters.offset / filters.limit) + 1,
+      pageSize: filters.limit,
+      offset: filters.offset,
+      durationMs,
+      returnedCount: companies.length,
+      totalEstimate: total
+    });
 
     return res.json({
       success: true,
@@ -721,12 +770,49 @@ router.get('/list', async (req, res) => {
       total,
       empresas: companies,
       offset: filters.offset,
-      limit: filters.limit
+      limit: filters.limit,
+      requestId,
+      source: 'db',
+      durationMs
     });
   } catch (error) {
-    console.error('[LIST ERROR]', error);
+    logger.error('List search failed', {
+      requestId,
+      error: error.message,
+      durationMs: Date.now() - startTime
+    });
     res.status(500).json({
       error: 'Erro ao listar empresas',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/companies/check-existing
+ * Check which CNPJs already exist in the database (batch)
+ * Body: { cnpjs: string[] }
+ */
+router.post('/check-existing', async (req, res) => {
+  try {
+    const { cnpjs } = req.body;
+    if (!Array.isArray(cnpjs) || cnpjs.length === 0) {
+      return res.json({ success: true, existing: [] });
+    }
+
+    // Limit to 500 per request
+    const limited = cnpjs.slice(0, 500);
+    const existingSet = await checkExistingCnpjs(limited);
+
+    return res.json({
+      success: true,
+      existing: [...existingSet],
+      checked: limited.length
+    });
+  } catch (error) {
+    logger.error('Check existing failed', { error: error.message });
+    res.status(500).json({
+      error: 'Erro ao verificar CNPJs existentes',
       details: error.message
     });
   }

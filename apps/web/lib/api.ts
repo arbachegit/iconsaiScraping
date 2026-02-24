@@ -247,6 +247,15 @@ export interface CompanySearchResponse {
   single_match: boolean;
   company?: CompanyCandidate;
   candidates?: CompanyCandidate[];
+  requestId?: string;
+  source?: string;
+  durationMs?: number;
+  searchSource?: string;
+  limits?: {
+    serperMaxResults: number;
+    enrichmentLimit: number;
+    note: string;
+  };
 }
 
 export async function searchCompany(data: CompanySearchRequest): Promise<CompanySearchResponse> {
@@ -397,6 +406,9 @@ export interface CompanyListResponse {
   total: number;
   offset: number;
   limit: number;
+  requestId?: string;
+  source?: string;
+  durationMs?: number;
   error?: string;
 }
 
@@ -421,6 +433,26 @@ export async function listCompanies(params?: {
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'List failed' }));
     throw new Error(error.error || 'List failed');
+  }
+
+  return res.json();
+}
+
+export interface CheckExistingResponse {
+  success: boolean;
+  existing: string[];
+  checked: number;
+}
+
+export async function checkExistingCnpjs(cnpjs: string[]): Promise<CheckExistingResponse> {
+  const res = await fetch(`${API_BASE}/companies/check-existing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cnpjs }),
+  });
+
+  if (!res.ok) {
+    return { success: false, existing: [], checked: 0 };
   }
 
   return res.json();

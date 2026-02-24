@@ -303,6 +303,26 @@ export async function listCompanies(filters = {}) {
 }
 
 /**
+ * Check which CNPJs already exist in dim_empresas (batch)
+ * @param {string[]} cnpjs - Array of CNPJs to check
+ * @returns {Promise<Set<string>>} Set of existing CNPJs
+ */
+export async function checkExistingCnpjs(cnpjs) {
+  if (!cnpjs || cnpjs.length === 0) return new Set();
+
+  const cleaned = cnpjs.map(c => c.replace(/[^\d]/g, '')).filter(c => c.length === 14);
+  if (cleaned.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from('dim_empresas')
+    .select('cnpj')
+    .in('cnpj', cleaned);
+
+  if (error) throw error;
+  return new Set((data || []).map(d => d.cnpj));
+}
+
+/**
  * Get company with all related data for VAR analysis
  */
 export async function getCompanyFullData(empresa_id) {

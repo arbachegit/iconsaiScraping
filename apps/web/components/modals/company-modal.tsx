@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import {
@@ -18,6 +18,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
+  Plus,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,10 +31,12 @@ import {
   enrichSocios,
   approveCompany,
   listCompanies,
+  checkExistingCnpjs,
   formatCnpj,
   type CompanyDetails,
   type Socio,
   type CompanyCandidate,
+  type CompanySearchResponse,
 } from '@/lib/api';
 
 const PAGE_SIZE = 100;
@@ -65,8 +70,12 @@ export function CompanyModal({
   const [debouncedNome, setDebouncedNome] = useState('');
   const [page, setPage] = useState(1);
   const [manualResults, setManualResults] = useState<CompanyCandidate[] | null>(null);
+  const [manualMeta, setManualMeta] = useState<{ requestId?: string; durationMs?: number; searchSource?: string; limits?: CompanySearchResponse['limits'] } | null>(null);
+  const [registeredCnpjs, setRegisteredCnpjs] = useState<Set<string>>(new Set());
   const [detailCnpj, setDetailCnpj] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [insertingCnpj, setInsertingCnpj] = useState<string | null>(null);
+  const [massInserting, setMassInserting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -93,6 +102,7 @@ export function CompanyModal({
       setDebouncedNome(nome);
       setPage(1);
       setManualResults(null);
+      setManualMeta(null);
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [nome]);
@@ -101,6 +111,7 @@ export function CompanyModal({
   useEffect(() => {
     setPage(1);
     setManualResults(null);
+    setManualMeta(null);
   }, [cidade]);
 
   // Scroll to top on page change
@@ -111,34 +122,78 @@ export function CompanyModal({
   // DB auto-search (paginated)
   const dbQuery = useQuery({
     queryKey: ['companies-search', debouncedNome, cidade, page],
-    queryFn: () =>
-      listCompanies({
+    queryFn: async () => {
+      const result = await listCompanies({
         nome: debouncedNome || undefined,
         cidade: cidade || undefined,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
-      }),
+      });
+      // Log search metadata to console for evidence
+      if (result.requestId) {
+        console.info('[DB-SEARCH]', {
+          requestId: result.requestId,
+          source: result.source,
+          durationMs: result.durationMs,
+          returnedCount: result.count,
+          totalEstimate: result.total,
+          page,
+          pageSize: PAGE_SIZE,
+        });
+      }
+      return result;
+    },
     enabled: isOpen && debouncedNome.length >= 2,
   });
+
+  // Check which CNPJs from manual results already exist in DB
+  const checkRegisteredCnpjs = useCallback(async (candidates: CompanyCandidate[]) => {
+    const cnpjs = candidates.map(c => c.cnpj).filter(Boolean);
+    if (cnpjs.length === 0) return;
+    try {
+      const result = await checkExistingCnpjs(cnpjs);
+      if (result.success) {
+        setRegisteredCnpjs(new Set(result.existing));
+      }
+    } catch {
+      // Non-blocking
+    }
+  }, []);
 
   // Manual search (external + DB via Serper/Perplexity)
   const searchMutation = useMutation({
     mutationFn: searchCompany,
     onSuccess: (data) => {
       setMessage(null);
+      // Log search evidence
+      console.info('[EXTERNAL-SEARCH]', {
+        requestId: data.requestId,
+        source: data.source,
+        durationMs: data.durationMs,
+        searchSource: data.searchSource,
+        found: data.found,
+        candidateCount: data.candidates?.length || (data.company ? 1 : 0),
+        limits: data.limits,
+      });
+
       if (!data.found) {
-        setMessage({ type: 'error', text: 'Nenhuma empresa encontrada' });
+        setMessage({ type: 'error', text: 'Nenhuma empresa encontrada nas fontes externas (Serper/BrasilAPI/Perplexity)' });
         setManualResults([]);
+        setManualMeta({ requestId: data.requestId, durationMs: data.durationMs, searchSource: data.searchSource, limits: data.limits });
         return;
       }
       if (data.single_match && data.company) {
         setDetailCnpj(data.company.cnpj);
         return;
       }
-      setManualResults(data.candidates || []);
+      const candidates = data.candidates || [];
+      setManualResults(candidates);
+      setManualMeta({ requestId: data.requestId, durationMs: data.durationMs, searchSource: data.searchSource, limits: data.limits });
+      // Check which are already registered
+      checkRegisteredCnpjs(candidates);
     },
     onError: (error: Error) => {
-      setMessage({ type: 'error', text: error.message });
+      setMessage({ type: 'error', text: `Erro na busca externa: ${error.message}` });
     },
   });
 
@@ -155,6 +210,7 @@ export function CompanyModal({
       return;
     }
     setMessage(null);
+    setRegisteredCnpjs(new Set());
     const payload: Record<string, string> = {};
     if (nome) payload.nome = nome;
     if (cidade) payload.cidade = cidade;
@@ -178,13 +234,105 @@ export function CompanyModal({
     setDebouncedNome('');
     setPage(1);
     setManualResults(null);
+    setManualMeta(null);
+    setRegisteredCnpjs(new Set());
     setMessage(null);
     setDetailCnpj(null);
+    setInsertingCnpj(null);
+    setMassInserting(false);
     onClose();
   }
 
   function handleCloseDetail() {
     setDetailCnpj(null);
+    queryClient.invalidateQueries({ queryKey: ['companies-search'] });
+    // Re-check registered after returning from detail (may have approved)
+    if (manualResults && manualResults.length > 0) {
+      checkRegisteredCnpjs(manualResults);
+    }
+  }
+
+  // Insert individual company
+  async function handleInsertOne(cnpj: string) {
+    setInsertingCnpj(cnpj);
+    try {
+      const detailRes = await getCompanyDetails(cnpj);
+      if (detailRes.exists) {
+        setRegisteredCnpjs(prev => new Set([...prev, cnpj]));
+        setMessage({ type: 'info', text: `${detailRes.empresa.razao_social} ja esta cadastrada.` });
+        return;
+      }
+      const approveRes = await approveCompany({
+        empresa: detailRes.empresa,
+        socios: detailRes.socios || [],
+        aprovado_por: userName,
+      });
+      if (approveRes.success) {
+        setRegisteredCnpjs(prev => new Set([...prev, cnpj]));
+        setMessage({ type: 'success', text: `${detailRes.empresa.razao_social} inserida com sucesso!` });
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Erro desconhecido';
+      // If it's "ja cadastrada" (409), still mark as registered
+      if (errorMsg.includes('cadastrada')) {
+        setRegisteredCnpjs(prev => new Set([...prev, cnpj]));
+      }
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setInsertingCnpj(null);
+    }
+  }
+
+  // Mass insert all new companies
+  async function handleMassInsert() {
+    if (!manualResults || manualResults.length === 0) return;
+    const novos = manualResults.filter(c => !registeredCnpjs.has(c.cnpj) && c.fonte !== 'interno');
+    if (novos.length === 0) {
+      setMessage({ type: 'info', text: 'Todas as empresas ja estao cadastradas.' });
+      return;
+    }
+
+    setMassInserting(true);
+    let inserted = 0;
+    let alreadyExisted = 0;
+    let failed = 0;
+
+    for (const candidate of novos) {
+      try {
+        const detailRes = await getCompanyDetails(candidate.cnpj);
+        if (detailRes.exists) {
+          alreadyExisted++;
+          setRegisteredCnpjs(prev => new Set([...prev, candidate.cnpj]));
+          continue;
+        }
+        const approveRes = await approveCompany({
+          empresa: detailRes.empresa,
+          socios: detailRes.socios || [],
+          aprovado_por: userName,
+        });
+        if (approveRes.success) {
+          inserted++;
+          setRegisteredCnpjs(prev => new Set([...prev, candidate.cnpj]));
+        } else {
+          failed++;
+        }
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : '';
+        if (errorMsg.includes('cadastrada')) {
+          alreadyExisted++;
+          setRegisteredCnpjs(prev => new Set([...prev, candidate.cnpj]));
+        } else {
+          failed++;
+        }
+      }
+    }
+
+    setMassInserting(false);
+    setMessage({
+      type: inserted > 0 ? 'success' : 'info',
+      text: `Inseridas: ${inserted} | Ja existiam: ${alreadyExisted} | Falhas: ${failed}`,
+    });
+    // Invalidate DB search to reflect new entries
     queryClient.invalidateQueries({ queryKey: ['companies-search'] });
   }
 
@@ -194,12 +342,11 @@ export function CompanyModal({
   const dbTotal = dbQuery.data?.total || 0;
   const totalPages = Math.ceil(dbTotal / PAGE_SIZE);
 
-  const badgeCadastradas = showManual
-    ? manualResults.filter((c) => c.fonte === 'interno').length
-    : dbTotal;
-  const badgeNovas = showManual
-    ? manualResults.filter((c) => c.fonte !== 'interno').length
-    : 0;
+  const manualRegistered = showManual ? manualResults.filter(c => c.fonte === 'interno' || registeredCnpjs.has(c.cnpj)).length : 0;
+  const manualNew = showManual ? manualResults.filter(c => c.fonte !== 'interno' && !registeredCnpjs.has(c.cnpj)).length : 0;
+
+  const badgeCadastradas = showManual ? manualRegistered : dbTotal;
+  const badgeNovas = showManual ? manualNew : 0;
   const badgeTotal = showManual ? manualResults.length : dbTotal;
 
   const isLoading = searchMutation.isPending || (dbQuery.isFetching && dbResults.length === 0);
@@ -211,9 +358,9 @@ export function CompanyModal({
     <>
       {/* Modal 1: Buscar Empresa */}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-        <div className="w-[800px] max-w-[95vw] max-h-[85vh] flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl">
+        <div className="w-[1000px] max-w-[95vw] flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl" style={{ maxHeight: '90vh' }}>
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-white/5 flex-shrink-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
             <h2 className="text-xl font-semibold text-white flex items-center gap-2">
               <span className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-500 rounded" />
               Buscar Empresa
@@ -234,14 +381,14 @@ export function CompanyModal({
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Nome da empresa (min. 2 letras)"
+                placeholder="Nome da empresa (min. 2 letras para auto-busca)"
                 className="flex-[2]"
               />
               <Input
                 value={cidade}
                 onChange={(e) => setCidade(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Cidade"
+                placeholder="Cidade / UF"
                 className="flex-1"
               />
             </div>
@@ -290,11 +437,27 @@ export function CompanyModal({
                 ) : (
                   <Search className="h-4 w-4 mr-2" />
                 )}
-                Buscar
+                Buscar (externo)
               </Button>
               <Button onClick={onOpenListingModal} variant="outline" className="h-12 px-6">
-                Listar
+                Listar DB
               </Button>
+
+              {/* Mass insert button */}
+              {showManual && manualNew > 0 && (
+                <Button
+                  onClick={handleMassInsert}
+                  disabled={massInserting}
+                  className="h-12 px-4 bg-green-500/15 border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
+                >
+                  {massInserting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {massInserting ? 'Inserindo...' : `Inserir ${manualNew} novos`}
+                </Button>
+              )}
 
               {/* Badges */}
               {showBadges && (
@@ -317,23 +480,37 @@ export function CompanyModal({
             </div>
           </div>
 
-          {/* Scrollable Results Area */}
+          {/* Scrollable Results Area - max-h-[70vh] */}
           <div
             ref={scrollRef}
-            className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+            className="flex-1 min-h-0 max-h-[70vh] overflow-y-auto overscroll-contain"
           >
             <div className="p-6">
               {/* Message */}
               {message && (
                 <div
                   className={cn(
-                    'p-4 rounded-lg mb-4',
+                    'p-3 rounded-lg mb-4 text-sm',
                     message.type === 'success'
                       ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-                      : 'bg-red-500/10 border border-red-500/30 text-red-400'
+                      : message.type === 'info'
+                        ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400'
+                        : 'bg-red-500/10 border border-red-500/30 text-red-400'
                   )}
                 >
                   {message.text}
+                </div>
+              )}
+
+              {/* Search limits info (external search) */}
+              {showManual && manualMeta?.limits && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/15 text-amber-400/80 text-xs mb-4">
+                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>
+                    Mostrando {manualResults.length} de max. {manualMeta.limits.serperMaxResults} resultados externos.
+                    {' '}{manualMeta.limits.note}
+                    {manualMeta.durationMs && ` (${manualMeta.durationMs}ms)`}
+                  </span>
                 </div>
               )}
 
@@ -341,25 +518,30 @@ export function CompanyModal({
               {isLoading && (
                 <div className="flex flex-col items-center justify-center py-10 text-slate-400">
                   <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
-                  <span>Buscando empresas...</span>
+                  <span>{searchMutation.isPending ? 'Buscando em fontes externas (Serper + BrasilAPI)...' : 'Buscando no banco...'}</span>
                 </div>
               )}
 
-              {/* Manual Search Results */}
+              {/* Manual Search Results (external) */}
               {showManual && !searchMutation.isPending && manualResults.length > 0 && (
                 <div className="space-y-2">
-                  {manualResults.map((c) => (
-                    <CompanyRow
-                      key={c.cnpj}
-                      cnpj={c.cnpj}
-                      cnpjFormatted={c.cnpj_formatted}
-                      razaoSocial={c.razao_social}
-                      nomeFantasia={c.nome_fantasia}
-                      localizacao={c.localizacao}
-                      fonte={c.fonte === 'interno' ? 'interno' : 'externo'}
-                      onClick={() => setDetailCnpj(c.cnpj)}
-                    />
-                  ))}
+                  {manualResults.map((c) => {
+                    const isRegistered = c.fonte === 'interno' || registeredCnpjs.has(c.cnpj);
+                    return (
+                      <CompanyRow
+                        key={c.cnpj}
+                        cnpj={c.cnpj}
+                        cnpjFormatted={c.cnpj_formatted}
+                        razaoSocial={c.razao_social}
+                        nomeFantasia={c.nome_fantasia}
+                        localizacao={c.localizacao}
+                        isRegistered={isRegistered}
+                        onClickDetail={() => setDetailCnpj(c.cnpj)}
+                        onClickInsert={!isRegistered ? () => handleInsertOne(c.cnpj) : undefined}
+                        isInserting={insertingCnpj === c.cnpj}
+                      />
+                    );
+                  })}
                 </div>
               )}
 
@@ -374,10 +556,17 @@ export function CompanyModal({
                       razaoSocial={e.razao_social}
                       nomeFantasia={e.nome_fantasia}
                       localizacao={e.cidade && e.estado ? `${e.cidade} - ${e.estado}` : e.cidade}
-                      fonte="interno"
-                      onClick={() => setDetailCnpj(e.cnpj)}
+                      isRegistered={true}
+                      onClickDetail={() => setDetailCnpj(e.cnpj)}
                     />
                   ))}
+                </div>
+              )}
+
+              {/* DB search metadata */}
+              {!showManual && debouncedNome.length >= 2 && !dbQuery.isLoading && dbResults.length > 0 && dbQuery.data?.requestId && (
+                <div className="text-[11px] text-slate-600 mt-3 text-right">
+                  Fonte: Supabase (dim_empresas) | {dbQuery.data.durationMs}ms | Mostrando {dbResults.length} de {dbTotal}
                 </div>
               )}
 
@@ -388,8 +577,8 @@ export function CompanyModal({
                 dbResults.length === 0 &&
                 !dbQuery.isLoading && (
                   <div className="text-center py-10 text-slate-500">
-                    Nenhuma empresa cadastrada encontrada. Use o botao &quot;Buscar&quot; para pesquisar
-                    em fontes externas.
+                    <p>Nenhuma empresa cadastrada encontrada para &quot;{debouncedNome}&quot;.</p>
+                    <p className="mt-2 text-sm">Use o botao <strong>&quot;Buscar (externo)&quot;</strong> para pesquisar via Serper/BrasilAPI/Perplexity.</p>
                   </div>
                 )}
 
@@ -407,7 +596,7 @@ export function CompanyModal({
                     Anterior
                   </Button>
                   <span className="text-sm text-slate-400">
-                    Pagina {page} de {totalPages}
+                    Pagina {page} de {totalPages} ({dbTotal} total)
                   </span>
                   <Button
                     variant="outline"
@@ -435,7 +624,7 @@ export function CompanyModal({
 }
 
 // ============================================
-// Company Row
+// Company Row (with insert button)
 // ============================================
 
 function CompanyRow({
@@ -444,55 +633,83 @@ function CompanyRow({
   razaoSocial,
   nomeFantasia,
   localizacao,
-  fonte,
-  onClick,
+  isRegistered,
+  onClickDetail,
+  onClickInsert,
+  isInserting,
 }: {
   cnpj: string;
   cnpjFormatted: string;
   razaoSocial: string;
   nomeFantasia?: string;
   localizacao?: string;
-  fonte: 'interno' | 'externo';
-  onClick: () => void;
+  isRegistered: boolean;
+  onClickDetail: () => void;
+  onClickInsert?: () => void;
+  isInserting?: boolean;
 }) {
   return (
-    <div
-      onClick={onClick}
-      className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] cursor-pointer hover:border-cyan-500/40 hover:bg-cyan-500/5 transition-colors"
-    >
-      <div className="flex justify-between items-start gap-3 mb-1">
-        <div className="flex items-center gap-2 min-w-0">
-          {fonte === 'interno' ? (
-            <Database className="h-4 w-4 text-green-400 flex-shrink-0" />
-          ) : (
-            <Sparkles className="h-4 w-4 text-amber-400 flex-shrink-0" />
-          )}
+    <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] hover:border-cyan-500/30 hover:bg-cyan-500/5 transition-colors">
+      {/* Icon */}
+      <div className="flex-shrink-0">
+        {isRegistered ? (
+          <Database className="h-4 w-4 text-green-400" />
+        ) : (
+          <Sparkles className="h-4 w-4 text-amber-400" />
+        )}
+      </div>
+
+      {/* Company info (clickable for detail) */}
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={onClickDetail}>
+        <div className="flex items-center gap-2 mb-0.5">
           <span className="text-slate-200 font-semibold text-sm truncate">
             {razaoSocial || 'Sem nome'}
           </span>
           <span
             className={cn(
               'flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded',
-              fonte === 'interno'
+              isRegistered
                 ? 'bg-green-500/15 text-green-400 border border-green-500/30'
                 : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
             )}
           >
-            {fonte === 'interno' ? 'Cadastrada' : 'Nova'}
+            {isRegistered ? 'DB' : 'Nova'}
           </span>
+          {nomeFantasia && (
+            <span className="text-slate-500 text-xs truncate max-w-[180px]">{nomeFantasia}</span>
+          )}
         </div>
-        {localizacao && (
-          <span className="text-xs text-slate-400 bg-slate-400/10 px-2 py-1 rounded border border-slate-400/20 whitespace-nowrap">
-            {localizacao}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          <span className="text-slate-500 text-xs">{cnpjFormatted}</span>
+          {localizacao && (
+            <span className="text-xs text-slate-500">{localizacao}</span>
+          )}
+        </div>
       </div>
-      <div className="flex justify-between items-center">
-        <span className="text-slate-500 text-sm">{cnpjFormatted}</span>
-        {nomeFantasia && (
-          <span className="text-slate-500 text-sm truncate max-w-[200px]">{nomeFantasia}</span>
-        )}
-      </div>
+
+      {/* Insert button */}
+      {onClickInsert && !isRegistered ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClickInsert();
+          }}
+          disabled={isInserting}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-green-500/15 border border-green-500/30 text-green-400 rounded-lg hover:bg-green-500 hover:text-white transition-colors disabled:opacity-50"
+        >
+          {isInserting ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Plus className="h-3 w-3" />
+          )}
+          Inserir
+        </button>
+      ) : isRegistered ? (
+        <span className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 text-xs text-slate-500">
+          <Check className="h-3 w-3" />
+          Cadastrada
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -578,9 +795,9 @@ function CompanyDetailModal({
 
   return (
     <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60">
-      <div className="w-[800px] max-w-[95vw] max-h-[85vh] flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl">
+      <div className="w-[1000px] max-w-[95vw] flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl" style={{ maxHeight: '90vh' }}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/5 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <span className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-500 rounded" />
             Detalhes da Empresa
@@ -594,11 +811,11 @@ function CompanyDetailModal({
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6">
+        <div className="flex-1 min-h-0 max-h-[70vh] overflow-y-auto overscroll-contain p-6">
           {detailsQuery.isLoading ? (
             <div className="flex flex-col items-center justify-center py-10 text-slate-400">
               <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
-              <span>Carregando detalhes...</span>
+              <span>Carregando detalhes via BrasilAPI + Apollo...</span>
             </div>
           ) : detailsQuery.isError ? (
             <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400">
