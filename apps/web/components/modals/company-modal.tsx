@@ -411,6 +411,11 @@ export function CompanyModal({
                 </div>
               ) : currentEmpresa ? (
                 <div className="space-y-4">
+                  {isExisting && (
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+                      Empresa ja cadastrada no sistema. Socios cruzados com QSA atual da Receita Federal.
+                    </div>
+                  )}
                   <div className="bg-white/[0.02] border border-white/5 rounded-xl p-6">
                     <DetailRow label="CNPJ" value={formatCnpj(currentEmpresa.cnpj)} />
                     <DetailRow label="Razao Social" value={currentEmpresa.razao_social} />
@@ -480,8 +485,67 @@ export function CompanyModal({
                       }
                     />
 
-                    {/* Socios Section */}
-                    {showSocios && currentSocios.length > 0 && (
+                    {/* Socios Section - Existing company (categorized) */}
+                    {isExisting && showSocios && (sociosAtivos.length > 0 || sociosInativos.length > 0 || sociosNovos.length > 0) && (
+                      <div className="mt-6 pt-5 border-t border-white/5 space-y-5">
+                        {/* Socios Ativos */}
+                        {sociosAtivos.length > 0 && (
+                          <div>
+                            <div className="text-slate-400 text-sm font-semibold mb-3 flex items-center gap-2">
+                              <UserCheck className="h-4 w-4 text-green-400" />
+                              Socios Ativos
+                              <span className="bg-green-500/15 text-green-400 px-2 py-0.5 rounded text-xs">
+                                {sociosAtivos.length}
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {sociosAtivos.map((s, i) => (
+                                <SocioCard key={`ativo-${i}`} socio={s} variant="ativo" />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Ex-Socios */}
+                        {sociosInativos.length > 0 && (
+                          <div>
+                            <div className="text-slate-400 text-sm font-semibold mb-3 flex items-center gap-2">
+                              <UserX className="h-4 w-4 text-red-400" />
+                              Ex-Socios
+                              <span className="bg-red-500/15 text-red-400 px-2 py-0.5 rounded text-xs">
+                                {sociosInativos.length}
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {sociosInativos.map((s, i) => (
+                                <SocioCard key={`inativo-${i}`} socio={s} variant="inativo" />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Novos Socios (no QSA mas nao no DB) */}
+                        {sociosNovos.length > 0 && (
+                          <div>
+                            <div className="text-slate-400 text-sm font-semibold mb-3 flex items-center gap-2">
+                              <UserPlus className="h-4 w-4 text-blue-400" />
+                              Novos Socios (QSA)
+                              <span className="bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded text-xs">
+                                {sociosNovos.length}
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {sociosNovos.map((s, i) => (
+                                <SocioCard key={`novo-${i}`} socio={s} variant="novo" />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Socios Section - New company (original behavior) */}
+                    {!isExisting && showSocios && currentSocios.length > 0 && (
                       <div className="mt-6 pt-5 border-t border-white/5">
                         <div className="text-slate-400 text-sm font-semibold mb-3 flex items-center gap-2">
                           Socios{' '}
@@ -491,58 +555,7 @@ export function CompanyModal({
                         </div>
                         <div className="space-y-3">
                           {currentSocios.map((s, i) => (
-                            <div
-                              key={i}
-                              className="flex gap-3 p-4 bg-white/[0.02] border border-white/5 rounded-xl"
-                            >
-                              <div className="w-11 h-11 rounded-full bg-purple-500/15 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                                {s.foto_url ? (
-                                  <Image
-                                    src={s.foto_url}
-                                    alt={s.nome}
-                                    width={44}
-                                    height={44}
-                                    className="w-full h-full object-cover"
-                                    unoptimized
-                                  />
-                                ) : (
-                                  <span className="text-purple-400 font-semibold">
-                                    {s.nome?.charAt(0).toUpperCase() || '?'}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-slate-200 font-semibold text-sm">{s.nome}</div>
-                                <div className="text-slate-500 text-sm">
-                                  {s.qualificacao || s.cargo || 'Socio'}
-                                </div>
-                                <div className="flex flex-wrap gap-2 text-sm mt-1">
-                                  {s.cpf && (
-                                    <span className="text-slate-500">
-                                      CPF: ***{s.cpf.slice(-6, -2)}**-{s.cpf.slice(-2)}
-                                    </span>
-                                  )}
-                                  {s.email && <span className="text-slate-500">{s.email}</span>}
-                                  {s.linkedin && s.linkedin !== 'NAO_POSSUI' ? (
-                                    <a
-                                      href={s.linkedin}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-cyan-400 hover:underline"
-                                    >
-                                      LinkedIn
-                                    </a>
-                                  ) : s.linkedin === 'NAO_POSSUI' ? (
-                                    <span className="text-red-400">Nao possui LinkedIn</span>
-                                  ) : (
-                                    <span className="text-red-400">Sem LinkedIn</span>
-                                  )}
-                                </div>
-                                {s.headline && (
-                                  <div className="text-slate-400 text-xs mt-1">{s.headline}</div>
-                                )}
-                              </div>
-                            </div>
+                            <SocioCard key={`socio-${i}`} socio={s} variant="default" />
                           ))}
                         </div>
                       </div>
@@ -551,7 +564,7 @@ export function CompanyModal({
 
                   {/* Action Buttons */}
                   <div className="flex flex-col gap-3">
-                    {currentSocios.length > 0 && !showSocios && (
+                    {!isExisting && currentSocios.length > 0 && !showSocios && (
                       <Button
                         onClick={handleLoadSocios}
                         disabled={enrichMutation.isPending}
@@ -567,18 +580,20 @@ export function CompanyModal({
                           : `Ver Socios (${currentSocios.length})`}
                       </Button>
                     )}
-                    <Button
-                      onClick={handleApprove}
-                      disabled={approveMutation.isPending}
-                      className="h-12 w-full bg-green-500/15 border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
-                    >
-                      {approveMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Check className="h-4 w-4 mr-2" />
-                      )}
-                      {approveMutation.isPending ? 'Salvando...' : 'Aprovar e Cadastrar'}
-                    </Button>
+                    {!isExisting && (
+                      <Button
+                        onClick={handleApprove}
+                        disabled={approveMutation.isPending}
+                        className="h-12 w-full bg-green-500/15 border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
+                      >
+                        {approveMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Check className="h-4 w-4 mr-2" />
+                        )}
+                        {approveMutation.isPending ? 'Salvando...' : 'Aprovar e Cadastrar'}
+                      </Button>
+                    )}
                     <Button onClick={handleBack} variant="outline" className="h-12 w-full">
                       <ArrowLeft className="h-4 w-4 mr-2" />
                       Voltar a Busca
@@ -606,6 +621,89 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
     <div className="flex py-2.5 border-b border-white/[0.04] last:border-b-0">
       <span className="text-slate-500 text-sm font-medium w-32 flex-shrink-0">{label}</span>
       <span className="text-slate-300 text-sm flex-1">{value || '-'}</span>
+    </div>
+  );
+}
+
+const SOCIO_VARIANT_STYLES = {
+  ativo: { bg: 'bg-green-500/15', text: 'text-green-400', border: 'border-green-500/20' },
+  inativo: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20' },
+  novo: { bg: 'bg-blue-500/15', text: 'text-blue-400', border: 'border-blue-500/20' },
+  default: { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-white/5' },
+} as const;
+
+function SocioCard({ socio: s, variant }: { socio: Socio; variant: keyof typeof SOCIO_VARIANT_STYLES }) {
+  const style = SOCIO_VARIANT_STYLES[variant];
+
+  return (
+    <div className={cn('flex gap-3 p-4 bg-white/[0.02] border rounded-xl', style.border)}>
+      <div className={cn('w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden', style.bg)}>
+        {s.foto_url ? (
+          <Image
+            src={s.foto_url}
+            alt={s.nome}
+            width={44}
+            height={44}
+            className="w-full h-full object-cover"
+            unoptimized
+          />
+        ) : (
+          <span className={cn('font-semibold', style.text)}>
+            {s.nome?.charAt(0).toUpperCase() || '?'}
+          </span>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-200 font-semibold text-sm truncate">{s.nome}</span>
+          {variant === 'ativo' && (
+            <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded bg-green-500/15 text-green-400 border border-green-500/30">
+              Ativo
+            </span>
+          )}
+          {variant === 'inativo' && (
+            <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded bg-red-500/10 text-red-400 border border-red-500/30">
+              Saiu
+            </span>
+          )}
+          {variant === 'novo' && (
+            <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+              Novo no QSA
+            </span>
+          )}
+        </div>
+        <div className="text-slate-500 text-sm">
+          {s.qualificacao || s.cargo || 'Socio'}
+        </div>
+        <div className="flex flex-wrap gap-2 text-sm mt-1">
+          {s.cpf && (
+            <span className="text-slate-500">
+              CPF: ***{s.cpf.slice(-6, -2)}**-{s.cpf.slice(-2)}
+            </span>
+          )}
+          {s.data_entrada && (
+            <span className="text-slate-500">Entrada: {s.data_entrada}</span>
+          )}
+          {s.email && <span className="text-slate-500">{s.email}</span>}
+          {s.linkedin && s.linkedin !== 'NAO_POSSUI' ? (
+            <a
+              href={s.linkedin}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cyan-400 hover:underline"
+            >
+              LinkedIn
+            </a>
+          ) : s.linkedin === 'NAO_POSSUI' ? (
+            <span className="text-red-400">Nao possui LinkedIn</span>
+          ) : variant !== 'novo' ? (
+            <span className="text-red-400">Sem LinkedIn</span>
+          ) : null}
+        </div>
+        {s.headline && (
+          <div className="text-slate-400 text-xs mt-1">{s.headline}</div>
+        )}
+      </div>
     </div>
   );
 }
