@@ -293,12 +293,20 @@ export interface Socio {
   linkedin?: string;
   foto_url?: string;
   headline?: string;
+  ativo?: boolean;
+  novo?: boolean;
+  data_entrada?: string;
+  faixa_etaria?: string;
+  pais_origem?: string;
 }
 
 export interface CompanyDetailsResponse {
   exists: boolean;
   empresa: CompanyDetails;
   socios: Socio[];
+  socios_ativos?: Socio[];
+  socios_inativos?: Socio[];
+  socios_novos?: Socio[];
 }
 
 export async function getCompanyDetails(cnpj: string): Promise<CompanyDetailsResponse> {
@@ -809,7 +817,7 @@ export async function listPoliticians(params?: {
   if (params?.cargo) searchParams.append('cargo', params.cargo);
   if (params?.municipio) searchParams.append('municipio', params.municipio);
   if (params?.ano_eleicao) searchParams.append('ano_eleicao', String(params.ano_eleicao));
-  searchParams.append('limit', String(params?.limit || 500));
+  searchParams.append('limit', String(params?.limit || 50));
   searchParams.append('offset', String(params?.offset || 0));
 
   const res = await fetch(`${API_BASE}/politicians/list?${searchParams}`);

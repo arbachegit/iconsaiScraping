@@ -198,11 +198,99 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
     // Check if already exists
     const existing = await findCompanyByCnpj(cleanCnpj);
     if (existing) {
+      // Fetch socios from DB
+      const { data: transacoes, error: transErr } = await supabase
+        .from('fato_transacao_empresas')
+        .select('*, dim_pessoas(*)')
+        .eq('empresa_id', existing.id);
+
+      if (transErr && transErr.code !== 'PGRST116') {
+        console.error('[DETAILS] Error fetching transacoes:', transErr.message);
+      }
+
+      const dbSocios = transacoes || [];
+
+      // Fetch QSA atual from BrasilAPI
+      let qsaAtual = [];
+      try {
+        const brasilData = await brasilapi.getCompanyByCnpj(cleanCnpj);
+        qsaAtual = brasilData?.socios || [];
+      } catch (err) {
+        console.warn('[DETAILS] Erro ao buscar QSA da Receita:', err.message);
+      }
+
+      // Normalize name for comparison (uppercase, remove accents)
+      const normalizeName = (name) =>
+        (name || '')
+          .toUpperCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim();
+
+      const qsaNomes = new Set(qsaAtual.map(s => normalizeName(s.nome)));
+
+      // Cross-reference DB socios with QSA
+      const sociosAtivos = [];
+      const sociosInativos = [];
+
+      for (const t of dbSocios) {
+        const pessoa = t.dim_pessoas;
+        const nomeNorm = normalizeName(pessoa?.nome_completo);
+        const ativo = qsaNomes.has(nomeNorm);
+
+        // Update ativo status in DB
+        await supabase
+          .from('fato_transacao_empresas')
+          .update({ ativo })
+          .eq('id', t.id);
+
+        const socioData = {
+          nome: pessoa?.nome_completo,
+          cpf: pessoa?.cpf,
+          qualificacao: t.qualificacao,
+          cargo: t.cargo,
+          linkedin: pessoa?.linkedin_url,
+          email: pessoa?.email,
+          foto_url: pessoa?.foto_url || t.logo_url,
+          headline: t.headline,
+          data_entrada: t.data_transacao,
+          faixa_etaria: pessoa?.faixa_etaria,
+          pais_origem: pessoa?.pais,
+          ativo
+        };
+
+        if (ativo) sociosAtivos.push(socioData);
+        else sociosInativos.push(socioData);
+      }
+
+      // Find new socios (in QSA but not in DB)
+      const dbNomes = new Set(dbSocios.map(t => normalizeName(t.dim_pessoas?.nome_completo)));
+      const sociosNovos = qsaAtual
+        .filter(s => !dbNomes.has(normalizeName(s.nome)))
+        .map(s => ({
+          nome: s.nome,
+          cpf: s.cpf,
+          qualificacao: s.qualificacao,
+          cargo: s.cargo,
+          data_entrada: s.data_entrada,
+          faixa_etaria: s.faixa_etaria,
+          pais_origem: s.pais_origem,
+          linkedin: null,
+          email: null,
+          foto_url: null,
+          headline: null,
+          ativo: true,
+          novo: true
+        }));
+
       return res.json({
         exists: true,
         message: 'Empresa ja cadastrada',
         empresa: existing,
-        socios: [] // Load separately via /socios endpoint
+        socios: [...sociosAtivos, ...sociosInativos],
+        socios_ativos: sociosAtivos,
+        socios_inativos: sociosInativos,
+        socios_novos: sociosNovos
       });
     }
 
@@ -580,7 +668,8 @@ router.post('/approve', validateBody(approveCompanySchema), async (req, res) => 
           cargo: socio.cargo || socio.qualificacao || 'Socio',
           headline: socio.headline || null,
           tipo: 'fundador',
-          logo_url: socio.foto_url || null
+          logo_url: socio.foto_url || null,
+          ativo: true
         });
 
         insertedSocios.push(person);

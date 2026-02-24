@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import Image from 'next/image';
-import { X, Search, ArrowLeft, Check, Users, Loader2, ExternalLink } from 'lucide-react';
+import { X, Search, ArrowLeft, Check, Users, Loader2, ExternalLink, UserCheck, UserX, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -51,6 +51,10 @@ export function CompanyModal({
   const [currentEmpresa, setCurrentEmpresa] = useState<CompanyDetails | null>(null);
   const [currentSocios, setCurrentSocios] = useState<Socio[]>([]);
   const [showSocios, setShowSocios] = useState(false);
+  const [isExisting, setIsExisting] = useState(false);
+  const [sociosAtivos, setSociosAtivos] = useState<Socio[]>([]);
+  const [sociosInativos, setSociosInativos] = useState<Socio[]>([]);
+  const [sociosNovos, setSociosNovos] = useState<Socio[]>([]);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -93,9 +97,21 @@ export function CompanyModal({
     mutationFn: getCompanyDetails,
     onSuccess: (data) => {
       if (data.exists) {
+        setIsExisting(true);
+        setCurrentEmpresa(data.empresa);
+        setCurrentSocios(data.socios || []);
+        setSociosAtivos(data.socios_ativos || []);
+        setSociosInativos(data.socios_inativos || []);
+        setSociosNovos(data.socios_novos || []);
+        setShowSocios(true);
         setMessage({ type: 'success', text: 'Empresa ja cadastrada no sistema' });
+        setView('details');
         return;
       }
+      setIsExisting(false);
+      setSociosAtivos([]);
+      setSociosInativos([]);
+      setSociosNovos([]);
       setCurrentEmpresa(data.empresa);
       setCurrentSocios(data.socios || []);
       setView('details');
@@ -188,6 +204,10 @@ export function CompanyModal({
     setCurrentEmpresa(null);
     setCurrentSocios([]);
     setShowSocios(false);
+    setIsExisting(false);
+    setSociosAtivos([]);
+    setSociosInativos([]);
+    setSociosNovos([]);
     setMessage(null);
   }
 
@@ -201,6 +221,10 @@ export function CompanyModal({
     setCurrentEmpresa(null);
     setCurrentSocios([]);
     setShowSocios(false);
+    setIsExisting(false);
+    setSociosAtivos([]);
+    setSociosInativos([]);
+    setSociosNovos([]);
     setMessage(null);
     onClose();
   }

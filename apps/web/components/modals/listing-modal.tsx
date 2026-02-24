@@ -9,6 +9,7 @@ import {
   listPeople,
   listNews,
   listPoliticians,
+  searchPoliticians,
   formatRegime,
   type Company,
   type Person,
@@ -641,32 +642,56 @@ interface PoliticosListingModalProps {
 }
 
 export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModalProps) {
-  const [search, setSearch] = useState('');
+  const [nome, setNome] = useState('');
+  const [partido, setPartido] = useState('');
+  const [searchTriggered, setSearchTriggered] = useState(false);
   const [sortColumn, setSortColumn] = useState<string>('nome_completo');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
+  const searchKey = `${nome.trim()}|${partido.trim().toUpperCase()}`;
+
   const query = useQuery({
-    queryKey: ['politicos', 'listing'],
-    queryFn: () => listPoliticians({ limit: 500 }),
-    enabled: isOpen,
+    queryKey: ['politicos', 'search', searchKey],
+    queryFn: async () => {
+      const trimmedNome = nome.trim();
+      const trimmedPartido = partido.trim().toUpperCase();
+
+      if (trimmedNome && trimmedNome.length >= 2) {
+        const result = await searchPoliticians(trimmedNome);
+        if (trimmedPartido) {
+          return {
+            ...result,
+            politicians: result.politicians.filter(
+              (p) => (p.partido_sigla || '').toUpperCase() === trimmedPartido
+            ),
+          };
+        }
+        return result;
+      }
+
+      if (trimmedPartido) {
+        return listPoliticians({ partido: trimmedPartido, limit: 100 });
+      }
+
+      return listPoliticians({ limit: 50 });
+    },
+    enabled: isOpen && searchTriggered,
   });
 
-  const filteredData = useMemo(() => {
-    let data = query.data?.politicians || [];
+  function handleSearch() {
+    setSearchTriggered(true);
+  }
 
-    if (search) {
-      const searchLower = search.toLowerCase();
-      data = data.filter(
-        (p) =>
-          (p.nome_completo || '').toLowerCase().includes(searchLower) ||
-          (p.nome_urna || '').toLowerCase().includes(searchLower) ||
-          (p.partido_sigla || '').toLowerCase().includes(searchLower) ||
-          (p.cargo_atual || '').toLowerCase().includes(searchLower) ||
-          (p.municipio || '').toLowerCase().includes(searchLower)
-      );
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') {
+      handleSearch();
     }
+  }
 
-    data = [...data].sort((a, b) => {
+  const sortedData = useMemo(() => {
+    const data = [...(query.data?.politicians || [])];
+
+    data.sort((a, b) => {
       const col = sortColumn || 'nome_completo';
       const valA = String(
         (a as unknown as Record<string, unknown>)[col] ?? ''
@@ -678,7 +703,7 @@ export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModal
     });
 
     return data;
-  }, [query.data?.politicians, search, sortColumn, sortDirection]);
+  }, [query.data?.politicians, sortColumn, sortDirection]);
 
   function handleSort(column: string) {
     if (sortColumn === column) {
@@ -699,9 +724,11 @@ export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModal
           <h2 className="text-lg font-semibold text-white flex items-center gap-3">
             <span className="w-1 h-5 bg-gradient-to-b from-blue-400 to-blue-600 rounded" />
             Politicos
-            <span className="bg-blue-500/15 text-blue-400 px-2.5 py-1 rounded text-sm">
-              {filteredData.length}
-            </span>
+            {searchTriggered && !query.isLoading && (
+              <span className="bg-blue-500/15 text-blue-400 px-2.5 py-1 rounded text-sm">
+                {sortedData.length}
+              </span>
+            )}
           </h2>
           <button
             onClick={onClose}
@@ -711,30 +738,49 @@ export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModal
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-4 px-6 py-3 border-b border-white/5">
+        {/* Search Fields */}
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5">
           <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filtrar por nome, partido, cargo, municipio..."
-            className="max-w-md"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Nome do politico..."
+            className="max-w-xs"
           />
+          <Input
+            value={partido}
+            onChange={(e) => setPartido(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Partido (ex: PT, PL, MDB)"
+            className="max-w-[180px]"
+          />
+          <button
+            onClick={handleSearch}
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            Buscar
+          </button>
         </div>
 
         {/* Table */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          {query.isLoading ? (
+          {!searchTriggered ? (
+            <div className="text-center py-16 text-slate-500">
+              <p className="text-lg mb-2">Digite um nome e/ou partido para buscar</p>
+              <p className="text-sm text-slate-600">Pressione Enter ou clique em Buscar</p>
+            </div>
+          ) : query.isLoading ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <Loader2 className="h-10 w-10 animate-spin text-blue-400 mb-4" />
-              <span>Carregando politicos...</span>
+              <span>Buscando politicos...</span>
             </div>
           ) : query.isError ? (
             <div className="text-center py-12 text-red-400">
-              Erro ao carregar politicos. Verifique se o Brasil Data Hub esta configurado.
+              Erro ao buscar politicos. Verifique se o Brasil Data Hub esta configurado.
             </div>
-          ) : filteredData.length === 0 ? (
+          ) : sortedData.length === 0 ? (
             <div className="text-center py-12 text-slate-500">
-              Nenhum politico encontrado com os filtros aplicados.
+              Nenhum politico encontrado. Tente outro nome ou partido.
             </div>
           ) : (
             <table className="w-full border-collapse text-sm">
@@ -794,7 +840,7 @@ export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModal
                 </tr>
               </thead>
               <tbody>
-                {filteredData.map((p) => (
+                {sortedData.map((p) => (
                   <PoliticoRow key={p.id} politico={p} />
                 ))}
               </tbody>

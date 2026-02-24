@@ -143,7 +143,8 @@ export async function insertTransacaoEmpresa(transacao) {
       cargo: transacao.cargo,
       headline: transacao.headline,
       tipo: transacao.tipo || 'fundador',
-      logo_url: transacao.logo_url
+      logo_url: transacao.logo_url,
+      ativo: transacao.ativo ?? true
     }])
     .select()
     .single();
