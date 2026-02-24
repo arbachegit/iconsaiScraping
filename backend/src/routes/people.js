@@ -3,6 +3,7 @@ import { supabase } from '../database/supabase.js';
 import logger from '../utils/logger.js';
 import { searchPerson as searchPersonApollo } from '../services/apollo.js';
 import { searchPerson as searchPersonPerplexity } from '../services/perplexity.js';
+import { search as serperSearch, findPersonLinkedin } from '../services/serper.js';
 import { validateBody } from '../validation/schemas.js';
 import { searchPersonByCpfSchema } from '../validation/schemas.js';
 
@@ -244,13 +245,17 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
     const { cpf, nome } = req.body;
     const hasCpf = cpf && cpf.length === 11;
     const hasNome = nome && nome.trim().length >= 2;
+    const sourcesTried = [];
 
     logger.info('Searching person', {
       cpf: hasCpf ? `***${cpf.slice(-4)}` : null,
       nome: hasNome ? nome : null
     });
 
-    // First check if person exists in database (by CPF or nome) in fato_pessoas
+    // =============================================
+    // 1. Search internal database (fato_pessoas)
+    // =============================================
+    sourcesTried.push('database');
     let existingPerson = null;
 
     if (hasCpf) {
@@ -283,19 +288,36 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
       });
     }
 
-    // Search using Perplexity (AI-powered search)
-    const perplexityResult = await searchPersonPerplexity(nome || 'pessoa', hasCpf ? cpf : null);
+    // =============================================
+    // 2. Search via Perplexity AI (online search)
+    // =============================================
+    sourcesTried.push('perplexity');
+    let perplexityResult = null;
+    try {
+      perplexityResult = await searchPersonPerplexity(nome || 'pessoa', hasCpf ? cpf : null);
+      logger.info('Perplexity result', {
+        success: perplexityResult?.success,
+        found: perplexityResult?.found,
+        error: perplexityResult?.error || null
+      });
+    } catch (err) {
+      logger.error('Perplexity search failed', { error: err.message });
+    }
 
-    if (perplexityResult.success && perplexityResult.found && perplexityResult.pessoa) {
+    if (perplexityResult?.success && perplexityResult?.found && perplexityResult?.pessoa) {
       logger.info('Person found via Perplexity', { nome: perplexityResult.pessoa.nome_completo });
 
-      // Try to enrich with Apollo if we have LinkedIn URL
+      // Enrich with Apollo
       let apolloData = null;
       if (perplexityResult.pessoa.empresa_atual && perplexityResult.pessoa.nome_completo) {
-        apolloData = await searchPersonApollo(
-          perplexityResult.pessoa.nome_completo,
-          perplexityResult.pessoa.empresa_atual
-        );
+        try {
+          apolloData = await searchPersonApollo(
+            perplexityResult.pessoa.nome_completo,
+            perplexityResult.pessoa.empresa_atual
+          );
+        } catch (err) {
+          logger.warn('Apollo enrichment failed', { error: err.message });
+        }
       }
 
       return res.json({
@@ -315,18 +337,135 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
         },
         experiencias: perplexityResult.experiencias,
         fontes: perplexityResult.fontes,
-        apollo_enriched: !!apolloData
+        apollo_enriched: !!apolloData,
+        sources_tried: sourcesTried
       });
     }
 
-    // Not found
-    logger.info('Person not found', { cpf: hasCpf ? `***${cpf.slice(-4)}` : null, nome: hasNome ? nome : null });
+    // =============================================
+    // 3. Fallback: Search via Serper (Google) + Apollo
+    // =============================================
+    if (hasNome) {
+      sourcesTried.push('serper');
+      try {
+        const searchName = nome.trim();
+
+        // Google search for person info
+        const googleResults = await serperSearch(
+          `"${searchName}" Brasil profissional LinkedIn cargo empresa`,
+          10
+        );
+
+        const kg = googleResults.knowledgeGraph || {};
+        const organic = googleResults.organic || [];
+
+        // Try to find LinkedIn via Serper
+        let linkedinUrl = null;
+        try {
+          linkedinUrl = await findPersonLinkedin(searchName);
+        } catch (err) {
+          logger.warn('Serper LinkedIn search failed', { error: err.message });
+        }
+
+        // Extract info from knowledge graph and organic results
+        let empresa = kg.organization || kg.company || null;
+        let cargo = kg.title || kg.jobTitle || null;
+        let descricao = kg.description || null;
+        let localizacao = null;
+
+        // Parse organic results for additional info
+        for (const item of organic.slice(0, 5)) {
+          const text = `${item.title || ''} ${item.snippet || ''}`;
+
+          // Try to extract company from LinkedIn snippets
+          if (!empresa && item.link?.includes('linkedin.com')) {
+            const match = text.match(/(?:at|na|em|@)\s+([A-ZÀ-Ú][A-Za-zÀ-ú\s&.,-]+?)(?:\s*[-–|·]|\s*$)/i);
+            if (match) empresa = match[1].trim();
+          }
+
+          // Try to extract title/cargo
+          if (!cargo && item.link?.includes('linkedin.com')) {
+            const match = text.match(/[-–]\s*([A-Za-zÀ-ú\s,]+?)(?:\s*[-–|·]|\s*at\s|\s*na\s|\s*em\s)/i);
+            if (match && match[1].length < 80) cargo = match[1].trim();
+          }
+
+          // Build description from snippets
+          if (!descricao && item.snippet && item.snippet.length > 30) {
+            descricao = item.snippet;
+          }
+
+          // Location
+          if (!localizacao) {
+            const locMatch = text.match(/([A-Za-zÀ-ú]+(?:\s+[A-Za-zÀ-ú]+)?)\s*[-,]\s*([A-Z]{2})\b/);
+            if (locMatch) localizacao = `${locMatch[1]} - ${locMatch[2]}`;
+          }
+        }
+
+        // Try Apollo for enrichment if we have enough info
+        sourcesTried.push('apollo');
+        let apolloData = null;
+        try {
+          if (empresa) {
+            apolloData = await searchPersonApollo(searchName, empresa);
+          }
+        } catch (err) {
+          logger.warn('Apollo search failed', { error: err.message });
+        }
+
+        // Build person from combined sources
+        const hasData = empresa || cargo || linkedinUrl || apolloData || descricao;
+
+        if (hasData) {
+          logger.info('Person found via Serper+Apollo', { nome: searchName, empresa, cargo });
+
+          const fontes = organic.slice(0, 3).map(o => o.link).filter(Boolean);
+
+          return res.json({
+            success: true,
+            source: 'serper',
+            found: true,
+            pessoa: {
+              cpf: cpf || null,
+              nome_completo: apolloData?.name || searchName,
+              cargo_atual: apolloData?.title || cargo,
+              empresa_atual: apolloData?.company?.name || empresa,
+              linkedin_url: apolloData?.linkedin || linkedinUrl,
+              email: apolloData?.email || null,
+              localizacao: localizacao || (apolloData ? `${apolloData.city || ''} ${apolloData.state || ''}`.trim() : null),
+              resumo_profissional: descricao,
+              foto_url: apolloData?.photo_url || null
+            },
+            experiencias: [],
+            fontes,
+            apollo_enriched: !!apolloData,
+            sources_tried: sourcesTried
+          });
+        }
+      } catch (err) {
+        logger.error('Serper search failed', { error: err.message });
+      }
+    }
+
+    // =============================================
+    // 4. Not found in any source
+    // =============================================
+    const errors = [];
+    if (perplexityResult?.error) errors.push(`Perplexity: ${perplexityResult.error}`);
+
+    logger.info('Person not found in any source', {
+      cpf: hasCpf ? `***${cpf.slice(-4)}` : null,
+      nome: hasNome ? nome : null,
+      sources_tried: sourcesTried
+    });
+
     return res.json({
       success: true,
       source: 'none',
       found: false,
       pessoa: null,
-      message: 'Pessoa não encontrada nas fontes disponíveis'
+      message: `Pessoa não encontrada. Fontes consultadas: ${sourcesTried.join(', ')}`,
+      sources_tried: sourcesTried,
+      errors: errors.length > 0 ? errors : undefined
     });
 
   } catch (error) {
