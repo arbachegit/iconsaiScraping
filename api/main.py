@@ -626,53 +626,77 @@ class StatsHistoryResponse(BaseModel):
     ultimo_registro: Optional[str]
 
 
+def _get_safe_count(client, table: str) -> int:
+    """Safe count that handles empty/missing tables."""
+    try:
+        r = client.from_(table).select("id", count="estimated", head=True).execute()
+        return r.count or 0
+    except Exception:
+        return 0
+
+
+def _get_all_counts(supabase_client, brasil_data_hub_client):
+    """Get all current counts from all sources."""
+    empresas = _get_safe_count(supabase_client, "dim_empresas")
+    pessoas = _get_safe_count(supabase_client, "fato_pessoas")
+    noticias = _get_safe_count(supabase_client, "fato_noticias")
+
+    politicos = 0
+    mandatos = 0
+    if brasil_data_hub_client:
+        politicos = _get_safe_count(brasil_data_hub_client, "dim_politicos")
+        mandatos = _get_safe_count(brasil_data_hub_client, "fato_politicos_mandatos")
+
+    return {
+        "empresas": empresas,
+        "pessoas": pessoas,
+        "politicos": politicos,
+        "mandatos": mandatos,
+        "noticias": noticias,
+    }
+
+
+def _get_clients():
+    """Get Supabase clients."""
+    supabase_client = create_client(settings.supabase_url, settings.supabase_service_key)
+    brasil_data_hub_client = None
+    if settings.brasil_data_hub_url and settings.brasil_data_hub_key:
+        brasil_data_hub_client = create_client(
+            settings.brasil_data_hub_url, settings.brasil_data_hub_key
+        )
+    return supabase_client, brasil_data_hub_client
+
+
+# Mapeamento categoria → (source, table)
+CATEGORY_TABLE_MAP = {
+    "empresas": ("local", "dim_empresas"),
+    "pessoas": ("local", "fato_pessoas"),
+    "noticias": ("local", "fato_noticias"),
+    "politicos": ("brasil_data_hub", "dim_politicos"),
+    "mandatos": ("brasil_data_hub", "fato_politicos_mandatos"),
+}
+
+
 @app.get("/api/stats/current", tags=["Stats"])
 async def get_current_stats():
     """
-    Retorna contagens atuais + % crescimento vs dia anterior.
+    Retorna contagens atuais + today_inserts + % crescimento vs dia anterior.
     Usado pelos badges do dashboard.
     """
     if not settings.supabase_url or not settings.supabase_service_key:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+        supabase_client, brasil_data_hub_client = _get_clients()
+        counts = _get_all_counts(supabase_client, brasil_data_hub_client)
 
-        # Cliente Brasil Data Hub (politicos)
-        brasil_data_hub = None
-        if settings.brasil_data_hub_url and settings.brasil_data_hub_key:
-            brasil_data_hub = create_client(
-                settings.brasil_data_hub_url, settings.brasil_data_hub_key
-            )
+        from datetime import date as date_type
 
-        # Contagens atuais - use estimated to avoid timeout on large tables
-        # Wrap each in try/except to handle empty/missing tables gracefully
-        def safe_count(client, table):
-            try:
-                r = client.from_(table).select("id", count="estimated", head=True).execute()
-                return r.count or 0
-            except Exception:
-                return 0
-
-        empresas_count = safe_count(supabase, "dim_empresas")
-        pessoas_count = safe_count(supabase, "fato_pessoas")
-        noticias_count = safe_count(supabase, "fato_noticias")
-
-        # Politicos e Mandatos do Brasil Data Hub
-        politicos_count = 0
-        mandatos_count = 0
-        if brasil_data_hub:
-            politicos_count = safe_count(brasil_data_hub, "dim_politicos")
-            mandatos_count = safe_count(brasil_data_hub, "fato_politicos_mandatos")
-
-        # Buscar dados de ontem para calcular crescimento
-        from datetime import date, timedelta
-
-        hoje = date.today()
+        hoje = date_type.today()
         ontem = hoje - timedelta(days=1)
 
         # Buscar historico de ontem
-        historico_ontem = supabase.from_("stats_historico").select("*").eq(
+        historico_ontem = supabase_client.from_("stats_historico").select("*").eq(
             "data", ontem.isoformat()
         ).execute()
 
@@ -682,22 +706,16 @@ async def get_current_stats():
 
         # Montar resposta com crescimento
         stats = []
-        categorias = [
-            ("empresas", empresas_count),
-            ("pessoas", pessoas_count),
-            ("politicos", politicos_count),
-            ("mandatos", mandatos_count),
-            ("noticias", noticias_count),
-        ]
-
-        for cat, total in categorias:
+        for cat, total in counts.items():
             total_ontem = ontem_dict.get(cat, total)
+            today_inserts = max(0, total - total_ontem)
             crescimento = ((total - total_ontem) / total_ontem) * 100 if total_ontem > 0 else 0.0
 
             stats.append({
                 "categoria": cat,
                 "total": total,
                 "total_ontem": total_ontem,
+                "today_inserts": today_inserts,
                 "crescimento_percentual": round(crescimento, 2),
             })
 
@@ -721,15 +739,17 @@ async def get_stats_history(
     limit: int = Query(default=365, ge=1, le=1000),
 ):
     """
-    Retorna historico completo de estatisticas para graficos.
+    Retorna historico CUMULATIVO de estatisticas para graficos.
+    Cada point.value = total acumulado naquela data.
+    Grafico cumulativo: monotonicamente crescente, nunca plato.
     """
     if not settings.supabase_url or not settings.supabase_service_key:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
+        supabase_client, brasil_data_hub_client = _get_clients()
 
-        query = supabase.from_("stats_historico").select("*").order("data", desc=False)
+        query = supabase_client.from_("stats_historico").select("*").order("data", desc=False)
 
         if categoria:
             query = query.eq("categoria", categoria)
@@ -738,26 +758,206 @@ async def get_stats_history(
         result = query.execute()
 
         # Agrupar por categoria
-        historico_por_categoria = {}
+        raw_by_category = {}
         for row in result.data or []:
             cat = row["categoria"]
-            if cat not in historico_por_categoria:
-                historico_por_categoria[cat] = []
-            historico_por_categoria[cat].append({
+            if cat not in raw_by_category:
+                raw_by_category[cat] = []
+            raw_by_category[cat].append({
                 "data": row["data"],
                 "total": row["total"],
             })
 
+        # Obter contagens atuais para today_inserts
+        counts = _get_all_counts(supabase_client, brasil_data_hub_client)
+        from datetime import date as date_type
+        hoje_iso = date_type.today().isoformat()
+
+        # Montar resposta no formato esperado pelo frontend
+        historico = {}
+        for cat, accumulated in raw_by_category.items():
+            # Preencher gaps de datas (carry forward last known total)
+            filled = _fill_date_gaps_cumulative(accumulated)
+
+            # Today's inserts = current live count - last snapshot total
+            last_snapshot_total = accumulated[-1]["total"] if accumulated else 0
+            current_total = counts.get(cat, 0)
+            today_inserts = max(0, current_total - last_snapshot_total)
+
+            # Garantir hoje na serie com contagem live
+            if filled and filled[-1]["data"] == hoje_iso:
+                filled[-1]["value"] = max(filled[-1]["value"], current_total)
+            elif filled:
+                # Preencher gap ate hoje
+                from datetime import date as date_cls
+                last_date = date_cls.fromisoformat(filled[-1]["data"])
+                today_date = date_cls.fromisoformat(hoje_iso)
+                last_val = filled[-1]["value"]
+                d = last_date + timedelta(days=1)
+                while d < today_date:
+                    filled.append({"data": d.isoformat(), "value": last_val})
+                    d += timedelta(days=1)
+                filled.append({"data": hoje_iso, "value": current_total})
+
+            # Period growth = newest - oldest
+            period_growth = 0
+            if len(filled) >= 2:
+                period_growth = filled[-1]["value"] - filled[0]["value"]
+
+            historico[cat] = {
+                "unit": "registros",
+                "timezone": "America/Sao_Paulo",
+                "today": today_inserts,
+                "periodTotal": period_growth,
+                "points": filled,
+            }
+
         return {
             "success": True,
-            "historico": historico_por_categoria,
-            "categorias": list(historico_por_categoria.keys()),
+            "historico": historico,
+            "categorias": list(historico.keys()),
             "total_registros": len(result.data or []),
             "timestamp": datetime.now().isoformat(),
         }
 
     except Exception as e:
         logger.error("get_stats_history_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _fill_date_gaps_cumulative(points: list) -> list:
+    """
+    Preenche gaps de datas carregando o ultimo total conhecido.
+    Input: [{data: 'YYYY-MM-DD', total: int}] sorted asc.
+    Output: [{data: 'YYYY-MM-DD', value: int}] sem gaps.
+    """
+    if not points:
+        return []
+    if len(points) == 1:
+        return [{"data": points[0]["data"], "value": points[0]["total"]}]
+
+    from datetime import date as date_cls
+
+    date_map = {p["data"]: p["total"] for p in points}
+    start = date_cls.fromisoformat(points[0]["data"])
+    end = date_cls.fromisoformat(points[-1]["data"])
+
+    result = []
+    current = start
+    last_known = points[0]["total"]
+
+    while current <= end:
+        d_str = current.isoformat()
+        if d_str in date_map:
+            last_known = date_map[d_str]
+        result.append({"data": d_str, "value": last_known})
+        current += timedelta(days=1)
+
+    return result
+
+
+@app.post("/api/stats/backfill", tags=["Stats"])
+async def backfill_stats_history(
+    days: int = Query(default=30, ge=7, le=365),
+):
+    """
+    Popula stats_historico com dados retroativos.
+    Estrategia:
+    1. Conta insercoes diarias via created_at nas tabelas fonte
+    2. Calcula totais acumulados de tras pra frente
+    3. Upsert tudo em stats_historico
+    """
+    if not settings.supabase_url or not settings.supabase_service_key:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        supabase_client, brasil_data_hub_client = _get_clients()
+        counts = _get_all_counts(supabase_client, brasil_data_hub_client)
+
+        from datetime import date as date_cls
+
+        hoje = date_cls.today()
+        dates = [(hoje - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+
+        results = {}
+        total_upserted = 0
+
+        for cat, (source, table) in CATEGORY_TABLE_MAP.items():
+            client = supabase_client if source == "local" else brasil_data_hub_client
+            if not client:
+                results[cat] = {"skipped": True, "reason": "no client"}
+                continue
+
+            # Contar insercoes diarias via created_at
+            daily_inserts = []
+            for d_str in dates:
+                # Sao Paulo midnight = 03:00 UTC
+                day_start = f"{d_str}T03:00:00.000Z"
+                next_day = (date_cls.fromisoformat(d_str) + timedelta(days=1)).isoformat()
+                day_end = f"{next_day}T03:00:00.000Z"
+
+                try:
+                    r = (
+                        client.from_(table)
+                        .select("id", count="exact", head=True)
+                        .gte("created_at", day_start)
+                        .lt("created_at", day_end)
+                        .execute()
+                    )
+                    daily_inserts.append({"date": d_str, "count": r.count or 0})
+                except Exception:
+                    daily_inserts.append({"date": d_str, "count": 0})
+
+            # Calcular totais acumulados de tras pra frente
+            current_total = counts.get(cat, 0)
+            snapshots = []
+            running_total = current_total
+
+            # Do mais recente ao mais antigo
+            for entry in reversed(daily_inserts):
+                snapshots.append({
+                    "data": entry["date"],
+                    "categoria": cat,
+                    "total": running_total,
+                })
+                running_total = max(0, running_total - entry["count"])
+
+            # Upsert todos
+            for snap in snapshots:
+                try:
+                    supabase_client.from_("stats_historico").upsert(
+                        snap, on_conflict="data,categoria"
+                    ).execute()
+                    total_upserted += 1
+                except Exception as e:
+                    logger.warning("backfill_upsert_failed", snap=snap, error=str(e))
+
+            oldest = snapshots[-1] if snapshots else None
+            newest = snapshots[0] if snapshots else None
+            results[cat] = {
+                "days": len(snapshots),
+                "currentTotal": current_total,
+                "oldestDate": oldest["data"] if oldest else None,
+                "oldestTotal": oldest["total"] if oldest else None,
+                "newestDate": newest["data"] if newest else None,
+                "newestTotal": newest["total"] if newest else None,
+            }
+
+            logger.info("backfill_category", categoria=cat, **results[cat])
+
+        logger.info("stats_backfill_complete", total_upserted=total_upserted, days=days)
+
+        return {
+            "success": True,
+            "message": f"Backfill completo: {total_upserted} registros em {days} dias",
+            "days": days,
+            "totalUpserted": total_upserted,
+            "results": results,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error("backfill_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
