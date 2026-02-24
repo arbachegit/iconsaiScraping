@@ -8,10 +8,12 @@ import {
   listCompanies,
   listPeople,
   listNews,
+  listPoliticians,
   formatRegime,
   type Company,
   type Person,
   type NewsItem,
+  type Politician,
 } from '@/lib/api';
 
 type SortDirection = 'asc' | 'desc';
@@ -630,6 +632,215 @@ function NoticiaRow({ noticia }: { noticia: NewsItem }) {
 }
 
 // ============================================
+// POLITICOS LISTING MODAL
+// ============================================
+
+interface PoliticosListingModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModalProps) {
+  const [search, setSearch] = useState('');
+  const [sortColumn, setSortColumn] = useState<string>('nome_completo');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  const query = useQuery({
+    queryKey: ['politicos', 'listing'],
+    queryFn: () => listPoliticians({ limit: 500 }),
+    enabled: isOpen,
+  });
+
+  const filteredData = useMemo(() => {
+    let data = query.data?.politicians || [];
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      data = data.filter(
+        (p) =>
+          (p.nome_completo || '').toLowerCase().includes(searchLower) ||
+          (p.nome_urna || '').toLowerCase().includes(searchLower) ||
+          (p.partido_sigla || '').toLowerCase().includes(searchLower) ||
+          (p.cargo_atual || '').toLowerCase().includes(searchLower) ||
+          (p.municipio || '').toLowerCase().includes(searchLower)
+      );
+    }
+
+    data = [...data].sort((a, b) => {
+      const col = sortColumn || 'nome_completo';
+      const valA = String(
+        (a as unknown as Record<string, unknown>)[col] ?? ''
+      ).toLowerCase();
+      const valB = String(
+        (b as unknown as Record<string, unknown>)[col] ?? ''
+      ).toLowerCase();
+      return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    });
+
+    return data;
+  }, [query.data?.politicians, search, sortColumn, sortDirection]);
+
+  function handleSort(column: string) {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/85">
+      <div className="w-[95%] max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl border border-blue-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-3">
+            <span className="w-1 h-5 bg-gradient-to-b from-blue-400 to-blue-600 rounded" />
+            Politicos
+            <span className="bg-blue-500/15 text-blue-400 px-2.5 py-1 rounded text-sm">
+              {filteredData.length}
+            </span>
+          </h2>
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center gap-4 px-6 py-3 border-b border-white/5">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filtrar por nome, partido, cargo, municipio..."
+            className="max-w-md"
+          />
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {query.isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <Loader2 className="h-10 w-10 animate-spin text-blue-400 mb-4" />
+              <span>Carregando politicos...</span>
+            </div>
+          ) : query.isError ? (
+            <div className="text-center py-12 text-red-400">
+              Erro ao carregar politicos. Verifique se o Brasil Data Hub esta configurado.
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              Nenhum politico encontrado com os filtros aplicados.
+            </div>
+          ) : (
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-blue-500/5">
+                  <SortableHeader
+                    label="Nome"
+                    column="nome_completo"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    color="blue"
+                  />
+                  <SortableHeader
+                    label="Nome Urna"
+                    column="nome_urna"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    color="blue"
+                  />
+                  <SortableHeader
+                    label="Partido"
+                    column="partido_sigla"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    color="blue"
+                  />
+                  <SortableHeader
+                    label="Cargo"
+                    column="cargo_atual"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    color="blue"
+                  />
+                  <SortableHeader
+                    label="Municipio"
+                    column="municipio"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    color="blue"
+                  />
+                  <SortableHeader
+                    label="Ano Eleicao"
+                    column="ano_eleicao"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    color="blue"
+                  />
+                  <th className="text-left p-3 text-blue-400 font-semibold text-xs uppercase">
+                    Eleito
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredData.map((p) => (
+                  <PoliticoRow key={p.id} politico={p} />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PoliticoRow({ politico }: { politico: Politician }) {
+  return (
+    <tr className="border-b border-white/5 hover:bg-blue-500/5 transition-colors">
+      <td className="p-3 text-slate-300">{politico.nome_completo || '-'}</td>
+      <td className="p-3 text-slate-300">{politico.nome_urna || '-'}</td>
+      <td className="p-3">
+        {politico.partido_sigla ? (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400">
+            {politico.partido_sigla}
+          </span>
+        ) : (
+          <span className="text-slate-500">-</span>
+        )}
+      </td>
+      <td className="p-3 text-slate-300">{politico.cargo_atual || '-'}</td>
+      <td className="p-3 text-slate-300">{politico.municipio || '-'}</td>
+      <td className="p-3 text-slate-300">{politico.ano_eleicao || '-'}</td>
+      <td className="p-3">
+        {politico.eleito === true ? (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-500/15 text-green-400">
+            Eleito
+          </span>
+        ) : politico.eleito === false ? (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-400">
+            Nao eleito
+          </span>
+        ) : (
+          <span className="text-slate-500">-</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ============================================
 // SHARED COMPONENTS
 // ============================================
 
@@ -646,11 +857,16 @@ function SortableHeader({
   currentColumn: string | null;
   direction: SortDirection;
   onSort: (column: string) => void;
-  color?: 'cyan' | 'orange' | 'green';
+  color?: 'cyan' | 'orange' | 'green' | 'blue';
 }) {
   const isActive = currentColumn === column;
-  const colorClass =
-    color === 'orange' ? 'text-orange-400' : color === 'green' ? 'text-green-400' : 'text-cyan-400';
+  const colorMap: Record<string, string> = {
+    cyan: 'text-cyan-400',
+    orange: 'text-orange-400',
+    green: 'text-green-400',
+    blue: 'text-blue-400',
+  };
+  const colorClass = colorMap[color] || 'text-cyan-400';
 
   return (
     <th

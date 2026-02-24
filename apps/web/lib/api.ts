@@ -770,6 +770,70 @@ export async function getNewsDetails(newsId: string): Promise<NewsDetailsRespons
 }
 
 // ============================================
+// POLITICIANS
+// ============================================
+
+export interface Politician {
+  id: number;
+  nome_completo: string;
+  nome_urna?: string;
+  sexo?: string;
+  ocupacao?: string;
+  grau_instrucao?: string;
+  partido_sigla?: string;
+  cargo_atual?: string;
+  municipio?: string;
+  codigo_ibge?: string;
+  ano_eleicao?: number;
+  eleito?: boolean;
+}
+
+export interface PoliticianListResponse {
+  success: boolean;
+  count: number;
+  total?: number;
+  politicians: Politician[];
+  error?: string;
+}
+
+export async function listPoliticians(params?: {
+  partido?: string;
+  cargo?: string;
+  municipio?: string;
+  ano_eleicao?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<PoliticianListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.partido) searchParams.append('partido', params.partido);
+  if (params?.cargo) searchParams.append('cargo', params.cargo);
+  if (params?.municipio) searchParams.append('municipio', params.municipio);
+  if (params?.ano_eleicao) searchParams.append('ano_eleicao', String(params.ano_eleicao));
+  searchParams.append('limit', String(params?.limit || 500));
+  searchParams.append('offset', String(params?.offset || 0));
+
+  const res = await fetch(`${API_BASE}/politicians/list?${searchParams}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'List politicians failed' }));
+    throw new Error(error.error || 'List politicians failed');
+  }
+
+  return res.json();
+}
+
+export async function searchPoliticians(nome: string): Promise<PoliticianListResponse> {
+  const res = await fetch(`${API_BASE}/politicians/search?nome=${encodeURIComponent(nome)}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Search politicians failed' }));
+    throw new Error(error.error || 'Search politicians failed');
+  }
+
+  return res.json();
+}
+
+// ============================================
 // UTILS
 // ============================================
 

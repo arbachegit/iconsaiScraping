@@ -23,6 +23,7 @@ import {
   EmpresasListingModal,
   PessoasListingModal,
   NoticiasListingModal,
+  PoliticosListingModal,
 } from '@/components/modals/listing-modal';
 import { StatsBadgeCard, StatsCounterLine } from '@/components/stats/stats-badge-card';
 
@@ -56,6 +57,7 @@ export default function DashboardPage() {
   const [empresasListingOpen, setEmpresasListingOpen] = useState(false);
   const [pessoasListingOpen, setPessoasListingOpen] = useState(false);
   const [noticiasListingOpen, setNoticiasListingOpen] = useState(false);
+  const [politicosListingOpen, setPoliticosListingOpen] = useState(false);
 
   // Selected values from picker modals
   const [selectedCnae, setSelectedCnae] = useState<string>('');
@@ -162,7 +164,7 @@ export default function DashboardPage() {
   }
 
   function openPoliticosFromCard() {
-    console.log('Atlas: Politicos module clicked');
+    setPoliticosListingOpen(true);
   }
 
   // Build stats data
@@ -396,6 +398,11 @@ export default function DashboardPage() {
       <NoticiasListingModal
         isOpen={noticiasListingOpen}
         onClose={() => setNoticiasListingOpen(false)}
+      />
+
+      <PoliticosListingModal
+        isOpen={politicosListingOpen}
+        onClose={() => setPoliticosListingOpen(false)}
       />
     </div>
   );

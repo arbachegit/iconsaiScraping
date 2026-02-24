@@ -326,7 +326,7 @@ export function NewsModal({ isOpen, onClose, onOpenListingModal }: NewsModalProp
                 </div>
               )}
 
-              {detailsQuery.data?.success && <NewsDetailsView news={detailsQuery.data.news} />}
+              {detailsQuery.data?.success && detailsQuery.data.news && <NewsDetailsView news={detailsQuery.data.news} />}
             </>
           )}
         </div>
