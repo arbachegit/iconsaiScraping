@@ -8,7 +8,7 @@ function getApiKey() {
 }
 
 function getModel() {
-  return process.env.getModel() || 'claude-sonnet-4-20250514';
+  return process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 }
 
 function getClient() {

@@ -12,6 +12,7 @@ interface StatsBadgeCardProps {
   icon: LucideIcon;
   label: string;
   total: number;
+  totalOntem: number;
   crescimento: number;
   dataReferencia: string;
   online: boolean;
@@ -19,6 +20,8 @@ interface StatsBadgeCardProps {
   color: 'red' | 'orange' | 'blue' | 'green' | 'purple';
   countdown: number;
   maxCountdown: number;
+  size?: 'default' | 'large';
+  isLoading?: boolean;
 }
 
 const colorConfig = {
@@ -71,52 +74,143 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
+interface SparklineDataPoint {
+  value: number;
+  label?: string;
+}
+
 function MiniSparkline({
   data,
   color,
-  width = 80,
-  height = 28,
+  labels,
 }: {
   data: number[];
   color: string;
-  width?: number;
-  height?: number;
+  labels?: string[];
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState({ width: 200, height: 60 });
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const obs = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) setDims({ width, height });
+    });
+    obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, []);
+
   if (!data.length) return null;
 
+  const { width, height } = dims;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
   const padding = 2;
 
-  const points = data
-    .map((val, i) => {
-      const x = padding + (i / (data.length - 1 || 1)) * (width - padding * 2);
-      const y = height - padding - ((val - min) / range) * (height - padding * 2);
-      return `${x},${y}`;
-    })
-    .join(' ');
+  const pointCoords = data.map((val, i) => ({
+    x: padding + (i / (data.length - 1 || 1)) * (width - padding * 2),
+    y: height - padding - ((val - min) / range) * (height - padding * 2),
+    value: val,
+  }));
 
-  const areaPath = `M ${padding},${height - padding} L ${points} L ${width - padding},${height - padding} Z`;
+  const polylinePoints = pointCoords.map((p) => `${p.x},${p.y}`).join(' ');
+  const areaPath = `M ${padding},${height - padding} L ${polylinePoints} L ${width - padding},${height - padding} Z`;
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    // Find closest data point
+    let closest = 0;
+    let closestDist = Infinity;
+    for (let i = 0; i < pointCoords.length; i++) {
+      const dist = Math.abs(pointCoords[i].x - mouseX);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = i;
+      }
+    }
+    setHoverIndex(closest);
+  };
+
+  const hoverPoint = hoverIndex !== null ? pointCoords[hoverIndex] : null;
+  const hoverGrowth = hoverIndex !== null && hoverIndex > 0
+    ? ((data[hoverIndex] - data[hoverIndex - 1]) / (data[hoverIndex - 1] || 1)) * 100
+    : null;
 
   return (
-    <svg width={width} height={height} className="overflow-visible">
-      <defs>
-        <linearGradient id={`gradient-${color}`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={areaPath} fill={`url(#gradient-${color})`} />
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <div ref={containerRef} className="w-full h-full relative">
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        className="absolute inset-0 cursor-crosshair"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIndex(null)}
+      >
+        <defs>
+          <linearGradient id={`gradient-${color}`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill={`url(#gradient-${color})`} />
+        <polyline
+          points={polylinePoints}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Hover vertical line + dot */}
+        {hoverPoint && (
+          <>
+            <line
+              x1={hoverPoint.x}
+              y1={0}
+              x2={hoverPoint.x}
+              y2={height}
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth="1"
+              strokeDasharray="3,3"
+            />
+            <circle
+              cx={hoverPoint.x}
+              cy={hoverPoint.y}
+              r={4}
+              fill={color}
+              stroke="#0a0e1a"
+              strokeWidth="2"
+            />
+          </>
+        )}
+      </svg>
+      {/* Tooltip */}
+      {hoverPoint && hoverIndex !== null && (
+        <div
+          className="absolute z-10 pointer-events-none bg-[#0f1629]/95 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs shadow-xl backdrop-blur-sm"
+          style={{
+            left: Math.min(hoverPoint.x, width - 100),
+            top: -4,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          {labels?.[hoverIndex] && (
+            <div className="text-slate-400 text-[10px] mb-0.5">{labels[hoverIndex]}</div>
+          )}
+          <div className="text-white font-bold tabular-nums">{hoverPoint.value.toLocaleString('pt-BR')}</div>
+          {hoverGrowth !== null && (
+            <div className={`text-[10px] tabular-nums ${hoverGrowth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {hoverGrowth >= 0 ? '+' : ''}{hoverGrowth.toFixed(2)}%
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -163,6 +257,7 @@ export function StatsBadgeCard({
   icon: Icon,
   label,
   total,
+  totalOntem,
   crescimento,
   dataReferencia,
   online,
@@ -170,9 +265,15 @@ export function StatsBadgeCard({
   color,
   countdown,
   maxCountdown,
+  size = 'default',
+  isLoading = false,
 }: StatsBadgeCardProps) {
   const config = colorConfig[color];
   const historyValues = history.map((h) => h.total);
+  const historyLabels = history.map((h) => {
+    const d = new Date(h.data);
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  });
   const countdownProgress = countdown / maxCountdown;
 
   const growthIcon =
@@ -186,44 +287,67 @@ export function StatsBadgeCard({
   const growthText =
     crescimento >= 0 ? `+${crescimento.toFixed(2)}%` : `${crescimento.toFixed(2)}%`;
 
+  const isLarge = size === 'large';
+
   return (
     <div
       className={`
-        flex flex-col rounded-xl border border-white/5 border-l-[5px] ${config.border}
-        ${config.bg} backdrop-blur-sm min-w-[220px] flex-1
+        flex flex-col rounded-xl border border-white/5 ${config.border}
+        ${config.bg} backdrop-blur-sm flex-1
         transition-all duration-300 hover:border-white/10 hover:shadow-lg
+        ${isLarge ? 'border-l-[6px] min-w-[275px] h-[220px]' : 'border-l-[5px] min-w-[220px] h-[180px]'}
       `}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Icon className={`w-5.5 h-5.5 flex-shrink-0 ${config.text}`} />
-          <span className="text-[17px] font-medium text-slate-300 truncate">{label}</span>
+      {/* Header - compact, flex-shrink-0 */}
+      <div className={`flex-shrink-0 flex items-center justify-between border-b border-white/5 ${isLarge ? 'px-5 py-2' : 'px-4 py-1.5'}`}>
+        <div className={`flex items-center min-w-0 ${isLarge ? 'gap-2.5' : 'gap-2'}`}>
+          <Icon className={`flex-shrink-0 ${config.text} ${isLarge ? 'w-6 h-6' : 'w-5 h-5'}`} />
+          <span className={`font-medium text-slate-300 truncate ${isLarge ? 'text-lg' : 'text-[15px]'}`}>{label}</span>
         </div>
-        <div className="flex items-center gap-2.5 flex-shrink-0">
-          <span className="text-[13px] text-slate-500">{formatDate(dataReferencia)}</span>
-          <div className="flex items-center gap-2">
+        <div className={`flex items-center flex-shrink-0 ${isLarge ? 'gap-2.5' : 'gap-2'}`}>
+          <span className={`text-slate-500 ${isLarge ? 'text-[13px]' : 'text-[11px]'}`}>{formatDate(dataReferencia)}</span>
+          <div className="flex items-center gap-1.5">
             <div
-              className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-green-400 animate-pulse' : 'bg-slate-500'}`}
+              className={`rounded-full ${online ? 'bg-green-400 animate-pulse' : 'bg-slate-500'} ${isLarge ? 'w-2.5 h-2.5' : 'w-2 h-2'}`}
             />
-            <CountdownRing progress={countdownProgress} color={config.line} size={22} />
+            {isLoading ? (
+              <svg className="animate-spin" width={isLarge ? 22 : 18} height={isLarge ? 22 : 18} viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="rgba(255,255,255,0.1)" strokeWidth="2" />
+                <path d="M10 2 A8 8 0 0 1 18 10" stroke={config.line} strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <CountdownRing progress={countdownProgress} color={config.line} size={isLarge ? 22 : 18} />
+            )}
           </div>
         </div>
       </div>
 
-      {/* Body - Chart */}
-      <div className="flex items-center justify-center px-3 py-2.5 min-h-[50px]">
-        <MiniSparkline data={historyValues} color={config.line} width={156} height={44} />
+      {/* Body - Chart takes all remaining space (~90% of card) */}
+      <div className="flex-1 min-h-0">
+        <MiniSparkline
+          data={historyValues}
+          color={config.line}
+          labels={historyLabels}
+        />
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-t border-white/5">
-        <span className="text-lg font-bold text-white tabular-nums">
-          {formatNumber(total)}
-        </span>
-        <div className={`flex items-center gap-1 text-sm ${growthColor}`}>
-          {React.createElement(growthIcon, { className: 'w-4 h-4' })}
-          <span className="tabular-nums">{growthText}</span>
+      {/* Footer - compact, 3 equal sections */}
+      <div className={`flex-shrink-0 grid grid-cols-3 border-t border-white/5 ${isLarge ? 'py-1.5' : 'py-1'}`}>
+        <div className={`flex items-center justify-center ${isLarge ? 'gap-1 text-xs' : 'gap-0.5 text-[10px]'}`}>
+          <div className={`flex items-center ${growthColor} ${isLarge ? 'gap-1' : 'gap-0.5'}`}>
+            {React.createElement(growthIcon, { className: isLarge ? 'w-3.5 h-3.5' : 'w-3 h-3' })}
+            <span className="tabular-nums">{growthText}</span>
+          </div>
+        </div>
+        <div className={`flex items-center justify-center border-x border-white/10 ${isLarge ? 'gap-1 text-xs' : 'gap-0.5 text-[10px]'}`}>
+          <span className="text-slate-500">Total:</span>
+          <span className="text-white font-semibold tabular-nums">{formatNumber(total)}</span>
+        </div>
+        <div className={`flex items-center justify-center ${isLarge ? 'gap-1 text-xs' : 'gap-0.5 text-[10px]'}`}>
+          <span className="text-slate-500">Diario:</span>
+          <span className={`font-semibold tabular-nums ${total - totalOntem >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {total - totalOntem >= 0 ? '+' : ''}{formatNumber(Math.abs(total - totalOntem))}
+          </span>
         </div>
       </div>
     </div>

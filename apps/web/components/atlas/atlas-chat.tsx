@@ -144,22 +144,48 @@ export function AtlasChat() {
 
   return (
     <>
-      {/* FAB Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          'fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300',
-          'bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500',
-          'hover:scale-110 hover:shadow-cyan-500/30 hover:shadow-xl',
-          isOpen && 'rotate-90'
+      {/* FAB Button with Radar + Beacon */}
+      <div className="fixed bottom-6 right-6 z-50">
+        {/* Radar pulse rings (only when closed) */}
+        {!isOpen && (
+          <>
+            <span
+              className="absolute inset-0 rounded-full bg-cyan-500/20"
+              style={{
+                animation: 'atlas-radar 3s ease-out infinite',
+              }}
+            />
+            <span
+              className="absolute inset-0 rounded-full bg-cyan-500/15"
+              style={{
+                animation: 'atlas-radar 3s ease-out 1s infinite',
+              }}
+            />
+          </>
         )}
-      >
-        {isOpen ? (
-          <X className="h-6 w-6 text-white" />
-        ) : (
-          <Sparkles className="h-6 w-6 text-white" />
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={cn(
+            'relative flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300',
+            'bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500',
+            'hover:scale-110 hover:shadow-cyan-500/30 hover:shadow-xl',
+            isOpen && 'rotate-90'
+          )}
+        >
+          {isOpen ? (
+            <X className="h-6 w-6 text-white" />
+          ) : (
+            <Sparkles className="h-6 w-6 text-white" />
+          )}
+        </button>
+        {/* Red beacon dot - tangent to top-right of button */}
+        {!isOpen && (
+          <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5">
+            <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
+            <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-red-500 border-2 border-[#0a0e1a]" />
+          </span>
         )}
-      </button>
+      </div>
 
       {/* Chat Window */}
       <div

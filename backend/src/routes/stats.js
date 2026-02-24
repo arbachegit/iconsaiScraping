@@ -18,18 +18,18 @@ const brasilDataHub = process.env.BRASIL_DATA_HUB_URL && process.env.BRASIL_DATA
  */
 router.get('/', async (req, res) => {
   try {
-    // Local Supabase counts
+    // Local Supabase counts - use 'estimated' for large tables to avoid timeout
     const localPromises = [
-      supabase.from('dim_empresas').select('id', { count: 'exact', head: true }),
-      supabase.from('fato_pessoas').select('id', { count: 'exact', head: true }),
-      supabase.from('fato_noticias').select('id', { count: 'exact', head: true }),
+      supabase.from('dim_empresas').select('id', { count: 'estimated', head: true }),
+      supabase.from('fato_pessoas').select('id', { count: 'estimated', head: true }),
+      supabase.from('fato_noticias').select('id', { count: 'estimated', head: true }),
     ];
 
-    // Brasil Data Hub counts (if configured)
+    // Brasil Data Hub counts (if configured) - use 'estimated' for large tables
     const brasilDataHubPromises = brasilDataHub
       ? [
-          brasilDataHub.from('dim_politicos').select('id', { count: 'exact', head: true }),
-          brasilDataHub.from('fato_politicos_mandatos').select('id', { count: 'exact', head: true }),
+          brasilDataHub.from('dim_politicos').select('id', { count: 'estimated', head: true }),
+          brasilDataHub.from('fato_politicos_mandatos').select('id', { count: 'estimated', head: true }),
         ]
       : [Promise.resolve({ count: 0 }), Promise.resolve({ count: 0 })];
 

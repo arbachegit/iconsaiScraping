@@ -3,7 +3,7 @@ import logger from '../utils/logger.js';
 const PERPLEXITY_BASE_URL = 'https://api.perplexity.ai';
 
 function getApiKey() {
-  return process.env.getApiKey();
+  return process.env.PERPLEXITY_API_KEY;
 }
 
 // Trusted sources for news search

@@ -258,21 +258,13 @@ export async function findCompanyByCnpj(cnpj) {
  * @param {Object} filters - Optional filters: nome, cidade, segmento, regime
  */
 export async function listCompanies(filters = {}) {
-  const { nome, cidade, segmento, regime } = filters;
+  const { nome, cidade, limit = 100 } = filters;
 
-  // Base query with regime join
+  // Simple query without joins or order - ALWAYS apply limit to avoid timeout on large tables
   let query = supabase
     .from('dim_empresas')
-    .select(`
-      *,
-      fato_regime_tributario (
-        regime_tributario,
-        cnae_principal,
-        cnae_descricao,
-        ativo
-      )
-    `)
-    .order('created_at', { ascending: false });
+    .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral')
+    .limit(limit);
 
   // Apply filters
   if (nome) {
@@ -287,35 +279,7 @@ export async function listCompanies(filters = {}) {
 
   if (error) throw error;
 
-  // Process results: flatten regime data and filter by segmento/regime in JS
-  // (Supabase doesn't support filtering on nested fields easily)
-  let results = (data || []).map(empresa => {
-    const regimeAtivo = (empresa.fato_regime_tributario || []).find(r => r.ativo) || empresa.fato_regime_tributario?.[0];
-    return {
-      ...empresa,
-      regime_tributario: regimeAtivo?.regime_tributario || null,
-      cnae_principal: regimeAtivo?.cnae_principal || null,
-      cnae_descricao: regimeAtivo?.cnae_descricao || null,
-      fato_regime_tributario: undefined
-    };
-  });
-
-  // Filter by segmento (CNAE) in JS
-  if (segmento) {
-    const segmentoLower = segmento.toLowerCase();
-    results = results.filter(e =>
-      (e.cnae_principal || '').toLowerCase().includes(segmentoLower) ||
-      (e.cnae_descricao || '').toLowerCase().includes(segmentoLower)
-    );
-  }
-
-  // Filter by regime in JS
-  if (regime) {
-    const regimeLower = regime.toLowerCase();
-    results = results.filter(e =>
-      (e.regime_tributario || '').toLowerCase().includes(regimeLower)
-    );
-  }
+  const results = data || [];
 
   return results;
 }

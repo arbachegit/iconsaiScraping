@@ -645,31 +645,25 @@ async def get_current_stats():
                 settings.brasil_data_hub_url, settings.brasil_data_hub_key
             )
 
-        # Contagens atuais
-        empresas_result = supabase.from_("dim_empresas").select(
-            "id", count="exact", head=True
-        ).execute()
-        pessoas_result = supabase.from_("fato_pessoas").select(
-            "id", count="exact", head=True
-        ).execute()
-        noticias_result = supabase.from_("fato_noticias").select(
-            "id", count="exact", head=True
-        ).execute()
+        # Contagens atuais - use estimated to avoid timeout on large tables
+        # Wrap each in try/except to handle empty/missing tables gracefully
+        def safe_count(client, table):
+            try:
+                r = client.from_(table).select("id", count="estimated", head=True).execute()
+                return r.count or 0
+            except Exception:
+                return 0
+
+        empresas_count = safe_count(supabase, "dim_empresas")
+        pessoas_count = safe_count(supabase, "fato_pessoas")
+        noticias_count = safe_count(supabase, "fato_noticias")
 
         # Politicos e Mandatos do Brasil Data Hub
         politicos_count = 0
         mandatos_count = 0
         if brasil_data_hub:
-            politicos_result = brasil_data_hub.from_("dim_politicos").select(
-                "id", count="exact", head=True
-            ).execute()
-            politicos_count = politicos_result.count or 0
-
-            # Mandatos
-            mandatos_result = brasil_data_hub.from_("fato_mandatos").select(
-                "id", count="exact", head=True
-            ).execute()
-            mandatos_count = mandatos_result.count or 0
+            politicos_count = safe_count(brasil_data_hub, "dim_politicos")
+            mandatos_count = safe_count(brasil_data_hub, "fato_politicos_mandatos")
 
         # Buscar dados de ontem para calcular crescimento
         from datetime import date, timedelta
@@ -689,11 +683,11 @@ async def get_current_stats():
         # Montar resposta com crescimento
         stats = []
         categorias = [
-            ("empresas", empresas_result.count or 0),
-            ("pessoas", pessoas_result.count or 0),
+            ("empresas", empresas_count),
+            ("pessoas", pessoas_count),
             ("politicos", politicos_count),
             ("mandatos", mandatos_count),
-            ("noticias", noticias_result.count or 0),
+            ("noticias", noticias_count),
         ]
 
         for cat, total in categorias:
@@ -790,37 +784,31 @@ async def create_stats_snapshot():
 
         hoje = date.today()
 
-        # Contagens atuais
-        empresas = supabase.from_("dim_empresas").select(
-            "id", count="exact", head=True
-        ).execute()
-        pessoas = supabase.from_("fato_pessoas").select(
-            "id", count="exact", head=True
-        ).execute()
-        noticias = supabase.from_("fato_noticias").select(
-            "id", count="exact", head=True
-        ).execute()
+        # Contagens atuais - use safe_count to handle empty/missing tables
+        def safe_count(client, table):
+            try:
+                r = client.from_(table).select("id", count="estimated", head=True).execute()
+                return r.count or 0
+            except Exception:
+                return 0
+
+        empresas_count = safe_count(supabase, "dim_empresas")
+        pessoas_count = safe_count(supabase, "fato_pessoas")
+        noticias_count = safe_count(supabase, "fato_noticias")
 
         politicos_count = 0
         mandatos_count = 0
         if brasil_data_hub:
-            politicos = brasil_data_hub.from_("dim_politicos").select(
-                "id", count="exact", head=True
-            ).execute()
-            politicos_count = politicos.count or 0
-
-            mandatos = brasil_data_hub.from_("fato_mandatos").select(
-                "id", count="exact", head=True
-            ).execute()
-            mandatos_count = mandatos.count or 0
+            politicos_count = safe_count(brasil_data_hub, "dim_politicos")
+            mandatos_count = safe_count(brasil_data_hub, "fato_politicos_mandatos")
 
         # Upsert para cada categoria
         snapshots = [
-            {"data": hoje.isoformat(), "categoria": "empresas", "total": empresas.count or 0},
-            {"data": hoje.isoformat(), "categoria": "pessoas", "total": pessoas.count or 0},
+            {"data": hoje.isoformat(), "categoria": "empresas", "total": empresas_count},
+            {"data": hoje.isoformat(), "categoria": "pessoas", "total": pessoas_count},
             {"data": hoje.isoformat(), "categoria": "politicos", "total": politicos_count},
             {"data": hoje.isoformat(), "categoria": "mandatos", "total": mandatos_count},
-            {"data": hoje.isoformat(), "categoria": "noticias", "total": noticias.count or 0},
+            {"data": hoje.isoformat(), "categoria": "noticias", "total": noticias_count},
         ]
 
         for snap in snapshots:

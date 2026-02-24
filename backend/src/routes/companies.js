@@ -92,12 +92,33 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
       });
     }
 
-    // Enrich candidates with city from BrasilAPI (limit to 10 for performance)
+    // Also search internal database (dim_empresas) - non-blocking
+    let internalResults = [];
+    try {
+      internalResults = await listCompanies({ nome: searchName, cidade: searchCity, limit: 10 });
+    } catch (err) {
+      console.warn('[SEARCH] Internal DB search failed:', err.message);
+    }
+    const internalCnpjs = new Set(internalResults.map(r => r.cnpj));
+
+    // Add internal results as candidates (marked as 'interno')
+    const internalCandidates = internalResults.map(r => ({
+      cnpj: r.cnpj,
+      cnpj_formatted: `${r.cnpj.slice(0,2)}.${r.cnpj.slice(2,5)}.${r.cnpj.slice(5,8)}/${r.cnpj.slice(8,12)}-${r.cnpj.slice(12)}`,
+      razao_social: r.razao_social,
+      nome_fantasia: r.nome_fantasia,
+      localizacao: r.cidade && r.estado ? `${r.cidade} - ${r.estado}` : null,
+      fonte: 'interno'
+    }));
+
+    // Enrich external candidates with city from BrasilAPI (limit to 10 for performance)
     const limitedCandidates = candidates.slice(0, 10);
     console.log(`[SEARCH] Enriquecendo ${limitedCandidates.length} candidatos com cidade da Receita Federal`);
 
     const enrichedCandidates = await Promise.all(
       limitedCandidates.map(async (c) => {
+        // Check if this CNPJ is already in our database
+        const isInternal = internalCnpjs.has(c.cnpj);
         try {
           const brasilData = await brasilapi.getCompanyByCnpj(c.cnpj);
           return {
@@ -105,7 +126,8 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
             cnpj_formatted: c.cnpj_formatted,
             razao_social: brasilData?.razao_social || c.razao_social,
             nome_fantasia: brasilData?.nome_fantasia || null,
-            localizacao: brasilData ? `${brasilData.cidade} - ${brasilData.estado}` : c.localizacao
+            localizacao: brasilData ? `${brasilData.cidade} - ${brasilData.estado}` : c.localizacao,
+            fonte: isInternal ? 'interno' : 'externo'
           };
         } catch (err) {
           console.warn(`[SEARCH] Erro ao buscar cidade para ${c.cnpj}:`, err.message);
@@ -114,27 +136,43 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
             cnpj_formatted: c.cnpj_formatted,
             razao_social: c.razao_social,
             nome_fantasia: null,
-            localizacao: c.localizacao
+            localizacao: c.localizacao,
+            fonte: isInternal ? 'interno' : 'externo'
           };
         }
       })
     );
 
-    if (enrichedCandidates.length === 1) {
-      // Single result - redirect to details
+    // Merge: internal first (dedup by CNPJ), then external
+    const seenFinal = new Set();
+    const allCandidates = [];
+    for (const c of internalCandidates) {
+      if (!seenFinal.has(c.cnpj)) {
+        seenFinal.add(c.cnpj);
+        allCandidates.push(c);
+      }
+    }
+    for (const c of enrichedCandidates) {
+      if (!seenFinal.has(c.cnpj)) {
+        seenFinal.add(c.cnpj);
+        allCandidates.push(c);
+      }
+    }
+
+    if (allCandidates.length === 1) {
       return res.json({
         found: true,
         single_match: true,
         message: 'Empresa encontrada. Selecione para ver detalhes.',
-        company: enrichedCandidates[0]
+        company: allCandidates[0]
       });
     }
 
     return res.json({
       found: true,
       single_match: false,
-      message: `${enrichedCandidates.length} empresas encontradas. Selecione a correta.`,
-      candidates: enrichedCandidates
+      message: `${allCandidates.length} empresas encontradas. Selecione a correta.`,
+      candidates: allCandidates
     });
 
   } catch (error) {
@@ -576,18 +614,15 @@ router.get('/list', async (req, res) => {
   try {
     const { nome, cidade, segmento, regime, limit } = req.query;
 
-    const filters = {};
+    const filters = {
+      limit: limit && !isNaN(parseInt(limit)) ? parseInt(limit) : 100
+    };
     if (nome) filters.nome = nome;
     if (cidade) filters.cidade = cidade;
     if (segmento) filters.segmento = segmento;
     if (regime) filters.regime = regime;
 
-    let companies = await listCompanies(filters);
-
-    // Apply limit if specified
-    if (limit && !isNaN(parseInt(limit))) {
-      companies = companies.slice(0, parseInt(limit));
-    }
+    const companies = await listCompanies(filters);
 
     return res.json({
       success: true,

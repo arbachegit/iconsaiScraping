@@ -239,6 +239,7 @@ export interface CompanyCandidate {
   razao_social: string;
   nome_fantasia?: string;
   localizacao?: string;
+  fonte?: 'interno' | 'externo';
 }
 
 export interface CompanySearchResponse {

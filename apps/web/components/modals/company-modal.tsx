@@ -340,9 +340,21 @@ export function CompanyModal({
                       className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] cursor-pointer hover:border-cyan-500/40 hover:bg-cyan-500/5 transition-colors"
                     >
                       <div className="flex justify-between items-start gap-3 mb-1">
-                        <span className="text-slate-200 font-semibold text-sm">
-                          {c.razao_social || 'Sem nome'}
-                        </span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-slate-200 font-semibold text-sm truncate">
+                            {c.razao_social || 'Sem nome'}
+                          </span>
+                          <span
+                            className={cn(
+                              'flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded',
+                              c.fonte === 'interno'
+                                ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                                : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                            )}
+                          >
+                            {c.fonte === 'interno' ? 'DB Interno' : 'DB Externo'}
+                          </span>
+                        </div>
                         {c.localizacao && (
                           <span className="text-xs text-slate-400 bg-slate-400/10 px-2 py-1 rounded border border-slate-400/20 whitespace-nowrap">
                             {c.localizacao}

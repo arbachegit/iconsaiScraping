@@ -6,7 +6,7 @@
 const CNPJA_BASE_URL = 'https://api.cnpja.com';
 
 function getApiKey() {
-  return process.env.getApiKey();
+  return process.env.CNPJA_API_KEY;
 }
 
 /**

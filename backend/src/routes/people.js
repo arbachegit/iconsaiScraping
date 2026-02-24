@@ -320,7 +320,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
     }
 
     // Not found
-    logger.info('Person not found', { cpf: `***${cpf.slice(-4)}` });
+    logger.info('Person not found', { cpf: hasCpf ? `***${cpf.slice(-4)}` : null, nome: hasNome ? nome : null });
     return res.json({
       success: true,
       source: 'none',

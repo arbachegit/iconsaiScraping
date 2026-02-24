@@ -364,17 +364,19 @@ function PersonDetailsView({
 
       {/* Source Badge */}
       <div className="flex flex-wrap gap-2">
-        <span className={cn(
-          'px-2 py-1 text-xs rounded',
-          source === 'database' ? 'bg-green-500/15 text-green-400' :
-          source === 'perplexity' ? 'bg-purple-500/15 text-purple-400' :
-          'bg-slate-500/15 text-slate-400'
-        )}>
-          Fonte: {source === 'database' ? 'Banco de dados' : source === 'perplexity' ? 'Perplexity AI' : 'Desconhecida'}
+        <span
+          className={cn(
+            'px-1.5 py-0.5 text-[10px] font-bold rounded',
+            source === 'database'
+              ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+              : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+          )}
+        >
+          {source === 'database' ? 'DB Interno' : 'DB Externo'}
         </span>
         {apolloEnriched && (
-          <span className="px-2 py-1 text-xs rounded bg-blue-500/15 text-blue-400">
-            Enriquecido via LinkedIn
+          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-500/15 text-purple-400 border border-purple-500/30">
+            LinkedIn
           </span>
         )}
       </div>

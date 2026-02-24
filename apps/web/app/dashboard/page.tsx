@@ -26,8 +26,8 @@ import {
 } from '@/components/modals/listing-modal';
 import { StatsBadgeCard, StatsCounterLine } from '@/components/stats/stats-badge-card';
 
-const STATS_REFRESH_INTERVAL = 180000; // 3 minutes
-const COUNTDOWN_MAX = 180; // 3 minutes in seconds
+const STATS_REFRESH_INTERVAL = 60000; // 1 minute
+const COUNTDOWN_MAX = 60; // 1 minute in seconds
 
 const categoryConfig = {
   empresas: { icon: Building2, color: 'red' as const, label: 'Empresas' },
@@ -174,6 +174,7 @@ export default function DashboardPage() {
   const historyMap = historyQuery.data?.historico || {};
   const dataReferencia = statsQuery.data?.data_referencia || new Date().toISOString();
   const isOnline = statsQuery.data?.online ?? false;
+  const isStatsLoading = statsQuery.isFetching || historyQuery.isFetching;
 
   // Callback when pie chart completes a cycle
   const handleRefreshComplete = useCallback(() => {
@@ -248,18 +249,20 @@ export default function DashboardPage() {
           {/* Stats Badges */}
           <div className="mb-6">
             <h2 className="text-[25px] font-semibold text-slate-400 mb-3">Estatisticas em Tempo Real</h2>
-            <div className="flex flex-wrap gap-3">
-              {(Object.keys(categoryConfig) as CategoryKey[]).map((cat) => {
+
+            {/* Row 1: Empresas + Pessoas (large) */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              {(['empresas', 'pessoas'] as CategoryKey[]).map((cat) => {
                 const config = categoryConfig[cat];
                 const stat = statsMap.get(cat);
                 const history = historyMap[cat] || [];
-
                 return (
                   <StatsBadgeCard
                     key={cat}
                     icon={config.icon}
                     label={config.label}
                     total={stat?.total || 0}
+                    totalOntem={stat?.total_ontem || 0}
                     crescimento={stat?.crescimento_percentual || 0}
                     dataReferencia={dataReferencia}
                     online={isOnline}
@@ -267,6 +270,35 @@ export default function DashboardPage() {
                     color={config.color}
                     countdown={countdown}
                     maxCountdown={COUNTDOWN_MAX}
+                    size="large"
+                    isLoading={isStatsLoading}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Row 2: Politicos + Mandatos (large) */}
+            <div className="grid grid-cols-2 gap-4">
+              {(['politicos', 'mandatos'] as CategoryKey[]).map((cat) => {
+                const config = categoryConfig[cat];
+                const stat = statsMap.get(cat);
+                const history = historyMap[cat] || [];
+                return (
+                  <StatsBadgeCard
+                    key={cat}
+                    icon={config.icon}
+                    label={config.label}
+                    total={stat?.total || 0}
+                    totalOntem={stat?.total_ontem || 0}
+                    crescimento={stat?.crescimento_percentual || 0}
+                    dataReferencia={dataReferencia}
+                    online={isOnline}
+                    history={history}
+                    color={config.color}
+                    countdown={countdown}
+                    maxCountdown={COUNTDOWN_MAX}
+                    size="large"
+                    isLoading={isStatsLoading}
                   />
                 );
               })}
@@ -277,7 +309,6 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-[25px] font-semibold text-slate-400 mb-3">Modulos de Inteligencia</h2>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-              {/* Empresas */}
               <CompactModuleCard
                 icon={Building2}
                 iconColor="red"
@@ -285,8 +316,6 @@ export default function DashboardPage() {
                 description="CNPJ via BrasilAPI + Serper"
                 onClick={() => setCompanyModalOpen(true)}
               />
-
-              {/* Pessoas */}
               <CompactModuleCard
                 icon={Users}
                 iconColor="orange"
@@ -294,8 +323,6 @@ export default function DashboardPage() {
                 description="Perfis profissionais"
                 onClick={() => setPeopleModalOpen(true)}
               />
-
-              {/* Politicos */}
               <CompactModuleCard
                 icon={Flag}
                 iconColor="blue"
@@ -304,8 +331,6 @@ export default function DashboardPage() {
                 badge="Ativo"
                 onClick={openPoliticosFromCard}
               />
-
-              {/* Noticias */}
               <CompactModuleCard
                 icon={Newspaper}
                 iconColor="green"
