@@ -644,42 +644,39 @@ interface PoliticosListingModalProps {
 export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModalProps) {
   const [nome, setNome] = useState('');
   const [partido, setPartido] = useState('');
-  const [searchTriggered, setSearchTriggered] = useState(false);
+  const [searchKey, setSearchKey] = useState('|');
   const [sortColumn, setSortColumn] = useState<string>('nome_completo');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-
-  const searchKey = `${nome.trim()}|${partido.trim().toUpperCase()}`;
 
   const query = useQuery({
     queryKey: ['politicos', 'search', searchKey],
     queryFn: async () => {
-      const trimmedNome = nome.trim();
-      const trimmedPartido = partido.trim().toUpperCase();
+      const [searchNome, searchPartido] = searchKey.split('|');
 
-      if (trimmedNome && trimmedNome.length >= 2) {
-        const result = await searchPoliticians(trimmedNome);
-        if (trimmedPartido) {
+      if (searchNome && searchNome.length >= 2) {
+        const result = await searchPoliticians(searchNome);
+        if (searchPartido) {
           return {
             ...result,
             politicians: result.politicians.filter(
-              (p) => (p.partido_sigla || '').toUpperCase() === trimmedPartido
+              (p) => (p.partido_sigla || '').toUpperCase() === searchPartido
             ),
           };
         }
         return result;
       }
 
-      if (trimmedPartido) {
-        return listPoliticians({ partido: trimmedPartido, limit: 100 });
+      if (searchPartido) {
+        return listPoliticians({ partido: searchPartido, limit: 100 });
       }
 
       return listPoliticians({ limit: 50 });
     },
-    enabled: isOpen && searchTriggered,
+    enabled: isOpen,
   });
 
   function handleSearch() {
-    setSearchTriggered(true);
+    setSearchKey(`${nome.trim()}|${partido.trim().toUpperCase()}`);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -724,7 +721,7 @@ export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModal
           <h2 className="text-lg font-semibold text-white flex items-center gap-3">
             <span className="w-1 h-5 bg-gradient-to-b from-blue-400 to-blue-600 rounded" />
             Politicos
-            {searchTriggered && !query.isLoading && (
+            {!query.isLoading && (
               <span className="bg-blue-500/15 text-blue-400 px-2.5 py-1 rounded text-sm">
                 {sortedData.length}
               </span>
@@ -764,12 +761,7 @@ export function PoliticosListingModal({ isOpen, onClose }: PoliticosListingModal
 
         {/* Table */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          {!searchTriggered ? (
-            <div className="text-center py-16 text-slate-500">
-              <p className="text-lg mb-2">Digite um nome e/ou partido para buscar</p>
-              <p className="text-sm text-slate-600">Pressione Enter ou clique em Buscar</p>
-            </div>
-          ) : query.isLoading ? (
+          {query.isLoading ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <Loader2 className="h-10 w-10 animate-spin text-blue-400 mb-4" />
               <span>Buscando politicos...</span>
