@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
+const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3001';
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit') || '30';
 
     const response = await fetch(
-      `${PYTHON_API_URL}/api/stats/history?limit=${limit}`,
+      `${NODEJS_API_URL}/stats/history?limit=${limit}`,
       {
         headers: {
           'Content-Type': 'application/json',

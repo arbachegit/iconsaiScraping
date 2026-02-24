@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 
-const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
+const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3001';
 
 export async function GET() {
   try {
-    const response = await fetch(`${PYTHON_API_URL}/api/stats/current`, {
+    const response = await fetch(`${NODEJS_API_URL}/stats/current`, {
       headers: {
         'Content-Type': 'application/json',
       },
