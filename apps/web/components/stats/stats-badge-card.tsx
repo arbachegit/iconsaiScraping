@@ -83,17 +83,23 @@ function formatShortDate(dateStr: string): string {
 }
 
 /**
- * Compute nice Y-axis max: ceil to a "round" number with 10% headroom.
+ * Compute nice Y-axis bounds for cumulative charts.
+ * Returns {yMin, yMax} with some headroom.
  */
-function niceMax(maxValue: number): number {
-  if (maxValue <= 0) return 10;
-  const withMargin = Math.ceil(maxValue * 1.1);
-  if (withMargin <= 10) return 10;
-  if (withMargin <= 50) return Math.ceil(withMargin / 5) * 5;
-  if (withMargin <= 100) return Math.ceil(withMargin / 10) * 10;
-  if (withMargin <= 500) return Math.ceil(withMargin / 50) * 50;
-  if (withMargin <= 1000) return Math.ceil(withMargin / 100) * 100;
-  return Math.ceil(withMargin / 500) * 500;
+function niceRange(minValue: number, maxValue: number): { yMin: number; yMax: number } {
+  if (maxValue <= 0 && minValue <= 0) return { yMin: 0, yMax: 10 };
+  if (minValue === maxValue) {
+    // Flat line — show ±5% range
+    const margin = Math.max(Math.abs(maxValue * 0.05), 10);
+    return { yMin: Math.max(0, maxValue - margin), yMax: maxValue + margin };
+  }
+
+  const range = maxValue - minValue;
+  const padding = range * 0.1; // 10% padding
+  const yMin = Math.max(0, minValue - padding);
+  const yMax = maxValue + padding;
+
+  return { yMin, yMax };
 }
 
 // ============================================================
@@ -129,36 +135,40 @@ function MiniSparkline({
 
   const { width, height } = dims;
 
-  // Padding for axis labels
-  const padLeft = 32;   // space for Y-axis ticks
+  // Padding for axis labels (Y-axis labels can be wide for "35.2M")
+  const padLeft = 42;
   const padRight = 6;
-  const padTop = 4;
-  const padBottom = 16;  // space for X-axis ticks
+  const padTop = 6;
+  const padBottom = 18;
 
   const chartW = width - padLeft - padRight;
   const chartH = height - padTop - padBottom;
 
   if (chartW <= 0 || chartH <= 0) return null;
 
-  // Y-axis: min=0, max=niceMax
+  // Cumulative chart: Y-axis ranges from min(data) to max(data), NOT from 0
+  const rawMin = Math.min(...data);
   const rawMax = Math.max(...data);
-  const yMax = niceMax(rawMax);
+  const { yMin, yMax } = niceRange(rawMin, rawMax);
+  const yRange = yMax - yMin;
 
-  // X positions: evenly spaced (data is already gap-filled, every day present)
+  // X positions: evenly spaced
   const pointCoords = data.map((val, i) => {
     const xFraction = data.length > 1 ? i / (data.length - 1) : 0.5;
+    const yFraction = yRange > 0 ? (val - yMin) / yRange : 0.5;
     return {
       x: padLeft + xFraction * chartW,
-      y: padTop + chartH - (val / yMax) * chartH,
+      y: padTop + chartH - yFraction * chartH,
       value: val,
     };
   });
 
-  // Polyline points (single continuous line — no gap segmentation)
+  // Polyline points
   const linePoints = pointCoords.map((p) => `${p.x},${p.y}`).join(' ');
 
-  // Area fill path
-  const areaPath = `M ${padLeft},${padTop + chartH} L ${linePoints} L ${padLeft + chartW},${padTop + chartH} Z`;
+  // Area fill path (from baseline to line)
+  const baseline = padTop + chartH;
+  const areaPath = `M ${padLeft},${baseline} L ${linePoints} L ${padLeft + chartW},${baseline} Z`;
 
   // X-axis ticks: first, middle, last
   const xTicks: Array<{ x: number; label: string }> = [];
@@ -174,19 +184,25 @@ function MiniSparkline({
     }
   }
 
-  // Y-axis ticks: 0 and yMax
+  // Y-axis ticks: min and max
   const yTicks = [
-    { y: padTop + chartH, label: '0' },
-    { y: padTop, label: formatNumber(yMax) },
+    { y: padTop + chartH, label: formatNumber(Math.round(yMin)) },
+    { y: padTop, label: formatNumber(Math.round(yMax)) },
   ];
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+  // Mid gridline
+  const midY = padTop + chartH / 2;
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
+    // Scale mouseX to SVG coordinates
+    const scaleX = width / rect.width;
+    const svgX = mouseX * scaleX;
     let closest = 0;
     let closestDist = Infinity;
     for (let i = 0; i < pointCoords.length; i++) {
-      const dist = Math.abs(pointCoords[i].x - mouseX);
+      const dist = Math.abs(pointCoords[i].x - svgX);
       if (dist < closestDist) {
         closestDist = dist;
         closest = i;
@@ -198,45 +214,55 @@ function MiniSparkline({
   const hoverPoint = hoverIndex !== null ? pointCoords[hoverIndex] : null;
 
   return (
-    <div ref={containerRef} className="w-full h-full relative">
+    <div
+      ref={containerRef}
+      className="w-full h-full relative cursor-crosshair"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setHoverIndex(null)}
+    >
       <svg
         width="100%"
         height="100%"
         viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        className="absolute inset-0 cursor-crosshair"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverIndex(null)}
+        preserveAspectRatio="xMidYMid meet"
+        className="absolute inset-0"
       >
         <defs>
           <linearGradient id={`gradient-${color}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={color} stopOpacity="0" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
         {/* Chart area background */}
         <rect x={padLeft} y={padTop} width={chartW} height={chartH} fill="rgba(255,255,255,0.01)" />
 
-        {/* Baseline (y=0) */}
+        {/* Bottom gridline */}
         <line
           x1={padLeft} y1={padTop + chartH}
           x2={padLeft + chartW} y2={padTop + chartH}
           stroke="rgba(255,255,255,0.08)" strokeWidth="1"
         />
 
-        {/* Top gridline (y=max) */}
+        {/* Mid gridline */}
+        <line
+          x1={padLeft} y1={midY}
+          x2={padLeft + chartW} y2={midY}
+          stroke="rgba(255,255,255,0.04)" strokeWidth="1"
+          strokeDasharray="3,5"
+        />
+
+        {/* Top gridline */}
         <line
           x1={padLeft} y1={padTop}
           x2={padLeft + chartW} y2={padTop}
-          stroke="rgba(255,255,255,0.05)" strokeWidth="1"
-          strokeDasharray="3,4"
+          stroke="rgba(255,255,255,0.08)" strokeWidth="1"
         />
 
         {/* Area fill */}
         <path d={areaPath} fill={`url(#gradient-${color})`} />
 
-        {/* Line — single continuous polyline, no gap detection */}
+        {/* Line — single continuous polyline */}
         <polyline
           points={linePoints}
           fill="none"
@@ -251,11 +277,11 @@ function MiniSparkline({
           <text
             key={`y-${i}`}
             x={padLeft - 4}
-            y={tick.y + 3}
+            y={tick.y + 4}
             textAnchor="end"
-            fill="rgba(255,255,255,0.35)"
-            fontSize="8"
-            fontFamily="monospace"
+            fill="rgba(255,255,255,0.55)"
+            fontSize="9"
+            fontFamily="ui-monospace, monospace"
           >
             {tick.label}
           </text>
@@ -266,11 +292,11 @@ function MiniSparkline({
           <text
             key={`x-${i}`}
             x={tick.x}
-            y={height - 2}
+            y={height - 3}
             textAnchor="middle"
-            fill="rgba(255,255,255,0.35)"
-            fontSize="8"
-            fontFamily="monospace"
+            fill="rgba(255,255,255,0.5)"
+            fontSize="9"
+            fontFamily="ui-monospace, monospace"
           >
             {tick.label}
           </text>
@@ -308,7 +334,7 @@ function MiniSparkline({
           {labels?.[hoverIndex] && (
             <div className="text-slate-400 text-[10px] mb-0.5">{labels[hoverIndex]}</div>
           )}
-          <div className="text-white font-bold tabular-nums">{hoverPoint.value.toLocaleString('pt-BR')} reg/dia</div>
+          <div className="text-white font-bold tabular-nums">{hoverPoint.value.toLocaleString('pt-BR')}</div>
         </div>
       )}
     </div>
