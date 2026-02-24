@@ -13,19 +13,15 @@ const brasilDataHub = process.env.BRASIL_DATA_HUB_URL && process.env.BRASIL_DATA
 /**
  * GET /stats
  * Returns counts for all main entities
- * - empresas, pessoas, noticias: from local Supabase
- * - politicos, mandatos: from brasil-data-hub
  */
 router.get('/', async (req, res) => {
   try {
-    // Local Supabase counts - use 'estimated' for large tables to avoid timeout
     const localPromises = [
       supabase.from('dim_empresas').select('id', { count: 'estimated', head: true }),
       supabase.from('fato_pessoas').select('id', { count: 'estimated', head: true }),
       supabase.from('fato_noticias').select('id', { count: 'estimated', head: true }),
     ];
 
-    // Brasil Data Hub counts (if configured) - use 'estimated' for large tables
     const brasilDataHubPromises = brasilDataHub
       ? [
           brasilDataHub.from('dim_politicos').select('id', { count: 'estimated', head: true }),
@@ -101,15 +97,57 @@ async function getAllCounts() {
 }
 
 /**
+ * Compute daily inserts from accumulated totals.
+ * Input: array of {data, total} sorted ascending by date.
+ * Output: array of {data, value} where value = inserts that day.
+ * First data point gets value=0 (baseline).
+ */
+function computeDailyInserts(accumulatedPoints) {
+  if (accumulatedPoints.length === 0) return [];
+
+  const result = [];
+  // First point is the baseline — no prior to diff against
+  result.push({ data: accumulatedPoints[0].data, value: 0 });
+
+  for (let i = 1; i < accumulatedPoints.length; i++) {
+    const diff = accumulatedPoints[i].total - accumulatedPoints[i - 1].total;
+    result.push({ data: accumulatedPoints[i].data, value: Math.max(0, diff) });
+  }
+
+  return result;
+}
+
+/**
+ * Fill date gaps with value=0.
+ * Input: array of {data, value} with possible missing days.
+ * Output: continuous daily series with no gaps.
+ */
+function fillDateGaps(points) {
+  if (points.length < 2) return points;
+
+  const map = new Map(points.map(p => [p.data, p.value]));
+  const start = new Date(points[0].data + 'T00:00:00Z');
+  const end = new Date(points[points.length - 1].data + 'T00:00:00Z');
+
+  const result = [];
+  const current = new Date(start);
+  while (current <= end) {
+    const dateStr = current.toISOString().split('T')[0];
+    result.push({ data: dateStr, value: map.get(dateStr) ?? 0 });
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return result;
+}
+
+/**
  * GET /stats/current
- * Returns current counts + growth percentages vs yesterday.
- * Used by dashboard badge cards.
+ * Returns current counts + today's inserts + growth.
  */
 router.get('/current', async (req, res) => {
   try {
     const counts = await getAllCounts();
 
-    // Yesterday's date
     const hoje = new Date();
     const ontem = new Date(hoje);
     ontem.setDate(ontem.getDate() - 1);
@@ -127,7 +165,6 @@ router.get('/current', async (req, res) => {
       ontemDict[row.categoria] = row.total;
     }
 
-    // Build response with growth
     const categorias = [
       ['empresas', counts.empresas],
       ['pessoas', counts.pessoas],
@@ -138,6 +175,7 @@ router.get('/current', async (req, res) => {
 
     const stats = categorias.map(([cat, total]) => {
       const totalOntem = ontemDict[cat] ?? total;
+      const todayInserts = Math.max(0, total - totalOntem);
       const crescimento = totalOntem > 0
         ? Math.round(((total - totalOntem) / totalOntem) * 10000) / 100
         : 0;
@@ -146,6 +184,7 @@ router.get('/current', async (req, res) => {
         categoria: cat,
         total,
         total_ontem: totalOntem,
+        today_inserts: todayInserts,
         crescimento_percentual: crescimento,
       };
     });
@@ -172,8 +211,8 @@ router.get('/current', async (req, res) => {
 
 /**
  * GET /stats/history
- * Returns historical stats for charts.
- * Query params: categoria (optional), limit (default 365)
+ * Returns daily inserts series computed from accumulated snapshots.
+ * Each category includes: unit, timezone, today inserts, period total, data points.
  */
 router.get('/history', async (req, res) => {
   try {
@@ -191,18 +230,70 @@ router.get('/history', async (req, res) => {
     }
 
     const { data, error } = await query;
-
     if (error) throw error;
 
-    // Group by category
-    const historico = {};
+    // Group accumulated totals by category
+    const rawByCategory = {};
     for (const row of data || []) {
       const cat = row.categoria;
-      if (!historico[cat]) historico[cat] = [];
-      historico[cat].push({
-        data: row.data,
-        total: row.total,
-      });
+      if (!rawByCategory[cat]) rawByCategory[cat] = [];
+      rawByCategory[cat].push({ data: row.data, total: row.total });
+    }
+
+    // Get current counts for today's inserts
+    const counts = await getAllCounts();
+    const hojeISO = new Date().toISOString().split('T')[0];
+
+    // Build response with daily inserts per category
+    const historico = {};
+    for (const [cat, accumulated] of Object.entries(rawByCategory)) {
+      // Compute daily inserts from consecutive diffs
+      const dailyRaw = computeDailyInserts(accumulated);
+
+      // Fill gaps with 0
+      const dailyFilled = fillDateGaps(dailyRaw);
+
+      // Compute today's inserts from live count vs last snapshot
+      const lastAccumulated = accumulated.length > 0
+        ? accumulated[accumulated.length - 1].total
+        : 0;
+      const currentTotal = counts[cat] || 0;
+      const todayInserts = Math.max(0, currentTotal - lastAccumulated);
+
+      // If today's date is already in the series, update it with live value
+      // Otherwise append it
+      const lastPointDate = dailyFilled.length > 0
+        ? dailyFilled[dailyFilled.length - 1].data
+        : null;
+
+      if (lastPointDate === hojeISO) {
+        // Update today's point with live diff
+        dailyFilled[dailyFilled.length - 1].value = Math.max(
+          dailyFilled[dailyFilled.length - 1].value,
+          todayInserts
+        );
+      } else if (dailyFilled.length > 0) {
+        // Fill gap from last date to today with 0s, then set today
+        const lastDate = new Date(lastPointDate + 'T00:00:00Z');
+        const todayDate = new Date(hojeISO + 'T00:00:00Z');
+        const next = new Date(lastDate);
+        next.setUTCDate(next.getUTCDate() + 1);
+        while (next < todayDate) {
+          dailyFilled.push({ data: next.toISOString().split('T')[0], value: 0 });
+          next.setUTCDate(next.getUTCDate() + 1);
+        }
+        dailyFilled.push({ data: hojeISO, value: todayInserts });
+      }
+
+      const periodTotal = dailyFilled.reduce((sum, p) => sum + p.value, 0);
+
+      historico[cat] = {
+        unit: 'registros/dia',
+        timezone: 'America/Sao_Paulo',
+        today: todayInserts,
+        periodTotal,
+        points: dailyFilled,
+      };
     }
 
     res.json({
@@ -226,8 +317,7 @@ router.get('/history', async (req, res) => {
 
 /**
  * POST /stats/snapshot
- * Creates a snapshot of current counts in stats_historico.
- * Called by dashboard on load and on each refresh cycle.
+ * Creates a snapshot of current accumulated counts in stats_historico.
  */
 router.post('/snapshot', async (req, res) => {
   try {

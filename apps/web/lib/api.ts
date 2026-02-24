@@ -58,6 +58,7 @@ export interface StatItem {
   categoria: string;
   total: number;
   total_ontem: number;
+  today_inserts: number;
   crescimento_percentual: number;
 }
 
@@ -72,12 +73,20 @@ export interface StatsCurrentResponse {
 
 export interface HistoryPoint {
   data: string;
-  total: number;
+  value: number;
+}
+
+export interface CategoryHistory {
+  unit: string;
+  timezone: string;
+  today: number;
+  periodTotal: number;
+  points: HistoryPoint[];
 }
 
 export interface StatsHistoryResponse {
   success: boolean;
-  historico: Record<string, HistoryPoint[]>;
+  historico: Record<string, CategoryHistory>;
   categorias: string[];
   total_registros: number;
   timestamp: string;

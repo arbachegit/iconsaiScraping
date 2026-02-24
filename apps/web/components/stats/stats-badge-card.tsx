@@ -5,14 +5,15 @@ import { LucideIcon, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface HistoryPoint {
   data: string;
-  total: number;
+  value: number;
 }
 
 interface StatsBadgeCardProps {
   icon: LucideIcon;
   label: string;
   total: number;
-  totalOntem: number;
+  todayInserts: number;
+  periodTotal: number;
   crescimento: number;
   dataReferencia: string;
   online: boolean;
@@ -74,10 +75,30 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-interface SparklineDataPoint {
-  value: number;
-  label?: string;
+function formatShortDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return dateStr;
+  return `${parts[2]}/${parts[1]}`;
 }
+
+/**
+ * Compute nice Y-axis max: ceil to a "round" number with 10% headroom.
+ */
+function niceMax(maxValue: number): number {
+  if (maxValue <= 0) return 10;
+  const withMargin = Math.ceil(maxValue * 1.1);
+  if (withMargin <= 10) return 10;
+  if (withMargin <= 50) return Math.ceil(withMargin / 5) * 5;
+  if (withMargin <= 100) return Math.ceil(withMargin / 10) * 10;
+  if (withMargin <= 500) return Math.ceil(withMargin / 50) * 50;
+  if (withMargin <= 1000) return Math.ceil(withMargin / 100) * 100;
+  return Math.ceil(withMargin / 500) * 500;
+}
+
+// ============================================================
+// MiniSparkline — SVG chart with axes, no gap detection
+// ============================================================
 
 function MiniSparkline({
   data,
@@ -107,71 +128,57 @@ function MiniSparkline({
   if (!data.length) return null;
 
   const { width, height } = dims;
-  const padding = 2;
-  const chartW = width - padding * 2;
-  const chartH = height - padding * 2;
 
-  // FIX 3: Y-axis base-zero — shows real proportions between categories
-  const yMax = Math.max(...data);
-  const yRange = yMax || 1;
+  // Padding for axis labels
+  const padLeft = 32;   // space for Y-axis ticks
+  const padRight = 6;
+  const padTop = 4;
+  const padBottom = 16;  // space for X-axis ticks
 
-  // FIX 1: X-axis temporal — proportional to real time gaps
-  const timestamps = dates?.length === data.length
-    ? dates.map((d) => new Date(d + 'T00:00:00Z').getTime())
-    : null;
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
 
-  const tMin = timestamps ? Math.min(...timestamps) : 0;
-  const tMax = timestamps ? Math.max(...timestamps) : 0;
-  const tRange = tMax - tMin || 1;
+  if (chartW <= 0 || chartH <= 0) return null;
 
+  // Y-axis: min=0, max=niceMax
+  const rawMax = Math.max(...data);
+  const yMax = niceMax(rawMax);
+
+  // X positions: evenly spaced (data is already gap-filled, every day present)
   const pointCoords = data.map((val, i) => {
-    const xFraction = timestamps
-      ? (timestamps[i] - tMin) / tRange
-      : i / (data.length - 1 || 1);
-
+    const xFraction = data.length > 1 ? i / (data.length - 1) : 0.5;
     return {
-      x: padding + xFraction * chartW,
-      y: height - padding - (val / yRange) * chartH,
+      x: padLeft + xFraction * chartW,
+      y: padTop + chartH - (val / yMax) * chartH,
       value: val,
     };
   });
 
-  // FIX 2: Detect gaps >2 days between consecutive points
-  const gaps: Array<{ x1: number; x2: number; y1: number; y2: number }> = [];
-  if (timestamps) {
-    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
-    for (let i = 0; i < timestamps.length - 1; i++) {
-      if (timestamps[i + 1] - timestamps[i] > twoDaysMs) {
-        gaps.push({
-          x1: pointCoords[i].x,
-          x2: pointCoords[i + 1].x,
-          y1: pointCoords[i].y,
-          y2: pointCoords[i + 1].y,
-        });
-      }
+  // Polyline points (single continuous line — no gap segmentation)
+  const linePoints = pointCoords.map((p) => `${p.x},${p.y}`).join(' ');
+
+  // Area fill path
+  const areaPath = `M ${padLeft},${padTop + chartH} L ${linePoints} L ${padLeft + chartW},${padTop + chartH} Z`;
+
+  // X-axis ticks: first, middle, last
+  const xTicks: Array<{ x: number; label: string }> = [];
+  if (dates && dates.length > 0) {
+    const indices = [0];
+    if (dates.length > 2) indices.push(Math.floor(dates.length / 2));
+    if (dates.length > 1) indices.push(dates.length - 1);
+    for (const idx of indices) {
+      xTicks.push({
+        x: pointCoords[idx].x,
+        label: formatShortDate(dates[idx]),
+      });
     }
   }
 
-  // Build polyline segments: solid for continuous, skip gap segments for main line
-  const solidSegments: string[][] = [];
-  let currentSegment: string[] = [];
-  if (timestamps) {
-    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
-    for (let i = 0; i < pointCoords.length; i++) {
-      currentSegment.push(`${pointCoords[i].x},${pointCoords[i].y}`);
-      if (i < pointCoords.length - 1 && timestamps[i + 1] - timestamps[i] > twoDaysMs) {
-        solidSegments.push(currentSegment);
-        currentSegment = [];
-      }
-    }
-    if (currentSegment.length) solidSegments.push(currentSegment);
-  } else {
-    solidSegments.push(pointCoords.map((p) => `${p.x},${p.y}`));
-  }
-
-  // Area path (still covers full range for gradient fill)
-  const allPoints = pointCoords.map((p) => `${p.x},${p.y}`).join(' ');
-  const areaPath = `M ${padding},${height - padding} L ${allPoints} L ${width - padding},${height - padding} Z`;
+  // Y-axis ticks: 0 and yMax
+  const yTicks = [
+    { y: padTop + chartH, label: '0' },
+    { y: padTop, label: formatNumber(yMax) },
+  ];
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -189,9 +196,6 @@ function MiniSparkline({
   };
 
   const hoverPoint = hoverIndex !== null ? pointCoords[hoverIndex] : null;
-  const hoverGrowth = hoverIndex !== null && hoverIndex > 0
-    ? ((data[hoverIndex] - data[hoverIndex - 1]) / (data[hoverIndex - 1] || 1)) * 100
-    : null;
 
   return (
     <div ref={containerRef} className="w-full h-full relative">
@@ -210,55 +214,75 @@ function MiniSparkline({
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
+
+        {/* Chart area background */}
+        <rect x={padLeft} y={padTop} width={chartW} height={chartH} fill="rgba(255,255,255,0.01)" />
+
+        {/* Baseline (y=0) */}
+        <line
+          x1={padLeft} y1={padTop + chartH}
+          x2={padLeft + chartW} y2={padTop + chartH}
+          stroke="rgba(255,255,255,0.08)" strokeWidth="1"
+        />
+
+        {/* Top gridline (y=max) */}
+        <line
+          x1={padLeft} y1={padTop}
+          x2={padLeft + chartW} y2={padTop}
+          stroke="rgba(255,255,255,0.05)" strokeWidth="1"
+          strokeDasharray="3,4"
+        />
+
+        {/* Area fill */}
         <path d={areaPath} fill={`url(#gradient-${color})`} />
 
-        {/* Solid line segments (continuous data) */}
-        {solidSegments.map((seg, idx) => (
-          <polyline
-            key={`solid-${idx}`}
-            points={seg.join(' ')}
-            fill="none"
-            stroke={color}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+        {/* Line — single continuous polyline, no gap detection */}
+        <polyline
+          points={linePoints}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* Y-axis ticks */}
+        {yTicks.map((tick, i) => (
+          <text
+            key={`y-${i}`}
+            x={padLeft - 4}
+            y={tick.y + 3}
+            textAnchor="end"
+            fill="rgba(255,255,255,0.35)"
+            fontSize="8"
+            fontFamily="monospace"
+          >
+            {tick.label}
+          </text>
         ))}
 
-        {/* FIX 2: Dashed lines + shaded zone for gaps */}
-        {gaps.map((gap, idx) => (
-          <g key={`gap-${idx}`}>
-            <rect
-              x={gap.x1}
-              y={0}
-              width={gap.x2 - gap.x1}
-              height={height}
-              fill="rgba(255,255,255,0.03)"
-            />
-            <line
-              x1={gap.x1}
-              y1={gap.y1}
-              x2={gap.x2}
-              y2={gap.y2}
-              stroke={color}
-              strokeWidth="1"
-              strokeDasharray="4,3"
-              opacity={0.5}
-            />
-          </g>
+        {/* X-axis ticks */}
+        {xTicks.map((tick, i) => (
+          <text
+            key={`x-${i}`}
+            x={tick.x}
+            y={height - 2}
+            textAnchor="middle"
+            fill="rgba(255,255,255,0.35)"
+            fontSize="8"
+            fontFamily="monospace"
+          >
+            {tick.label}
+          </text>
         ))}
 
-        {/* Hover vertical line + dot */}
+        {/* Hover crosshair + dot */}
         {hoverPoint && (
           <>
             <line
-              x1={hoverPoint.x}
-              y1={0}
-              x2={hoverPoint.x}
-              y2={height}
-              stroke="rgba(255,255,255,0.2)"
-              strokeWidth="1"
-              strokeDasharray="3,3"
+              x1={hoverPoint.x} y1={padTop}
+              x2={hoverPoint.x} y2={padTop + chartH}
+              stroke="rgba(255,255,255,0.2)" strokeWidth="1" strokeDasharray="3,3"
             />
             <circle
               cx={hoverPoint.x}
@@ -271,29 +295,29 @@ function MiniSparkline({
           </>
         )}
       </svg>
-      {/* Tooltip - positioned inside chart area */}
+
+      {/* Tooltip */}
       {hoverPoint && hoverIndex !== null && (
         <div
           className="absolute z-50 pointer-events-none bg-[#0f1629]/95 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs shadow-xl backdrop-blur-sm whitespace-nowrap"
           style={{
-            left: Math.max(4, Math.min(hoverPoint.x - 40, width - 90)),
-            top: Math.max(4, hoverPoint.y - 52),
+            left: Math.max(4, Math.min(hoverPoint.x - 40, width - 100)),
+            top: Math.max(4, hoverPoint.y - 56),
           }}
         >
           {labels?.[hoverIndex] && (
             <div className="text-slate-400 text-[10px] mb-0.5">{labels[hoverIndex]}</div>
           )}
-          <div className="text-white font-bold tabular-nums">{hoverPoint.value.toLocaleString('pt-BR')}</div>
-          {hoverGrowth !== null && (
-            <div className={`text-[10px] tabular-nums ${hoverGrowth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {hoverGrowth >= 0 ? '+' : ''}{hoverGrowth.toFixed(2)}%
-            </div>
-          )}
+          <div className="text-white font-bold tabular-nums">{hoverPoint.value.toLocaleString('pt-BR')} reg/dia</div>
         </div>
       )}
     </div>
   );
 }
+
+// ============================================================
+// CountdownRing
+// ============================================================
 
 function CountdownRing({
   progress,
@@ -311,34 +335,29 @@ function CountdownRing({
   return (
     <svg width={size} height={size} className="transform -rotate-90">
       <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="rgba(255,255,255,0.1)"
-        strokeWidth="1.5"
+        cx={size / 2} cy={size / 2} r={radius}
+        fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5"
       />
       <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        className="transition-all duration-1000"
+        cx={size / 2} cy={size / 2} r={radius}
+        fill="none" stroke={color} strokeWidth="1.5"
+        strokeDasharray={circumference} strokeDashoffset={offset}
+        strokeLinecap="round" className="transition-all duration-1000"
       />
     </svg>
   );
 }
 
+// ============================================================
+// StatsBadgeCard
+// ============================================================
+
 export function StatsBadgeCard({
   icon: Icon,
   label,
   total,
-  totalOntem,
+  todayInserts,
+  periodTotal,
   crescimento,
   dataReferencia,
   online,
@@ -350,7 +369,7 @@ export function StatsBadgeCard({
   isLoading = false,
 }: StatsBadgeCardProps) {
   const config = colorConfig[color];
-  const historyValues = history.map((h) => h.total);
+  const historyValues = history.map((h) => h.value);
   const historyDates = history.map((h) => h.data);
   const historyLabels = history.map((h) => {
     const d = new Date(h.data);
@@ -380,7 +399,7 @@ export function StatsBadgeCard({
         ${isLarge ? 'border-l-[6px] min-w-[275px] h-[220px]' : 'border-l-[5px] min-w-[220px] h-[180px]'}
       `}
     >
-      {/* Header - compact, flex-shrink-0 */}
+      {/* Header */}
       <div className={`flex-shrink-0 flex items-center justify-between border-b border-white/5 ${isLarge ? 'px-5 py-2' : 'px-4 py-1.5'}`}>
         <div className={`flex items-center min-w-0 ${isLarge ? 'gap-2.5' : 'gap-2'}`}>
           <Icon className={`flex-shrink-0 ${config.text} ${isLarge ? 'w-6 h-6' : 'w-5 h-5'}`} />
@@ -404,7 +423,7 @@ export function StatsBadgeCard({
         </div>
       </div>
 
-      {/* Body - Chart takes all remaining space (~90% of card) */}
+      {/* Body — Chart */}
       <div className="flex-1 min-h-0 overflow-visible relative">
         <MiniSparkline
           data={historyValues}
@@ -414,7 +433,7 @@ export function StatsBadgeCard({
         />
       </div>
 
-      {/* Footer - compact, 3 equal sections */}
+      {/* Footer: growth | Hoje | Total periodo */}
       <div className={`flex-shrink-0 grid grid-cols-3 border-t border-white/5 ${isLarge ? 'py-1.5' : 'py-1'}`}>
         <div className={`flex items-center justify-center ${isLarge ? 'gap-1 text-xs' : 'gap-0.5 text-[10px]'}`}>
           <div className={`flex items-center ${growthColor} ${isLarge ? 'gap-1' : 'gap-0.5'}`}>
@@ -423,21 +442,24 @@ export function StatsBadgeCard({
           </div>
         </div>
         <div className={`flex items-center justify-center border-x border-white/10 ${isLarge ? 'gap-1 text-xs' : 'gap-0.5 text-[10px]'}`}>
-          <span className="text-slate-500">Total:</span>
-          <span className="text-white font-semibold tabular-nums">{formatNumber(total)}</span>
+          <span className="text-slate-500">Hoje:</span>
+          <span className={`font-semibold tabular-nums ${todayInserts > 0 ? 'text-green-400' : 'text-slate-400'}`}>
+            {formatNumber(todayInserts)}
+          </span>
         </div>
         <div className={`flex items-center justify-center ${isLarge ? 'gap-1 text-xs' : 'gap-0.5 text-[10px]'}`}>
-          <span className="text-slate-500">Diario:</span>
-          <span className={`font-semibold tabular-nums ${total - totalOntem >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {total - totalOntem >= 0 ? '+' : ''}{formatNumber(Math.abs(total - totalOntem))}
-          </span>
+          <span className="text-slate-500">Total:</span>
+          <span className="text-white font-semibold tabular-nums">{formatNumber(periodTotal)}</span>
         </div>
       </div>
     </div>
   );
 }
 
-// Refresh Pie Chart - animated circular countdown
+// ============================================================
+// RefreshPieChart
+// ============================================================
+
 export function RefreshPieChart({
   countdown,
   maxCountdown,
@@ -450,7 +472,7 @@ export function RefreshPieChart({
   size?: number;
 }) {
   const prevCountdownRef = useRef(countdown);
-  const progress = 1 - countdown / maxCountdown; // 0 → 1 as time passes
+  const progress = 1 - countdown / maxCountdown;
   const radius = (size - 4) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - progress * circumference;
@@ -469,27 +491,15 @@ export function RefreshPieChart({
   return (
     <div className="flex items-center gap-1.5 flex-shrink-0">
       <svg width={size} height={size} className="transform -rotate-90">
-        {/* Background circle */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth="2.5"
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2.5"
         />
-        {/* Progress arc */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#22d3ee"
-          strokeWidth="2.5"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="transition-all duration-1000 ease-linear"
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke="#22d3ee" strokeWidth="2.5"
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          strokeLinecap="round" className="transition-all duration-1000 ease-linear"
         />
       </svg>
       <span className="text-[11px] text-slate-500 tabular-nums font-mono">{timeText}</span>
@@ -497,7 +507,10 @@ export function RefreshPieChart({
   );
 }
 
-// Animated Counter Line Component
+// ============================================================
+// StatsCounterLine + AnimatedNumber
+// ============================================================
+
 interface CounterLineProps {
   stats: Array<{
     label: string;
@@ -521,8 +534,6 @@ function AnimatedNumber({ value, duration = 1500 }: { value: number; duration?: 
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
-
-      // Easing function (ease-out-cubic)
       const eased = 1 - Math.pow(1 - progress, 3);
       const current = Math.round(startValue + (endValue - startValue) * eased);
 

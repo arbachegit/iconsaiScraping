@@ -12,7 +12,7 @@ import {
   Shield,
   Vote,
 } from 'lucide-react';
-import { getUser, getHealth, getStatsCurrent, getStatsHistory, createStatsSnapshot, StatItem, HistoryPoint } from '@/lib/api';
+import { getUser, getHealth, getStatsCurrent, getStatsHistory, createStatsSnapshot, type StatItem, type CategoryHistory } from '@/lib/api';
 import { AtlasChat } from '@/components/atlas/atlas-chat';
 import { CompanyModal } from '@/components/modals/company-modal';
 import { CnaeModal } from '@/components/modals/cnae-modal';
@@ -173,7 +173,7 @@ export default function DashboardPage() {
     statsMap.set(stat.categoria, stat);
   }
 
-  const historyMap = historyQuery.data?.historico || {};
+  const historyMap: Record<string, CategoryHistory> = historyQuery.data?.historico || {};
   const dataReferencia = statsQuery.data?.data_referencia || new Date().toISOString();
   const isOnline = statsQuery.data?.online ?? false;
   const isStatsLoading = statsQuery.isFetching || historyQuery.isFetching;
@@ -257,18 +257,19 @@ export default function DashboardPage() {
               {(['empresas', 'pessoas'] as CategoryKey[]).map((cat) => {
                 const config = categoryConfig[cat];
                 const stat = statsMap.get(cat);
-                const history = historyMap[cat] || [];
+                const catHistory = historyMap[cat];
                 return (
                   <StatsBadgeCard
                     key={cat}
                     icon={config.icon}
                     label={config.label}
                     total={stat?.total || 0}
-                    totalOntem={stat?.total_ontem || 0}
+                    todayInserts={stat?.today_inserts ?? catHistory?.today ?? 0}
+                    periodTotal={catHistory?.periodTotal ?? 0}
                     crescimento={stat?.crescimento_percentual || 0}
                     dataReferencia={dataReferencia}
                     online={isOnline}
-                    history={history}
+                    history={catHistory?.points || []}
                     color={config.color}
                     countdown={countdown}
                     maxCountdown={COUNTDOWN_MAX}
@@ -284,18 +285,19 @@ export default function DashboardPage() {
               {(['politicos', 'mandatos'] as CategoryKey[]).map((cat) => {
                 const config = categoryConfig[cat];
                 const stat = statsMap.get(cat);
-                const history = historyMap[cat] || [];
+                const catHistory = historyMap[cat];
                 return (
                   <StatsBadgeCard
                     key={cat}
                     icon={config.icon}
                     label={config.label}
                     total={stat?.total || 0}
-                    totalOntem={stat?.total_ontem || 0}
+                    todayInserts={stat?.today_inserts ?? catHistory?.today ?? 0}
+                    periodTotal={catHistory?.periodTotal ?? 0}
                     crescimento={stat?.crescimento_percentual || 0}
                     dataReferencia={dataReferencia}
                     online={isOnline}
-                    history={history}
+                    history={catHistory?.points || []}
                     color={config.color}
                     countdown={countdown}
                     maxCountdown={COUNTDOWN_MAX}
