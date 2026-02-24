@@ -5,7 +5,8 @@ import { searchPerson as searchPersonApollo } from '../services/apollo.js';
 import { searchPerson as searchPersonPerplexity } from '../services/perplexity.js';
 import { search as serperSearch, findPersonLinkedin } from '../services/serper.js';
 import { validateBody } from '../validation/schemas.js';
-import { searchPersonByCpfSchema } from '../validation/schemas.js';
+import { searchPersonByCpfSchema, searchPersonV2Schema, saveBatchSchema } from '../validation/schemas.js';
+import { runGuardrail, maskCpf } from '../services/people-guardrail.js';
 
 const router = Router();
 
@@ -631,6 +632,428 @@ router.post('/save', async (req, res) => {
   } catch (error) {
     logger.error('Error saving person', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =============================================
+// V2 ENDPOINTS (Guardrail + Pagination + Batch)
+// =============================================
+
+/**
+ * POST /api/people/search-v2
+ * Search person with guardrail validation, server-side pagination, and external sources
+ */
+router.post('/search-v2', validateBody(searchPersonV2Schema), async (req, res) => {
+  const startTime = Date.now();
+  const requestId = `ppl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const plog = logger.child({ requestId });
+
+  try {
+    const { searchType, cpf, nome, dataNascimento, cidadeUf, page, pageSize } = req.body;
+
+    plog.info('search-v2 request', {
+      searchType,
+      cpf: cpf ? maskCpf(cpf) : null,
+      nome: nome || null,
+      page,
+      pageSize
+    });
+
+    // 1. Run guardrail
+    const guardrail = await runGuardrail({ searchType, cpf, nome, dataNascimento, cidadeUf });
+
+    if (!guardrail.allowed) {
+      plog.info('Guardrail blocked', { reason: guardrail.reason });
+      return res.json({
+        success: true,
+        guardrail,
+        results: [],
+        pagination: { page, pageSize, total: 0, totalPages: 0 },
+        badges: { total: 0, db: 0, new: 0 },
+        sources_tried: [],
+        requestId,
+        durationMs: Date.now() - startTime
+      });
+    }
+
+    const sourcesTried = [];
+    const offset = (page - 1) * pageSize;
+
+    // 2. Search in Supabase fato_pessoas with pagination
+    sourcesTried.push('database');
+    let dbResults = [];
+    let dbTotal = 0;
+
+    if (searchType === 'cpf') {
+      const { data, error, count } = await supabase
+        .from('fato_pessoas')
+        .select('*', { count: 'exact' })
+        .eq('cpf', cpf)
+        .range(offset, offset + pageSize - 1);
+
+      if (!error && data) {
+        dbResults = data;
+        dbTotal = count || data.length;
+      }
+    } else {
+      // Nome search
+      const searchName = guardrail.normalizedQuery || nome.trim();
+      let query = supabase
+        .from('fato_pessoas')
+        .select('*', { count: 'exact' })
+        .or(`nome_completo.ilike.%${searchName}%,primeiro_nome.ilike.%${searchName}%`);
+
+      const { data, error, count } = await query
+        .order('created_at', { ascending: false })
+        .range(offset, offset + pageSize - 1);
+
+      if (!error && data) {
+        dbResults = data;
+        dbTotal = count || data.length;
+      }
+    }
+
+    // 3. Enrich DB results with cargo/empresa via fato_transacao_empresas
+    if (dbResults.length > 0) {
+      const personIds = dbResults.map(p => p.id);
+      const { data: transactions } = await supabase
+        .from('fato_transacao_empresas')
+        .select(`
+          pessoa_id,
+          cargo,
+          qualificacao,
+          dim_empresas (
+            razao_social,
+            nome_fantasia
+          )
+        `)
+        .in('pessoa_id', personIds)
+        .order('data_transacao', { ascending: false });
+
+      const latestTx = {};
+      for (const tx of (transactions || [])) {
+        if (!latestTx[tx.pessoa_id]) {
+          latestTx[tx.pessoa_id] = tx;
+        }
+      }
+
+      dbResults = dbResults.map(p => {
+        const tx = latestTx[p.id];
+        return {
+          ...p,
+          cargo_atual: tx?.cargo || tx?.qualificacao || p.cargo_atual || null,
+          empresa_atual: tx?.dim_empresas?.nome_fantasia || tx?.dim_empresas?.razao_social || p.empresa_atual || null,
+          _source: 'db'
+        };
+      });
+    }
+
+    // 4. If page 1 and few DB results, try external sources
+    let externalResults = [];
+    if (page === 1 && dbResults.length < 5 && searchType === 'nome') {
+      const searchName = guardrail.normalizedQuery || nome.trim();
+
+      // Perplexity
+      try {
+        sourcesTried.push('perplexity');
+        const ppxResult = await searchPersonPerplexity(searchName, cpf || null);
+        if (ppxResult?.success && ppxResult?.found && ppxResult?.pessoa) {
+          externalResults.push({
+            ...ppxResult.pessoa,
+            cpf: ppxResult.pessoa.cpf || cpf || null,
+            _source: 'external',
+            _provider: 'perplexity'
+          });
+        }
+      } catch (err) {
+        plog.warn('Perplexity search failed', { error: err.message });
+      }
+
+      // Serper + Apollo
+      try {
+        sourcesTried.push('serper');
+        const googleResults = await serperSearch(
+          `"${searchName}" Brasil profissional LinkedIn cargo empresa`,
+          10
+        );
+
+        const kg = googleResults.knowledgeGraph || {};
+        const organic = googleResults.organic || [];
+
+        let linkedinUrl = null;
+        try {
+          linkedinUrl = await findPersonLinkedin(searchName);
+        } catch (err) {
+          plog.warn('Serper LinkedIn failed', { error: err.message });
+        }
+
+        let empresa = kg.organization || kg.company || null;
+        let cargo = kg.title || kg.jobTitle || null;
+        let descricao = kg.description || null;
+        let localizacao = null;
+
+        for (const item of organic.slice(0, 5)) {
+          const text = `${item.title || ''} ${item.snippet || ''}`;
+          if (!empresa && item.link?.includes('linkedin.com')) {
+            const match = text.match(/(?:at|na|em|@)\s+([A-ZÀ-Ú][A-Za-zÀ-ú\s&.,-]+?)(?:\s*[-–|·]|\s*$)/i);
+            if (match) empresa = match[1].trim();
+          }
+          if (!cargo && item.link?.includes('linkedin.com')) {
+            const match = text.match(/[-–]\s*([A-Za-zÀ-ú\s,]+?)(?:\s*[-–|·]|\s*at\s|\s*na\s|\s*em\s)/i);
+            if (match && match[1].length < 80) cargo = match[1].trim();
+          }
+          if (!descricao && item.snippet && item.snippet.length > 30) {
+            descricao = item.snippet;
+          }
+          if (!localizacao) {
+            const locMatch = text.match(/([A-Za-zÀ-ú]+(?:\s+[A-Za-zÀ-ú]+)?)\s*[-,]\s*([A-Z]{2})\b/);
+            if (locMatch) localizacao = `${locMatch[1]} - ${locMatch[2]}`;
+          }
+        }
+
+        // Apollo enrichment
+        sourcesTried.push('apollo');
+        let apolloData = null;
+        try {
+          if (empresa) {
+            apolloData = await searchPersonApollo(searchName, empresa);
+          }
+        } catch (err) {
+          plog.warn('Apollo search failed', { error: err.message });
+        }
+
+        const hasData = empresa || cargo || linkedinUrl || apolloData || descricao;
+        if (hasData) {
+          externalResults.push({
+            cpf: cpf || null,
+            nome_completo: apolloData?.name || searchName,
+            cargo_atual: apolloData?.title || cargo,
+            empresa_atual: apolloData?.company?.name || empresa,
+            linkedin_url: apolloData?.linkedin || linkedinUrl,
+            email: apolloData?.email || null,
+            localizacao: localizacao || (apolloData ? `${apolloData.city || ''} ${apolloData.state || ''}`.trim() : null),
+            resumo_profissional: descricao,
+            foto_url: apolloData?.photo_url || null,
+            _source: 'external',
+            _provider: 'serper+apollo'
+          });
+        }
+      } catch (err) {
+        plog.warn('Serper search failed', { error: err.message });
+      }
+    }
+
+    // 5. Merge: DB first, then external (dedup by CPF and nome_completo)
+    const seenKeys = new Set();
+    const merged = [];
+
+    for (const r of dbResults) {
+      const key = r.cpf || r.nome_completo?.toLowerCase();
+      if (key) seenKeys.add(key);
+      merged.push(r);
+    }
+
+    for (const r of externalResults) {
+      const keyCpf = r.cpf;
+      const keyName = r.nome_completo?.toLowerCase();
+      if (keyCpf && seenKeys.has(keyCpf)) continue;
+      if (keyName && seenKeys.has(keyName)) continue;
+      if (keyCpf) seenKeys.add(keyCpf);
+      if (keyName) seenKeys.add(keyName);
+      merged.push(r);
+    }
+
+    const dbCount = merged.filter(r => r._source === 'db').length;
+    const newCount = merged.filter(r => r._source === 'external').length;
+    const totalPages = Math.ceil((dbTotal + newCount) / pageSize);
+
+    plog.info('search-v2 complete', {
+      cpf: cpf ? maskCpf(cpf) : null,
+      nome: nome || null,
+      dbTotal,
+      externalCount: newCount,
+      mergedCount: merged.length,
+      page,
+      durationMs: Date.now() - startTime
+    });
+
+    return res.json({
+      success: true,
+      guardrail,
+      results: merged,
+      pagination: {
+        page,
+        pageSize,
+        total: dbTotal + newCount,
+        totalPages
+      },
+      badges: {
+        total: merged.length,
+        db: dbCount,
+        new: newCount
+      },
+      sources_tried: sourcesTried,
+      requestId,
+      durationMs: Date.now() - startTime
+    });
+
+  } catch (error) {
+    plog.error('search-v2 error', { error: error.message, stack: error.stack });
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      requestId,
+      durationMs: Date.now() - startTime
+    });
+  }
+});
+
+/**
+ * POST /api/people/check-existing
+ * Batch check if people already exist by IDs or CPFs
+ */
+router.post('/check-existing', async (req, res) => {
+  try {
+    const { ids, cpfs } = req.body;
+
+    if ((!ids || ids.length === 0) && (!cpfs || cpfs.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Informe ids ou cpfs para verificar'
+      });
+    }
+
+    const existing = [];
+    let checked = 0;
+
+    // Check by IDs
+    if (ids && ids.length > 0) {
+      const batchIds = ids.slice(0, 500);
+      checked += batchIds.length;
+
+      const { data, error } = await supabase
+        .from('fato_pessoas')
+        .select('id')
+        .in('id', batchIds);
+
+      if (!error && data) {
+        for (const row of data) {
+          existing.push(row.id);
+        }
+      }
+    }
+
+    // Check by CPFs
+    if (cpfs && cpfs.length > 0) {
+      const batchCpfs = cpfs.slice(0, 500);
+      checked += batchCpfs.length;
+
+      const { data, error } = await supabase
+        .from('fato_pessoas')
+        .select('id, cpf')
+        .in('cpf', batchCpfs);
+
+      if (!error && data) {
+        for (const row of data) {
+          existing.push(row.cpf);
+        }
+      }
+    }
+
+    logger.info('People check-existing', { checked, found: existing.length });
+
+    return res.json({
+      success: true,
+      existing,
+      checked
+    });
+
+  } catch (error) {
+    logger.error('check-existing error', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/people/save-batch
+ * Save multiple people at once (new only, skip existing)
+ */
+router.post('/save-batch', validateBody(saveBatchSchema), async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { pessoas, aprovado_por } = req.body;
+
+    logger.info('save-batch request', { count: pessoas.length, aprovado_por });
+
+    const results = [];
+    let inserted = 0;
+    let existed = 0;
+    let failed = 0;
+
+    for (const pessoa of pessoas) {
+      try {
+        // Check if person already exists by CPF
+        if (pessoa.cpf) {
+          const { data: existing } = await supabase
+            .from('fato_pessoas')
+            .select('id')
+            .eq('cpf', pessoa.cpf)
+            .single();
+
+          if (existing) {
+            existed++;
+            results.push({ nome: pessoa.nome_completo, status: 'existed', id: existing.id });
+            continue;
+          }
+        }
+
+        // Insert person
+        const nomeParts = pessoa.nome_completo?.split(' ') || [];
+        const { data: novaPessoa, error: insertError } = await supabase
+          .from('fato_pessoas')
+          .insert({
+            nome_completo: pessoa.nome_completo,
+            primeiro_nome: nomeParts[0] || null,
+            sobrenome: nomeParts.length > 1 ? nomeParts.slice(1).join(' ') : null,
+            cpf: pessoa.cpf || null,
+            email: pessoa.email || null,
+            linkedin_url: pessoa.linkedin_url || null,
+            foto_url: pessoa.foto_url || null,
+            pais: pessoa.localizacao?.includes(',') ? pessoa.localizacao.split(',').pop()?.trim() : 'Brasil',
+            fonte: 'batch_insert',
+            raw_apollo_data: null
+          })
+          .select('id')
+          .single();
+
+        if (insertError) {
+          failed++;
+          results.push({ nome: pessoa.nome_completo, status: 'failed', error: insertError.message });
+        } else {
+          inserted++;
+          results.push({ nome: pessoa.nome_completo, status: 'inserted', id: novaPessoa.id });
+        }
+
+      } catch (err) {
+        failed++;
+        results.push({ nome: pessoa.nome_completo, status: 'failed', error: err.message });
+      }
+    }
+
+    logger.info('save-batch complete', { inserted, existed, failed, durationMs: Date.now() - startTime });
+
+    return res.json({
+      success: true,
+      inserted,
+      existed,
+      failed,
+      results,
+      durationMs: Date.now() - startTime
+    });
+
+  } catch (error) {
+    logger.error('save-batch error', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 

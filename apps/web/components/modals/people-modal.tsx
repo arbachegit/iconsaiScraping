@@ -1,18 +1,24 @@
 'use client';
 
-import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import Image from 'next/image';
-import { X, Search, ArrowLeft, Loader2, ExternalLink, User, Building2, Briefcase, AlertCircle, Check, Save } from 'lucide-react';
+import {
+  X, Search, Loader2, User, Building2, Briefcase,
+  AlertCircle, Check, ChevronLeft, ChevronRight, Download,
+  Database, Globe, Shield, ArrowLeft, ExternalLink,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import {
-  searchPersonByCpf,
+  searchPeopleV2,
+  checkExistingPeople,
   savePerson,
-  type CpfSearchResponse,
-  type CpfSearchPessoa,
-  type CpfSearchExperiencia,
+  savePeopleBatch,
+  type PeopleSearchV2Response,
+  type PeopleSearchResult,
+  type GuardrailResult,
 } from '@/lib/api';
 
 interface PeopleModalProps {
@@ -22,108 +28,129 @@ interface PeopleModalProps {
   userName?: string;
 }
 
-type ViewState = 'search' | 'pick' | 'details';
-
 export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 'sistema' }: PeopleModalProps) {
-  const [view, setView] = useState<ViewState>('search');
+  // Search state
+  const [searchType, setSearchType] = useState<'cpf' | 'nome'>('cpf');
   const [cpf, setCpf] = useState('');
   const [nome, setNome] = useState('');
+  const [cidadeUf, setCidadeUf] = useState('');
+  const [dataNascimento, setDataNascimento] = useState('');
+  const [page, setPage] = useState(1);
+
+  // Results state
+  const [response, setResponse] = useState<PeopleSearchV2Response | null>(null);
+  const [guardrailResult, setGuardrailResult] = useState<GuardrailResult | null>(null);
+  const [registeredIds, setRegisteredIds] = useState<Set<string>>(new Set());
+
+  // Detail view state
+  const [detailPerson, setDetailPerson] = useState<PeopleSearchResult | null>(null);
+
+  // Loading states
+  const [insertingId, setInsertingId] = useState<string | null>(null);
+  const [massInserting, setMassInserting] = useState(false);
+
+  // Feedback
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
-  const [searchResult, setSearchResult] = useState<CpfSearchResponse | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [dbMatches, setDbMatches] = useState<CpfSearchPessoa[]>([]);
+
+  // Abort controller
+  const abortControllerRef = useRef<AbortController | null>(null);
   const cpfInputRef = useRef<HTMLInputElement>(null);
+  const nomeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      cpfInputRef.current?.focus();
-    }
-  }, [isOpen]);
-
-  const searchMutation = useMutation({
-    mutationFn: searchPersonByCpf,
-    onSuccess: (data) => {
-      setSearchResult(data);
-      setSaved(false);
-      if (data.preliminary && data.db_matches && data.db_matches.length > 0) {
-        // Single name matched DB candidates → show pick view
-        setDbMatches(data.db_matches);
-        setView('pick');
-        setMessage(null);
-      } else if (data.needs_surname) {
-        // Single name, no DB matches → ask for full name
-        setMessage({ type: 'info', text: data.message || 'Informe o nome completo (nome e sobrenome) para buscar em fontes externas' });
-      } else if (data.found && data.pessoa) {
-        setView('details');
-        setMessage(null);
-        // If from database, mark as already saved
-        if (data.source === 'database') {
-          setSaved(true);
-        }
+      if (searchType === 'cpf') {
+        cpfInputRef.current?.focus();
       } else {
-        setMessage({ type: 'info', text: data.message || 'Pessoa não encontrada nas fontes disponíveis' });
+        nomeInputRef.current?.focus();
       }
-    },
-    onError: (error: Error) => {
-      setMessage({ type: 'error', text: error.message });
-    },
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: savePerson,
-    onSuccess: (data) => {
-      if (data.success) {
-        setSaved(true);
-        setMessage({ type: 'success', text: data.message || 'Pessoa cadastrada com sucesso!' });
-      }
-    },
-    onError: (error: Error) => {
-      setMessage({ type: 'error', text: error.message });
-    },
-  });
-
-  function formatCpfInput(value: string): string {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
-  }
-
-  function handleCpfChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setCpf(formatCpfInput(e.target.value));
-  }
-
-  function handleSearch() {
-    const cpfDigits = cpf.replace(/\D/g, '');
-    const hasCpf = cpfDigits.length === 11;
-    const hasNome = nome.trim().length >= 2;
-
-    if (!hasCpf && !hasNome) {
-      setMessage({ type: 'error', text: 'Preencha pelo menos CPF ou nome (mínimo 2 caracteres)' });
-      return;
     }
+  }, [isOpen, searchType]);
 
-    if (cpfDigits.length > 0 && cpfDigits.length !== 11) {
-      setMessage({ type: 'error', text: 'CPF deve ter 11 dígitos' });
-      return;
+  // ---- Search mutation ----
+  const searchMutation = useMutation({
+    mutationFn: async (params: { pageOverride?: number }) => {
+      // Abort previous request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      const currentPage = params.pageOverride ?? page;
+
+      const cpfDigits = cpf.replace(/\D/g, '');
+
+      return searchPeopleV2({
+        searchType,
+        cpf: searchType === 'cpf' ? cpfDigits : undefined,
+        nome: searchType === 'nome' ? nome.trim() : undefined,
+        cidadeUf: cidadeUf.trim() || undefined,
+        dataNascimento: dataNascimento.trim() || undefined,
+        page: currentPage,
+        pageSize: 100,
+      }, controller.signal);
+    },
+    onSuccess: async (data) => {
+      setResponse(data);
+      setGuardrailResult(data.guardrail);
+      setMessage(null);
+
+      if (!data.guardrail.allowed) {
+        // Guardrail blocked → show reason
+        return;
+      }
+
+      if (data.results.length === 0) {
+        setMessage({ type: 'info', text: 'Nenhuma pessoa encontrada nas fontes disponíveis' });
+        return;
+      }
+
+      // Batch check existing
+      const ids = data.results.filter(r => r.id).map(r => r.id!);
+      const cpfs = data.results.filter(r => r.cpf).map(r => r.cpf!);
+
+      if (ids.length > 0 || cpfs.length > 0) {
+        try {
+          const checkResult = await checkExistingPeople({ ids, cpfs });
+          if (checkResult.success) {
+            setRegisteredIds(new Set(checkResult.existing));
+          }
+        } catch {
+          // Non-critical, continue
+        }
+      }
+    },
+    onError: (error: Error) => {
+      if (error.name === 'AbortError') return;
+      setMessage({ type: 'error', text: error.message });
+    },
+  });
+
+  // ---- Actions ----
+  const handleSearch = useCallback(() => {
+    const cpfDigits = cpf.replace(/\D/g, '');
+
+    if (searchType === 'cpf') {
+      if (cpfDigits.length !== 11) {
+        setMessage({ type: 'error', text: 'CPF deve ter 11 dígitos' });
+        return;
+      }
+    } else {
+      if (nome.trim().length < 2) {
+        setMessage({ type: 'error', text: 'Nome deve ter pelo menos 2 caracteres' });
+        return;
+      }
     }
 
     setMessage(null);
-    searchMutation.mutate({
-      cpf: hasCpf ? cpfDigits : undefined,
-      nome: hasNome ? nome.trim() : undefined
-    });
-  }
+    setPage(1);
+    searchMutation.mutate({ pageOverride: 1 });
+  }, [searchType, cpf, nome, searchMutation]);
 
-  function handleSave() {
-    if (!searchResult?.pessoa) return;
-
-    saveMutation.mutate({
-      pessoa: searchResult.pessoa,
-      experiencias: searchResult.experiencias,
-      aprovado_por: userName
-    });
+  function handlePageChange(newPage: number) {
+    setPage(newPage);
+    searchMutation.mutate({ pageOverride: newPage });
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -133,60 +160,152 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
     }
   }
 
-  function handleSelectDbMatch(match: CpfSearchPessoa) {
-    setSearchResult({
-      success: true,
-      source: 'database',
-      found: true,
-      pessoa: match,
+  async function handleInsertSingle(pessoa: PeopleSearchResult) {
+    const key = pessoa.id || pessoa.cpf || pessoa.nome_completo || '';
+    setInsertingId(key);
+    setMessage(null);
+
+    try {
+      const result = await savePerson({
+        pessoa: {
+          cpf: pessoa.cpf || '',
+          nome_completo: pessoa.nome_completo,
+          cargo_atual: pessoa.cargo_atual,
+          empresa_atual: pessoa.empresa_atual,
+          linkedin_url: pessoa.linkedin_url,
+          email: pessoa.email,
+          localizacao: pessoa.localizacao,
+          resumo_profissional: pessoa.resumo_profissional,
+          foto_url: pessoa.foto_url,
+        },
+        aprovado_por: userName,
+      });
+
+      if (result.success) {
+        setRegisteredIds(prev => new Set([...prev, key]));
+        setMessage({ type: 'success', text: `${pessoa.nome_completo} cadastrada com sucesso` });
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Erro ao inserir';
+      setMessage({ type: 'error', text: msg });
+    } finally {
+      setInsertingId(null);
+    }
+  }
+
+  async function handleMassInsert() {
+    if (!response?.results) return;
+
+    const newPeople = response.results.filter(r => {
+      const key = r.id || r.cpf || r.nome_completo || '';
+      return r._source === 'external' && !registeredIds.has(key);
     });
-    setSaved(true);
-    setDbMatches([]);
-    setView('details');
-    setMessage(null);
-  }
 
-  function handleNoneOfThese() {
-    setView('search');
-    setDbMatches([]);
-    setMessage({ type: 'info', text: 'Informe o nome completo (nome e sobrenome) para buscar em fontes externas' });
-  }
+    if (newPeople.length === 0) {
+      setMessage({ type: 'info', text: 'Todas as pessoas já estão cadastradas' });
+      return;
+    }
 
-  function handleBack() {
-    setView('search');
-    setSearchResult(null);
-    setDbMatches([]);
-    setSaved(false);
+    setMassInserting(true);
     setMessage(null);
+
+    try {
+      const result = await savePeopleBatch({
+        pessoas: newPeople.map(p => ({
+          cpf: p.cpf || '',
+          nome_completo: p.nome_completo,
+          cargo_atual: p.cargo_atual,
+          empresa_atual: p.empresa_atual,
+          linkedin_url: p.linkedin_url,
+          email: p.email,
+          localizacao: p.localizacao,
+          resumo_profissional: p.resumo_profissional,
+          foto_url: p.foto_url,
+        })),
+        aprovado_por: userName,
+      });
+
+      if (result.success) {
+        // Mark all inserted as registered
+        const newIds = new Set(registeredIds);
+        for (const r of result.results) {
+          if (r.status === 'inserted' || r.status === 'existed') {
+            const pessoa = newPeople.find(p => p.nome_completo === r.nome);
+            if (pessoa) {
+              const key = pessoa.id || pessoa.cpf || pessoa.nome_completo || '';
+              newIds.add(key);
+            }
+          }
+        }
+        setRegisteredIds(newIds);
+        setMessage({
+          type: 'success',
+          text: `Inseridos: ${result.inserted} | Já existiam: ${result.existed} | Falhas: ${result.failed}`
+        });
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Erro no batch';
+      setMessage({ type: 'error', text: msg });
+    } finally {
+      setMassInserting(false);
+    }
   }
 
   function handleClose() {
-    setView('search');
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setCpf('');
     setNome('');
-    setSearchResult(null);
-    setDbMatches([]);
+    setCidadeUf('');
+    setDataNascimento('');
+    setPage(1);
+    setResponse(null);
+    setGuardrailResult(null);
+    setRegisteredIds(new Set());
+    setInsertingId(null);
+    setMassInserting(false);
     setMessage(null);
-    setSaved(false);
+    setDetailPerson(null);
     searchMutation.reset();
-    saveMutation.reset();
     onClose();
   }
 
   if (!isOpen) return null;
 
   const isLoading = searchMutation.isPending;
-  const isSaving = saveMutation.isPending;
+  const results = response?.results || [];
+  const pagination = response?.pagination;
+  const badges = response?.badges;
+  const showAuxFields = guardrailResult && !guardrailResult.allowed &&
+    guardrailResult.requiredFields.some(f => f === 'cidadeUf' || f === 'dataNascimento');
+  const newCount = results.filter(r => {
+    const key = r.id || r.cpf || r.nome_completo || '';
+    return r._source === 'external' && !registeredIds.has(key);
+  }).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="w-full max-w-2xl flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl" style={{ maxHeight: '85vh' }}>
-        {/* Header - fixed */}
-        <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-white/5">
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-            <span className="w-1 h-5 bg-gradient-to-b from-orange-400 to-orange-600 rounded" />
-            Buscar Pessoa
-          </h2>
+      <div
+        className="flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl"
+        style={{ width: 1000, maxWidth: '95vw', maxHeight: '90vh' }}
+      >
+        {/* ---- Header ---- */}
+        <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            {detailPerson && (
+              <button
+                onClick={() => setDetailPerson(null)}
+                className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
+            <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+              <span className="w-1 h-5 bg-gradient-to-b from-orange-400 to-orange-600 rounded" />
+              {detailPerson ? 'Detalhes da Pessoa' : 'Buscar Pessoa'}
+            </h2>
+          </div>
           <button
             onClick={handleClose}
             className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 transition-colors"
@@ -195,246 +314,340 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
           </button>
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
-          {view === 'search' ? (
-            <>
-              {/* Search Form */}
-              <div className="space-y-3 mb-4">
-                <div className="flex gap-3">
-                  <Input
-                    ref={cpfInputRef}
-                    value={cpf}
-                    onChange={handleCpfChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder="CPF (000.000.000-00)"
-                    maxLength={14}
-                    className="flex-1"
-                  />
-                  <Input
-                    value={nome}
-                    onChange={(e) => setNome(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Nome da pessoa"
-                    className="flex-1"
-                  />
-                </div>
-                <p className="text-slate-500 text-xs">Preencha pelo menos um campo para buscar</p>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleSearch}
-                    disabled={isLoading}
-                    className="h-12 px-6 bg-cyan-500/15 border-2 border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-white"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-2" />
-                    )}
-                    Buscar
-                  </Button>
-                  <Button onClick={onOpenListingModal} variant="outline" className="h-12 px-6">
-                    Listar Cadastrados
-                  </Button>
-                </div>
-              </div>
+        {/* ---- Detail View ---- */}
+        {detailPerson && (
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5">
+            <PersonDetailView person={detailPerson} />
+          </div>
+        )}
 
-              {/* Info Box */}
-              <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 mb-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-semibold mb-1">Fontes de busca:</p>
-                    <ul className="list-disc list-inside space-y-1 text-blue-300">
-                      <li>LinkedIn (via Apollo.io)</li>
-                      <li>Perplexity AI (busca inteligente)</li>
-                      <li>Base de dados interna</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* Message */}
-              {message && (
-                <div
-                  className={cn(
-                    'p-4 rounded-lg mb-4',
-                    message.type === 'success'
-                      ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-                      : message.type === 'info'
-                      ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-                      : 'bg-red-500/10 border border-red-500/30 text-red-400'
-                  )}
-                >
-                  {message.text}
-                </div>
+        {/* ---- Search Bar ---- */}
+        {!detailPerson && <div className="flex-shrink-0 px-6 py-4 border-b border-white/5 space-y-3">
+          {/* Type toggle */}
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 text-sm mr-1">Tipo:</span>
+            <button
+              onClick={() => { setSearchType('cpf'); setResponse(null); setGuardrailResult(null); setMessage(null); }}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors',
+                searchType === 'cpf'
+                  ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-400'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20'
               )}
-
-              {/* Loading */}
-              {isLoading && (
-                <div className="flex flex-col items-center justify-center py-10 text-slate-400">
-                  <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
-                  <span>Buscando em LinkedIn e Perplexity...</span>
-                </div>
+            >
+              CPF
+            </button>
+            <button
+              onClick={() => { setSearchType('nome'); setResponse(null); setGuardrailResult(null); setMessage(null); }}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors',
+                searchType === 'nome'
+                  ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-400'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20'
               )}
-            </>
-          ) : view === 'pick' ? (
-            <>
-              {/* DB Candidates Pick View */}
-              <Button onClick={handleBack} variant="outline" className="mb-4">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Voltar
+            >
+              Nome
+            </button>
+          </div>
+
+          {/* Input fields */}
+          <div className="flex gap-3">
+            {searchType === 'cpf' ? (
+              <Input
+                ref={cpfInputRef}
+                value={cpf}
+                onChange={(e) => setCpf(formatCpfInput(e.target.value))}
+                onKeyDown={handleKeyDown}
+                placeholder="000.000.000-00"
+                maxLength={14}
+                className="flex-1"
+              />
+            ) : (
+              <Input
+                ref={nomeInputRef}
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Nome completo da pessoa"
+                className="flex-1"
+              />
+            )}
+          </div>
+
+          {/* Auxiliary fields (shown when guardrail demands them) */}
+          {(showAuxFields || (searchType === 'nome' && (cidadeUf || dataNascimento))) && (
+            <div className="flex gap-3">
+              <Input
+                value={cidadeUf}
+                onChange={(e) => setCidadeUf(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Cidade/UF (ex: São Paulo - SP)"
+                className="flex-1"
+              />
+              <Input
+                value={dataNascimento}
+                onChange={(e) => setDataNascimento(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Data nascimento (DD/MM/AAAA)"
+                className="flex-1"
+              />
+            </div>
+          )}
+
+          {/* Action bar */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              onClick={handleSearch}
+              disabled={isLoading}
+              className="h-10 px-5 bg-cyan-500/15 border-2 border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-white"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Search className="h-4 w-4 mr-2" />
+              )}
+              Buscar
+            </Button>
+
+            <Button onClick={onOpenListingModal} variant="outline" className="h-10 px-4">
+              Listar
+            </Button>
+
+            {newCount > 0 && (
+              <Button
+                onClick={handleMassInsert}
+                disabled={massInserting}
+                className="h-10 px-4 bg-green-500/15 border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
+              >
+                {massInserting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Inserir {newCount} novo{newCount > 1 ? 's' : ''}
               </Button>
+            )}
 
-              <div className="mb-4">
-                <h3 className="text-white font-semibold mb-1">Encontramos estas pessoas no banco de dados:</h3>
-                <p className="text-slate-400 text-sm">Selecione a pessoa correta ou clique em &quot;Nenhum destes&quot;</p>
+            {/* Badges */}
+            {badges && badges.total > 0 && (
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded bg-white/5 border border-white/10 text-slate-300">
+                  Total: {badges.total}
+                </span>
+                <span className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded bg-green-500/10 border border-green-500/30 text-green-400">
+                  <Database className="h-3 w-3" /> DB: {badges.db}
+                </span>
+                <span className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                  <Globe className="h-3 w-3" /> Novos: {badges.new}
+                </span>
               </div>
+            )}
+          </div>
 
-              <div className="space-y-2">
-                {dbMatches.map((match, i) => (
-                  <button
-                    key={match.id || i}
-                    onClick={() => handleSelectDbMatch(match)}
-                    className="w-full p-4 text-left rounded-lg bg-white/[0.02] border border-white/5 hover:border-cyan-500/30 hover:bg-cyan-500/5 transition-colors"
+          {/* Guardrail message */}
+          {guardrailResult && !guardrailResult.allowed && (
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400">
+              <Shield className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-semibold">Busca bloqueada pelo guardrail</p>
+                <p className="text-yellow-300/80 mt-1">{guardrailResult.reason}</p>
+              </div>
+            </div>
+          )}
+
+          {/* User message */}
+          {message && (
+            <div
+              className={cn(
+                'p-3 rounded-lg text-sm',
+                message.type === 'success'
+                  ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+                  : message.type === 'info'
+                  ? 'bg-blue-500/10 border border-blue-500/30 text-blue-300'
+                  : 'bg-red-500/10 border border-red-500/30 text-red-400'
+              )}
+            >
+              {message.text}
+            </div>
+          )}
+        </div>}
+
+        {/* ---- Results table (scrollable) ---- */}
+        {!detailPerson && (
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ maxHeight: '60vh' }}>
+          {isLoading && (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
+              <span>Buscando em banco de dados e fontes externas...</span>
+            </div>
+          )}
+
+          {!isLoading && results.length === 0 && response && guardrailResult?.allowed && (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+              <AlertCircle className="h-10 w-10 mb-3 opacity-40" />
+              <span>Nenhum resultado encontrado</span>
+            </div>
+          )}
+
+          {!isLoading && results.length > 0 && (
+            <div className="divide-y divide-white/5">
+              {results.map((pessoa, i) => {
+                const key = pessoa.id || pessoa.cpf || pessoa.nome_completo || String(i);
+                const isRegistered = registeredIds.has(pessoa.id || '') || registeredIds.has(pessoa.cpf || '') || registeredIds.has(pessoa.nome_completo || '');
+                const isDb = pessoa._source === 'db';
+                const isInserting = insertingId === key;
+
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center gap-3 px-6 py-3 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                    onClick={() => setDetailPerson(pessoa)}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-orange-500/15 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                        {match.foto_url ? (
-                          <Image
-                            src={match.foto_url}
-                            alt={match.nome_completo || ''}
-                            width={40}
-                            height={40}
-                            className="w-full h-full object-cover"
-                            unoptimized
-                          />
-                        ) : (
-                          <User className="h-5 w-5 text-orange-400" />
-                        )}
+                    {/* Source badge */}
+                    <span
+                      className={cn(
+                        'flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded uppercase',
+                        isDb
+                          ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                          : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                      )}
+                    >
+                      {isDb ? 'DB' : 'NEW'}
+                    </span>
+
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full bg-orange-500/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {pessoa.foto_url ? (
+                        <Image
+                          src={pessoa.foto_url}
+                          alt={pessoa.nome_completo || ''}
+                          width={36}
+                          height={36}
+                          className="w-full h-full object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <User className="h-4 w-4 text-orange-400" />
+                      )}
+                    </div>
+
+                    {/* Name + role */}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-white text-sm font-medium truncate">
+                        {pessoa.nome_completo || 'Nome não disponível'}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-white font-medium truncate">{match.nome_completo || 'Nome não disponível'}</div>
-                        {(match.cargo_atual || match.empresa_atual) && (
-                          <div className="flex items-center gap-1 text-sm text-slate-400">
-                            {match.cargo_atual && (
-                              <>
-                                <Briefcase className="h-3 w-3 flex-shrink-0" />
-                                <span className="truncate">{match.cargo_atual}</span>
-                              </>
-                            )}
-                            {match.cargo_atual && match.empresa_atual && <span className="flex-shrink-0">·</span>}
-                            {match.empresa_atual && (
-                              <>
-                                <Building2 className="h-3 w-3 flex-shrink-0" />
-                                <span className="truncate">{match.empresa_atual}</span>
-                              </>
-                            )}
-                          </div>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
+                        {pessoa.cargo_atual && (
+                          <>
+                            <Briefcase className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{pessoa.cargo_atual}</span>
+                          </>
+                        )}
+                        {pessoa.cargo_atual && pessoa.empresa_atual && (
+                          <span className="flex-shrink-0 text-slate-600">@</span>
+                        )}
+                        {pessoa.empresa_atual && (
+                          <>
+                            <Building2 className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{pessoa.empresa_atual}</span>
+                          </>
                         )}
                       </div>
                     </div>
-                  </button>
-                ))}
-              </div>
 
-              <div className="mt-4">
-                <Button
-                  onClick={handleNoneOfThese}
-                  variant="outline"
-                  className="w-full h-10"
-                >
-                  Nenhum destes — buscar por nome completo
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Person Details View */}
-              <Button onClick={handleBack} variant="outline" className="mb-4">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Voltar
-              </Button>
-
-              {/* Success/Error Message */}
-              {message && (
-                <div
-                  className={cn(
-                    'p-4 rounded-lg mb-4',
-                    message.type === 'success'
-                      ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-                      : message.type === 'error'
-                      ? 'bg-red-500/10 border border-red-500/30 text-red-400'
-                      : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-                  )}
-                >
-                  {message.text}
-                </div>
-              )}
-
-              {searchResult?.pessoa && (
-                <PersonDetailsView
-                  pessoa={searchResult.pessoa}
-                  experiencias={searchResult.experiencias || []}
-                  source={searchResult.source}
-                  apolloEnriched={searchResult.apollo_enriched}
-                  fontes={searchResult.fontes}
-                />
-              )}
-
-              {/* Save Button */}
-              <div className="mt-6 pt-4 border-t border-white/5">
-                {saved ? (
-                  <div className="flex items-center justify-center gap-2 p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400">
-                    <Check className="h-5 w-5" />
-                    <span className="font-semibold">Pessoa já cadastrada no banco de dados</span>
+                    {/* Action */}
+                    <div className="flex-shrink-0">
+                      {isRegistered || isDb ? (
+                        <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-green-500/10 text-green-400 border border-green-500/30 whitespace-nowrap">
+                          <Check className="h-3 w-3" />
+                          cadastrado
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => { e.stopPropagation(); handleInsertSingle(pessoa); }}
+                          disabled={isInserting || massInserting}
+                          className="h-7 px-2 text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/15"
+                        >
+                          {isInserting ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            'Inserir'
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <Button
-                    onClick={handleSave}
-                    disabled={isSaving || !searchResult?.pessoa}
-                    className="w-full h-12 bg-green-500/15 border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white"
-                  >
-                    {isSaving ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Save className="h-4 w-4 mr-2" />
-                    )}
-                    {isSaving ? 'Salvando...' : 'Cadastrar Pessoa'}
-                  </Button>
-                )}
-              </div>
-            </>
+                );
+              })}
+            </div>
           )}
         </div>
+        )}
+
+        {/* ---- Pagination footer ---- */}
+        {!detailPerson && pagination && pagination.totalPages > 1 && (
+          <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-t border-white/5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(page - 1)}
+              disabled={page <= 1 || isLoading}
+              className="h-8"
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Ant
+            </Button>
+            <span className="text-slate-400 text-sm">
+              Pág {pagination.page} de {pagination.totalPages} ({pagination.total} resultados)
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(page + 1)}
+              disabled={page >= pagination.totalPages || isLoading}
+              className="h-8"
+            >
+              Próx
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function PersonDetailsView({
-  pessoa,
-  experiencias,
-  source,
-  apolloEnriched,
-  fontes
-}: {
-  pessoa: CpfSearchPessoa;
-  experiencias: CpfSearchExperiencia[];
-  source: string;
-  apolloEnriched?: boolean;
-  fontes?: string[];
-}) {
-  const nome = pessoa.nome_completo || 'Nome não disponível';
+function formatCpfInput(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+}
+
+function formatCpfDisplay(cpf: string): string {
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11) return cpf;
+  return `${digits.slice(0, 3)}.***.**${digits.slice(7, 9)}-${digits.slice(9)}`;
+}
+
+// ============================================
+// PERSON DETAIL VIEW (stacked over results)
+// ============================================
+
+function PersonDetailView({ person }: { person: PeopleSearchResult }) {
+  const nome = person.nome_completo || 'Nome nao disponivel';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center gap-4">
         <div className="w-16 h-16 rounded-full bg-orange-500/15 flex items-center justify-center flex-shrink-0 overflow-hidden">
-          {pessoa.foto_url ? (
+          {person.foto_url ? (
             <Image
-              src={pessoa.foto_url}
+              src={person.foto_url}
               alt={nome}
               width={64}
               height={64}
@@ -445,59 +658,68 @@ function PersonDetailsView({
             <User className="h-8 w-8 text-orange-400" />
           )}
         </div>
-        <div>
-          <h3 className="text-xl font-semibold text-white">{nome}</h3>
-          {pessoa.cargo_atual && (
+        <div className="min-w-0">
+          <h3 className="text-xl font-semibold text-white truncate">{nome}</h3>
+          {person.cargo_atual && (
             <span className="text-slate-400 text-sm flex items-center gap-1">
               <Briefcase className="h-3 w-3" />
-              {pessoa.cargo_atual}
+              {person.cargo_atual}
             </span>
           )}
-          {pessoa.empresa_atual && (
+          {person.empresa_atual && (
             <span className="text-slate-500 text-sm flex items-center gap-1">
               <Building2 className="h-3 w-3" />
-              {pessoa.empresa_atual}
+              {person.empresa_atual}
             </span>
           )}
         </div>
       </div>
 
-      {/* Source Badge */}
+      {/* Source badge */}
       <div className="flex flex-wrap gap-2">
         <span
           className={cn(
-            'px-1.5 py-0.5 text-[10px] font-bold rounded',
-            source === 'database'
+            'px-2 py-0.5 text-[10px] font-bold rounded',
+            person._source === 'db'
               ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-              : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+              : 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
           )}
         >
-          {source === 'database' ? 'DB Interno' : 'DB Externo'}
+          {person._source === 'db' ? 'DB Interno' : 'Fonte Externa'}
         </span>
-        {apolloEnriched && (
-          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-500/15 text-purple-400 border border-purple-500/30">
-            LinkedIn
+        {person._provider && (
+          <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+            {person._provider}
           </span>
         )}
       </div>
 
       {/* Details Grid */}
-      <div className="bg-white/[0.02] border border-white/5 rounded-xl p-6">
+      <div className="bg-white/[0.02] border border-white/5 rounded-xl p-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {pessoa.cpf && (
-            <DetailItem label="CPF" value={formatCpfDisplay(pessoa.cpf)} />
+          {person.cpf && (
+            <div className="text-sm">
+              <span className="text-slate-500 block mb-1">CPF</span>
+              <span className="text-slate-300">{formatCpfDisplay(person.cpf)}</span>
+            </div>
           )}
-          {pessoa.email && (
-            <DetailItem label="Email" value={pessoa.email} />
+          {person.email && (
+            <div className="text-sm">
+              <span className="text-slate-500 block mb-1">Email</span>
+              <span className="text-slate-300">{person.email}</span>
+            </div>
           )}
-          {pessoa.localizacao && (
-            <DetailItem label="Localização" value={pessoa.localizacao} />
+          {person.localizacao && (
+            <div className="text-sm">
+              <span className="text-slate-500 block mb-1">Localizacao</span>
+              <span className="text-slate-300">{person.localizacao}</span>
+            </div>
           )}
-          {pessoa.linkedin_url && (
+          {person.linkedin_url && (
             <div className="text-sm">
               <span className="text-slate-500 block mb-1">LinkedIn</span>
               <a
-                href={pessoa.linkedin_url}
+                href={person.linkedin_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-cyan-400 hover:underline inline-flex items-center gap-1"
@@ -508,67 +730,13 @@ function PersonDetailsView({
           )}
         </div>
 
-        {pessoa.resumo_profissional && (
+        {person.resumo_profissional && (
           <div className="mt-4 pt-4 border-t border-white/5">
             <span className="text-slate-500 text-sm block mb-2">Resumo Profissional</span>
-            <p className="text-slate-300 text-sm">{pessoa.resumo_profissional}</p>
+            <p className="text-slate-300 text-sm">{person.resumo_profissional}</p>
           </div>
         )}
       </div>
-
-      {/* Experiences */}
-      {experiencias && experiencias.length > 0 && (
-        <div>
-          <h4 className="text-slate-400 text-sm font-semibold mb-3">Experiências</h4>
-          <div className="space-y-3">
-            {experiencias.map((exp, i) => (
-              <div key={i} className="p-3 bg-white/[0.02] border border-white/5 rounded-lg">
-                <strong className="text-slate-200 text-sm">{exp.cargo}</strong>
-                <span className="text-slate-400 text-sm"> - {exp.empresa}</span>
-                {exp.periodo && (
-                  <div className="text-slate-500 text-xs mt-1">{exp.periodo}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sources */}
-      {fontes && fontes.length > 0 && (
-        <div>
-          <h4 className="text-slate-400 text-sm font-semibold mb-2">Fontes consultadas</h4>
-          <ul className="space-y-1">
-            {fontes.map((fonte, i) => (
-              <li key={i} className="text-slate-500 text-xs truncate">
-                {fonte.startsWith('http') ? (
-                  <a href={fonte} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400">
-                    {fonte}
-                  </a>
-                ) : (
-                  fonte
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
-}
-
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="text-sm">
-      <span className="text-slate-500 block mb-1">{label}</span>
-      <span className="text-slate-300">{value}</span>
-    </div>
-  );
-}
-
-function formatCpfDisplay(cpf: string): string {
-  const digits = cpf.replace(/\D/g, '');
-  if (digits.length !== 11) return cpf;
-  // Mask middle digits for privacy
-  return `${digits.slice(0, 3)}.***.**${digits.slice(7, 9)}-${digits.slice(9)}`;
 }

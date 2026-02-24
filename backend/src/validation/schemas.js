@@ -307,3 +307,45 @@ export const atlasChatSchema = z.object({
 export const atlasClearSessionSchema = z.object({
   sessionId: z.string().uuid('Session ID inválido')
 });
+
+// ============================================
+// PEOPLE V2 SCHEMAS
+// ============================================
+
+// Person search v2 - with guardrail support
+export const searchPersonV2Schema = z.object({
+  searchType: z.enum(['cpf', 'nome'], { required_error: 'searchType é obrigatório (cpf ou nome)' }),
+  cpf: z.string()
+    .transform(val => val.replace(/[^\d]/g, ''))
+    .refine(val => val.length === 0 || val.length === 11, { message: 'CPF deve ter 11 dígitos' })
+    .optional()
+    .nullable(),
+  nome: z.string().max(200).transform(val => val?.trim()).optional().nullable(),
+  dataNascimento: z.string().max(20).transform(val => val?.trim()).optional().nullable(),
+  cidadeUf: z.string().max(100).transform(val => val?.trim()).optional().nullable(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(100)
+}).refine(data => {
+  if (data.searchType === 'cpf') {
+    return data.cpf && data.cpf.length === 11;
+  }
+  return data.nome && data.nome.length >= 2;
+}, {
+  message: 'Para busca por CPF informe 11 dígitos, para busca por nome informe mínimo 2 caracteres'
+});
+
+// Batch save people
+export const saveBatchSchema = z.object({
+  pessoas: z.array(z.object({
+    cpf: z.string().optional().nullable(),
+    nome_completo: z.string().min(1, 'nome_completo é obrigatório'),
+    cargo_atual: z.string().optional().nullable(),
+    empresa_atual: z.string().optional().nullable(),
+    linkedin_url: z.string().optional().nullable(),
+    email: z.string().optional().nullable(),
+    localizacao: z.string().optional().nullable(),
+    resumo_profissional: z.string().optional().nullable(),
+    foto_url: z.string().optional().nullable()
+  })).min(1, 'Mínimo 1 pessoa').max(100, 'Máximo 100 pessoas por lote'),
+  aprovado_por: z.string().min(1, 'aprovado_por é obrigatório')
+});

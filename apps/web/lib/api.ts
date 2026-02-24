@@ -693,6 +693,142 @@ export async function savePerson(data: SavePersonRequest): Promise<SavePersonRes
 }
 
 // ============================================
+// PEOPLE V2 API (Guardrail + Pagination + Batch)
+// ============================================
+
+export interface GuardrailResult {
+  allowed: boolean;
+  reason: string;
+  requiredFields: string[];
+  normalizedQuery: string;
+  durationMs: number;
+}
+
+export interface PeopleSearchV2Request {
+  searchType: 'cpf' | 'nome';
+  cpf?: string;
+  nome?: string;
+  dataNascimento?: string;
+  cidadeUf?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PeopleSearchResult {
+  id?: string;
+  cpf?: string;
+  nome_completo?: string;
+  primeiro_nome?: string;
+  sobrenome?: string;
+  cargo_atual?: string;
+  empresa_atual?: string;
+  linkedin_url?: string;
+  email?: string;
+  localizacao?: string;
+  resumo_profissional?: string;
+  foto_url?: string;
+  _source?: 'db' | 'external';
+  _provider?: string;
+}
+
+export interface PeopleSearchV2Response {
+  success: boolean;
+  guardrail: GuardrailResult;
+  results: PeopleSearchResult[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  badges: {
+    total: number;
+    db: number;
+    new: number;
+  };
+  sources_tried: string[];
+  requestId: string;
+  durationMs: number;
+  error?: string;
+}
+
+export async function searchPeopleV2(
+  data: PeopleSearchV2Request,
+  signal?: AbortSignal
+): Promise<PeopleSearchV2Response> {
+  const res = await fetch(`${API_BASE}/people/search-v2`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    signal,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Search V2 failed' }));
+    throw new Error(error.error || 'Search V2 failed');
+  }
+
+  return res.json();
+}
+
+export interface PeopleCheckExistingResponse {
+  success: boolean;
+  existing: string[];
+  checked: number;
+}
+
+export async function checkExistingPeople(params: {
+  ids?: string[];
+  cpfs?: string[];
+}): Promise<PeopleCheckExistingResponse> {
+  const res = await fetch(`${API_BASE}/people/check-existing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    return { success: false, existing: [], checked: 0 };
+  }
+
+  return res.json();
+}
+
+export interface PeopleSaveBatchRequest {
+  pessoas: CpfSearchPessoa[];
+  aprovado_por: string;
+}
+
+export interface PeopleSaveBatchResponse {
+  success: boolean;
+  inserted: number;
+  existed: number;
+  failed: number;
+  results: Array<{
+    nome: string;
+    status: 'inserted' | 'existed' | 'failed';
+    id?: string;
+    error?: string;
+  }>;
+  durationMs: number;
+}
+
+export async function savePeopleBatch(data: PeopleSaveBatchRequest): Promise<PeopleSaveBatchResponse> {
+  const res = await fetch(`${API_BASE}/people/save-batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Batch save failed' }));
+    throw new Error(error.error || 'Batch save failed');
+  }
+
+  return res.json();
+}
+
+// ============================================
 // NEWS API
 // ============================================
 
