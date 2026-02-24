@@ -22,7 +22,7 @@ interface PeopleModalProps {
   userName?: string;
 }
 
-type ViewState = 'search' | 'details';
+type ViewState = 'search' | 'pick' | 'details';
 
 export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 'sistema' }: PeopleModalProps) {
   const [view, setView] = useState<ViewState>('search');
@@ -31,6 +31,7 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [searchResult, setSearchResult] = useState<CpfSearchResponse | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dbMatches, setDbMatches] = useState<CpfSearchPessoa[]>([]);
   const cpfInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -44,7 +45,15 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
     onSuccess: (data) => {
       setSearchResult(data);
       setSaved(false);
-      if (data.found && data.pessoa) {
+      if (data.preliminary && data.db_matches && data.db_matches.length > 0) {
+        // Single name matched DB candidates → show pick view
+        setDbMatches(data.db_matches);
+        setView('pick');
+        setMessage(null);
+      } else if (data.needs_surname) {
+        // Single name, no DB matches → ask for full name
+        setMessage({ type: 'info', text: data.message || 'Informe o nome completo (nome e sobrenome) para buscar em fontes externas' });
+      } else if (data.found && data.pessoa) {
         setView('details');
         setMessage(null);
         // If from database, mark as already saved
@@ -124,9 +133,29 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
     }
   }
 
+  function handleSelectDbMatch(match: CpfSearchPessoa) {
+    setSearchResult({
+      success: true,
+      source: 'database',
+      found: true,
+      pessoa: match,
+    });
+    setSaved(true);
+    setDbMatches([]);
+    setView('details');
+    setMessage(null);
+  }
+
+  function handleNoneOfThese() {
+    setView('search');
+    setDbMatches([]);
+    setMessage({ type: 'info', text: 'Informe o nome completo (nome e sobrenome) para buscar em fontes externas' });
+  }
+
   function handleBack() {
     setView('search');
     setSearchResult(null);
+    setDbMatches([]);
     setSaved(false);
     setMessage(null);
   }
@@ -136,6 +165,7 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
     setCpf('');
     setNome('');
     setSearchResult(null);
+    setDbMatches([]);
     setMessage(null);
     setSaved(false);
     searchMutation.reset();
@@ -247,6 +277,76 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
                   <span>Buscando em LinkedIn e Perplexity...</span>
                 </div>
               )}
+            </>
+          ) : view === 'pick' ? (
+            <>
+              {/* DB Candidates Pick View */}
+              <Button onClick={handleBack} variant="outline" className="mb-4">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Voltar
+              </Button>
+
+              <div className="mb-4">
+                <h3 className="text-white font-semibold mb-1">Encontramos estas pessoas no banco de dados:</h3>
+                <p className="text-slate-400 text-sm">Selecione a pessoa correta ou clique em &quot;Nenhum destes&quot;</p>
+              </div>
+
+              <div className="space-y-2">
+                {dbMatches.map((match, i) => (
+                  <button
+                    key={match.id || i}
+                    onClick={() => handleSelectDbMatch(match)}
+                    className="w-full p-4 text-left rounded-lg bg-white/[0.02] border border-white/5 hover:border-cyan-500/30 hover:bg-cyan-500/5 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-orange-500/15 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {match.foto_url ? (
+                          <Image
+                            src={match.foto_url}
+                            alt={match.nome_completo || ''}
+                            width={40}
+                            height={40}
+                            className="w-full h-full object-cover"
+                            unoptimized
+                          />
+                        ) : (
+                          <User className="h-5 w-5 text-orange-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-white font-medium truncate">{match.nome_completo || 'Nome não disponível'}</div>
+                        {(match.cargo_atual || match.empresa_atual) && (
+                          <div className="flex items-center gap-1 text-sm text-slate-400">
+                            {match.cargo_atual && (
+                              <>
+                                <Briefcase className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{match.cargo_atual}</span>
+                              </>
+                            )}
+                            {match.cargo_atual && match.empresa_atual && <span className="flex-shrink-0">·</span>}
+                            {match.empresa_atual && (
+                              <>
+                                <Building2 className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{match.empresa_atual}</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <Button
+                  onClick={handleNoneOfThese}
+                  variant="outline"
+                  className="w-full h-10"
+                >
+                  Nenhum destes — buscar por nome completo
+                </Button>
+              </div>
             </>
           ) : (
             <>

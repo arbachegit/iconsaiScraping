@@ -379,6 +379,7 @@ export async function approveCompany(data: ApproveCompanyRequest): Promise<Appro
 
 export interface Company {
   id: string;
+  cnpj: string;
   razao_social: string;
   nome_fantasia?: string;
   cidade?: string;
@@ -386,11 +387,16 @@ export interface Company {
   cnae_descricao?: string;
   regime_tributario?: string;
   linkedin?: string;
+  situacao_cadastral?: string;
 }
 
 export interface CompanyListResponse {
   success: boolean;
   empresas: Company[];
+  count: number;
+  total: number;
+  offset: number;
+  limit: number;
   error?: string;
 }
 
@@ -400,13 +406,15 @@ export async function listCompanies(params?: {
   segmento?: string;
   regime?: string;
   limit?: number;
+  offset?: number;
 }): Promise<CompanyListResponse> {
   const searchParams = new URLSearchParams();
   if (params?.nome) searchParams.append('nome', params.nome);
   if (params?.cidade) searchParams.append('cidade', params.cidade);
   if (params?.segmento) searchParams.append('segmento', params.segmento);
   if (params?.regime) searchParams.append('regime', params.regime);
-  searchParams.append('limit', String(params?.limit || 500));
+  searchParams.append('limit', String(params?.limit || 100));
+  searchParams.append('offset', String(params?.offset || 0));
 
   const res = await fetch(`${API_BASE}/companies/list?${searchParams.toString()}`);
 
@@ -545,6 +553,7 @@ export interface CpfSearchRequest {
 }
 
 export interface CpfSearchPessoa {
+  id?: string;
   cpf: string;
   nome_completo?: string;
   cargo_atual?: string;
@@ -564,7 +573,7 @@ export interface CpfSearchExperiencia {
 
 export interface CpfSearchResponse {
   success: boolean;
-  source: 'database' | 'perplexity' | 'none';
+  source: 'database' | 'perplexity' | 'serper' | 'none';
   found: boolean;
   pessoa: CpfSearchPessoa | null;
   experiencias?: CpfSearchExperiencia[];
@@ -572,6 +581,9 @@ export interface CpfSearchResponse {
   apollo_enriched?: boolean;
   message?: string;
   error?: string;
+  preliminary?: boolean;
+  db_matches?: CpfSearchPessoa[];
+  needs_surname?: boolean;
 }
 
 export async function searchPersonByCpf(data: CpfSearchRequest): Promise<CpfSearchResponse> {

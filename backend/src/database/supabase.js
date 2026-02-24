@@ -259,15 +259,16 @@ export async function findCompanyByCnpj(cnpj) {
  * @param {Object} filters - Optional filters: nome, cidade, segmento, regime
  */
 export async function listCompanies(filters = {}) {
-  const { nome, cidade, limit = 100 } = filters;
+  const { nome, cidade, limit = 100, offset = 0 } = filters;
 
-  // Simple query without joins or order - ALWAYS apply limit to avoid timeout on large tables
+  const from = offset;
+  const to = offset + limit - 1;
+
   let query = supabase
     .from('dim_empresas')
-    .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral')
-    .limit(limit);
+    .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral', { count: 'exact' })
+    .range(from, to);
 
-  // Apply filters
   if (nome) {
     query = query.or(`razao_social.ilike.%${nome}%,nome_fantasia.ilike.%${nome}%`);
   }
@@ -276,13 +277,11 @@ export async function listCompanies(filters = {}) {
     query = query.ilike('cidade', `%${cidade}%`);
   }
 
-  const { data, error } = await query;
+  const { data, error, count } = await query;
 
   if (error) throw error;
 
-  const results = data || [];
-
-  return results;
+  return { data: data || [], total: count || 0 };
 }
 
 /**

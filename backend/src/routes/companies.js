@@ -95,7 +95,8 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
     // Also search internal database (dim_empresas) - non-blocking
     let internalResults = [];
     try {
-      internalResults = await listCompanies({ nome: searchName, cidade: searchCity, limit: 10 });
+      const { data: internalData } = await listCompanies({ nome: searchName, cidade: searchCity, limit: 10 });
+      internalResults = internalData;
     } catch (err) {
       console.warn('[SEARCH] Internal DB search failed:', err.message);
     }
@@ -701,22 +702,26 @@ router.post('/approve', validateBody(approveCompanySchema), async (req, res) => 
  */
 router.get('/list', async (req, res) => {
   try {
-    const { nome, cidade, segmento, regime, limit } = req.query;
+    const { nome, cidade, segmento, regime, limit, offset } = req.query;
 
     const filters = {
-      limit: limit && !isNaN(parseInt(limit)) ? parseInt(limit) : 100
+      limit: limit && !isNaN(parseInt(limit)) ? parseInt(limit) : 100,
+      offset: offset && !isNaN(parseInt(offset)) ? parseInt(offset) : 0
     };
     if (nome) filters.nome = nome;
     if (cidade) filters.cidade = cidade;
     if (segmento) filters.segmento = segmento;
     if (regime) filters.regime = regime;
 
-    const companies = await listCompanies(filters);
+    const { data: companies, total } = await listCompanies(filters);
 
     return res.json({
       success: true,
       count: companies.length,
-      empresas: companies
+      total,
+      empresas: companies,
+      offset: filters.offset,
+      limit: filters.limit
     });
   } catch (error) {
     console.error('[LIST ERROR]', error);

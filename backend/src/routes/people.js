@@ -253,6 +253,77 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
     });
 
     // =============================================
+    // PRE-CHECK: Single name (no surname) without CPF
+    // → Search DB first, avoid expensive external calls
+    // =============================================
+    const nameHasSpace = hasNome && nome.trim().includes(' ');
+
+    if (hasNome && !nameHasSpace && !hasCpf) {
+      const nameTrimmed = nome.trim();
+
+      const { data: dbMatches, error: dbError } = await supabase
+        .from('fato_pessoas')
+        .select('*')
+        .or(`primeiro_nome.ilike.%${nameTrimmed}%,nome_completo.ilike.%${nameTrimmed}%`)
+        .limit(10);
+
+      if (!dbError && dbMatches && dbMatches.length > 0) {
+        // Enrich with latest company/cargo per person
+        const personIds = dbMatches.map(p => p.id);
+        const { data: transactions } = await supabase
+          .from('fato_transacao_empresas')
+          .select(`
+            pessoa_id,
+            cargo,
+            qualificacao,
+            dim_empresas (
+              razao_social,
+              nome_fantasia
+            )
+          `)
+          .in('pessoa_id', personIds)
+          .order('data_transacao', { ascending: false });
+
+        const latestTx = {};
+        for (const tx of (transactions || [])) {
+          if (!latestTx[tx.pessoa_id]) {
+            latestTx[tx.pessoa_id] = tx;
+          }
+        }
+
+        const enrichedMatches = dbMatches.map(p => {
+          const tx = latestTx[p.id];
+          return {
+            ...p,
+            cargo_atual: tx?.cargo || tx?.qualificacao || null,
+            empresa_atual: tx?.dim_empresas?.nome_fantasia || tx?.dim_empresas?.razao_social || null
+          };
+        });
+
+        logger.info('Single name pre-check: DB matches found', { nome: nameTrimmed, count: enrichedMatches.length });
+        return res.json({
+          success: true,
+          preliminary: true,
+          db_matches: enrichedMatches,
+          source: 'database',
+          found: false,
+          pessoa: null
+        });
+      }
+
+      // No matches in DB → ask for surname
+      logger.info('Single name pre-check: no DB matches, requesting surname', { nome: nameTrimmed });
+      return res.json({
+        success: true,
+        needs_surname: true,
+        source: 'none',
+        found: false,
+        pessoa: null,
+        message: `Não encontramos "${nameTrimmed}" no banco de dados. Informe o nome completo (nome e sobrenome) para buscar em fontes externas.`
+      });
+    }
+
+    // =============================================
     // 1. Search internal database (fato_pessoas)
     // =============================================
     sourcesTried.push('database');
