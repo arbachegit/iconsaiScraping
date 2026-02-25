@@ -10,14 +10,16 @@ const brasilDataHub = process.env.BRASIL_DATA_HUB_URL && process.env.BRASIL_DATA
   ? createClient(process.env.BRASIL_DATA_HUB_URL, process.env.BRASIL_DATA_HUB_KEY)
   : null;
 
-// Mapeamento categoria → { client, table }
+// Mapeamento categoria → { client, table, createdAtColumn }
+// NOTA: dim_pessoas (não fato_pessoas) é a tabela real de pessoas
+// brasil-data-hub usa 'criado_em' em vez de 'created_at'
 function getCategoryMapping() {
   return {
-    empresas: { client: supabase, table: 'dim_empresas' },
-    pessoas: { client: supabase, table: 'fato_pessoas' },
-    noticias: { client: supabase, table: 'fato_noticias' },
-    politicos: { client: brasilDataHub, table: 'dim_politicos' },
-    mandatos: { client: brasilDataHub, table: 'fato_politicos_mandatos' },
+    empresas: { client: supabase, table: 'dim_empresas', createdAtColumn: 'created_at' },
+    pessoas: { client: supabase, table: 'dim_pessoas', createdAtColumn: 'created_at' },
+    noticias: { client: supabase, table: 'fato_noticias', createdAtColumn: 'created_at' },
+    politicos: { client: brasilDataHub, table: 'dim_politicos', createdAtColumn: 'criado_em' },
+    mandatos: { client: brasilDataHub, table: 'fato_politicos_mandatos', createdAtColumn: 'criado_em' },
   };
 }
 
@@ -29,7 +31,7 @@ router.get('/', async (req, res) => {
   try {
     const localPromises = [
       supabase.from('dim_empresas').select('id', { count: 'estimated', head: true }),
-      supabase.from('fato_pessoas').select('id', { count: 'estimated', head: true }),
+      supabase.from('dim_pessoas').select('id', { count: 'estimated', head: true }),
       supabase.from('fato_noticias').select('id', { count: 'estimated', head: true }),
     ];
 
@@ -91,7 +93,7 @@ async function safeCount(client, table) {
 async function getAllCounts() {
   const [empresas, pessoas, noticias] = await Promise.all([
     safeCount(supabase, 'dim_empresas'),
-    safeCount(supabase, 'fato_pessoas'),
+    safeCount(supabase, 'dim_pessoas'),
     safeCount(supabase, 'fato_noticias'),
   ]);
 
@@ -108,21 +110,25 @@ async function getAllCounts() {
 }
 
 /**
- * Count rows created on a specific day for a table using created_at.
- * Uses America/Sao_Paulo timezone (UTC-3).
+ * Count rows created on a specific day for a table.
+ * Uses UTC day boundaries (00:00 - 00:00 next day).
+ * @param {object} client - Supabase client
+ * @param {string} table - Table name
+ * @param {string} dateStr - Date in YYYY-MM-DD format
+ * @param {string} createdAtColumn - Column name for creation timestamp (default: 'created_at')
  */
-async function countDayInserts(client, table, dateStr) {
+async function countDayInserts(client, table, dateStr, createdAtColumn = 'created_at') {
   try {
-    const dayStart = dateStr + 'T03:00:00.000Z';
-    const nextDay = new Date(dateStr + 'T03:00:00.000Z');
+    const dayStart = dateStr + 'T00:00:00.000Z';
+    const nextDay = new Date(dateStr + 'T00:00:00.000Z');
     nextDay.setUTCDate(nextDay.getUTCDate() + 1);
     const dayEnd = nextDay.toISOString();
 
     const { count } = await client
       .from(table)
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', dayStart)
-      .lt('created_at', dayEnd);
+      .select('id', { count: 'estimated', head: true })
+      .gte(createdAtColumn, dayStart)
+      .lt(createdAtColumn, dayEnd);
 
     return count || 0;
   } catch {
@@ -418,7 +424,7 @@ router.post('/backfill', async (req, res) => {
     let totalUpserted = 0;
 
     for (const cat of categories) {
-      const { client, table } = mapping[cat];
+      const { client, table, createdAtColumn } = mapping[cat];
 
       if (!client) {
         logger.warn(`Backfill: no client for ${cat}, skipping`);
@@ -426,9 +432,9 @@ router.post('/backfill', async (req, res) => {
         continue;
       }
 
-      // Count daily inserts for each date via created_at
+      // Count daily inserts for each date via created_at/criado_em
       const dailyInsertsPromises = dates.map(dateStr =>
-        countDayInserts(client, table, dateStr).then(count => ({ date: dateStr, count }))
+        countDayInserts(client, table, dateStr, createdAtColumn).then(count => ({ date: dateStr, count }))
       );
 
       const dailyInserts = await Promise.all(dailyInsertsPromises);
