@@ -852,21 +852,23 @@ router.get('/list', validateQuery(listCompaniesSchema), async (req, res) => {
     const filters = { limit, offset };
     if (nome) filters.nome = nome;
     if (cidade) filters.cidade = cidade;
-    if (segmento) filters.segmento = segmento;
 
-    // If regime filter is set, pre-filter empresa_ids from fato_regime_tributario
-    if (regime) {
-      const { data: regimeRows } = await supabase
+    // Pre-filter empresa_ids from fato_regime_tributario for segmento/regime
+    if (segmento || regime) {
+      let preQuery = supabase
         .from('fato_regime_tributario')
         .select('empresa_id')
-        .ilike('regime_tributario', `%${regime}%`)
         .eq('ativo', true)
         .limit(1000);
 
-      if (regimeRows && regimeRows.length > 0) {
-        filters.empresaIds = regimeRows.map(r => r.empresa_id);
+      if (segmento) preQuery = preQuery.ilike('cnae_descricao', `%${segmento}%`);
+      if (regime) preQuery = preQuery.ilike('regime_tributario', `%${regime}%`);
+
+      const { data: preRows } = await preQuery;
+
+      if (preRows && preRows.length > 0) {
+        filters.empresaIds = [...new Set(preRows.map(r => r.empresa_id))];
       } else {
-        // No companies match this regime — return empty
         return res.json({
           success: true,
           count: 0,
@@ -883,33 +885,28 @@ router.get('/list', validateQuery(listCompaniesSchema), async (req, res) => {
 
     const { data: companies, total } = await listCompanies(filters);
 
-    // Enrich with regime_tributario from fato_regime_tributario
+    // Enrich with regime_tributario + cnae_descricao from fato_regime_tributario
     let enriched = companies;
     if (companies.length > 0) {
       const ids = companies.map(c => c.id);
       const { data: regimeData } = await supabase
         .from('fato_regime_tributario')
-        .select('empresa_id, regime_tributario')
+        .select('empresa_id, regime_tributario, cnae_descricao')
         .in('empresa_id', ids)
         .eq('ativo', true);
 
+      const regimeMap = new Map();
       if (regimeData && regimeData.length > 0) {
-        const regimeMap = new Map();
         for (const r of regimeData) {
           if (!regimeMap.has(r.empresa_id)) regimeMap.set(r.empresa_id, r);
         }
-        enriched = companies.map(c => ({
-          ...c,
-          regime_tributario: regimeMap.get(c.id)?.regime_tributario || null,
-          linkedin: c.linkedin_url || null,
-        }));
-      } else {
-        enriched = companies.map(c => ({
-          ...c,
-          regime_tributario: null,
-          linkedin: c.linkedin_url || null,
-        }));
       }
+      enriched = companies.map(c => ({
+        ...c,
+        regime_tributario: regimeMap.get(c.id)?.regime_tributario || null,
+        cnae_descricao: regimeMap.get(c.id)?.cnae_descricao || null,
+        linkedin: c.linkedin_url || null,
+      }));
     }
 
     const durationMs = Date.now() - startTime;

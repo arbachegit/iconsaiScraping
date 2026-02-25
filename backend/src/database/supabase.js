@@ -264,14 +264,14 @@ export async function findCompanyByCnpj(cnpj) {
  * @param {Object} filters - Optional filters: nome, cidade, segmento, regime
  */
 export async function listCompanies(filters = {}) {
-  const { nome, cidade, segmento, empresaIds, limit = 100, offset = 0 } = filters;
+  const { nome, cidade, empresaIds, limit = 100, offset = 0 } = filters;
 
   const from = offset;
   const to = offset + limit - 1;
 
   let query = supabase
     .from('dim_empresas')
-    .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, cnae_descricao, linkedin_url', { count: 'estimated' })
+    .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url', { count: 'estimated' })
     .range(from, to);
 
   if (nome) {
@@ -293,10 +293,6 @@ export async function listCompanies(filters = {}) {
 
   if (cidade) {
     query = query.ilike('cidade', `%${cidade}%`);
-  }
-
-  if (segmento) {
-    query = query.ilike('cnae_descricao', `%${segmento}%`);
   }
 
   if (empresaIds && empresaIds.length > 0) {
