@@ -38,7 +38,17 @@ export function clearTokens(): void {
 }
 
 export function isAuthenticated(): boolean {
-  return !!getAccessToken();
+  const hasToken = !!getAccessToken();
+  if (typeof document !== 'undefined') {
+    if (hasToken && !document.cookie.includes('has_session=')) {
+      // Sync cookie for middleware — user has tokens but cookie is missing
+      document.cookie = 'has_session=1; path=/; max-age=604800; SameSite=Lax';
+    } else if (!hasToken && document.cookie.includes('has_session=')) {
+      // Clear stale cookie
+      document.cookie = 'has_session=; path=/; max-age=0';
+    }
+  }
+  return hasToken;
 }
 
 // ============================================
