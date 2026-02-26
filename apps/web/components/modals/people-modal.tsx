@@ -278,7 +278,7 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
   const pagination = response?.pagination;
   const badges = response?.badges;
   const showAuxFields = guardrailResult && !guardrailResult.allowed &&
-    guardrailResult.requiredFields.some(f => f === 'cidadeUf' || f === 'dataNascimento');
+    (guardrailResult.requiredFields || []).some(f => f === 'cidadeUf' || f === 'dataNascimento');
   const newCount = results.filter(r => {
     const key = r.id || r.cpf || r.nome_completo || '';
     return r._source === 'external' && !registeredIds.has(key);

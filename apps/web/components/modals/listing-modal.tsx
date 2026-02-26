@@ -53,6 +53,8 @@ export function EmpresasListingModal({ isOpen, onClose, filters }: EmpresasListi
         limit: 500,
       }),
     enabled: isOpen,
+    retry: 1,
+    staleTime: 30_000,
   });
 
   const filteredData = useMemo(() => {
@@ -142,6 +144,10 @@ export function EmpresasListingModal({ isOpen, onClose, filters }: EmpresasListi
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
               <span>Carregando empresas...</span>
+            </div>
+          ) : query.isError ? (
+            <div className="text-center py-12 text-red-400">
+              Erro ao carregar empresas. Tente novamente mais tarde.
             </div>
           ) : filteredData.length === 0 ? (
             <div className="text-center py-12 text-slate-500">
@@ -270,6 +276,8 @@ export function PessoasListingModal({ isOpen, onClose, filters }: PessoasListing
         limit: 500,
       }),
     enabled: isOpen,
+    retry: 1,
+    staleTime: 30_000,
   });
 
   const filteredData = useMemo(() => {
@@ -347,6 +355,10 @@ export function PessoasListingModal({ isOpen, onClose, filters }: PessoasListing
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <Loader2 className="h-10 w-10 animate-spin text-orange-400 mb-4" />
               <span>Carregando pessoas...</span>
+            </div>
+          ) : query.isError ? (
+            <div className="text-center py-12 text-red-400">
+              Erro ao carregar pessoas. Tente novamente mais tarde.
             </div>
           ) : filteredData.length === 0 ? (
             <div className="text-center py-12 text-slate-500">
@@ -470,6 +482,8 @@ export function NoticiasListingModal({ isOpen, onClose, filters }: NoticiasListi
         limit: 500,
       }),
     enabled: isOpen,
+    retry: 1,
+    staleTime: 30_000,
   });
 
   const filteredData = useMemo(() => {
@@ -547,6 +561,10 @@ export function NoticiasListingModal({ isOpen, onClose, filters }: NoticiasListi
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <Loader2 className="h-10 w-10 animate-spin text-green-400 mb-4" />
               <span>Carregando noticias...</span>
+            </div>
+          ) : query.isError ? (
+            <div className="text-center py-12 text-red-400">
+              Erro ao carregar noticias. Tente novamente mais tarde.
             </div>
           ) : filteredData.length === 0 ? (
             <div className="text-center py-12 text-slate-500">

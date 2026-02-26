@@ -61,12 +61,6 @@ export async function insertCompany(company) {
       // Digital presence
       website: company.website,
       linkedin_url: company.linkedin,
-      logo_url: company.logo_url,
-
-      // Social media (Apollo/Serper)
-      twitter_url: company.twitter,
-      facebook_url: company.facebook,
-      instagram: company.instagram,
 
       // Raw data
       raw_cnpj_data: company.raw_brasilapi,
@@ -269,10 +263,18 @@ export async function listCompanies(filters = {}) {
   const from = offset;
   const to = offset + limit - 1;
 
+  const hasFilter = !!(nome || cidade || empresaIds);
+
   let query = supabase
     .from('dim_empresas')
-    .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url', { count: 'estimated' })
+    .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url')
     .range(from, to);
+
+  // Only ORDER BY when listing without filters (uses PK index, fast)
+  // With ilike filters, skip ORDER to let Postgres pick fastest plan
+  if (!hasFilter) {
+    query = query.order('id', { ascending: false });
+  }
 
   if (nome) {
     // Split search terms and filter out Portuguese stop words
@@ -280,30 +282,28 @@ export async function listCompanies(filters = {}) {
     const words = nome.split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w.toLowerCase()));
 
     if (words.length > 0) {
-      // Each significant word must match in razao_social OR nome_fantasia
-      // Multiple .or() calls create AND between them
+      // Use prefix match (word%) when possible for index usage, fallback to contains (%word%)
       for (const word of words) {
-        query = query.or(`razao_social.ilike.%${word}%,nome_fantasia.ilike.%${word}%`);
+        query = query.or(`razao_social.ilike.${word}%,nome_fantasia.ilike.${word}%,razao_social.ilike.% ${word}%,nome_fantasia.ilike.% ${word}%`);
       }
     } else {
-      // Fallback: use full search term (e.g. if all words are stop words)
-      query = query.or(`razao_social.ilike.%${nome}%,nome_fantasia.ilike.%${nome}%`);
+      query = query.or(`razao_social.ilike.${nome}%,nome_fantasia.ilike.${nome}%`);
     }
   }
 
   if (cidade) {
-    query = query.ilike('cidade', `%${cidade}%`);
+    query = query.ilike('cidade', `${cidade}%`);
   }
 
   if (empresaIds && empresaIds.length > 0) {
     query = query.in('id', empresaIds);
   }
 
-  const { data, error, count } = await query;
+  const { data, error } = await query;
 
   if (error) throw error;
 
-  return { data: data || [], total: count || 0 };
+  return { data: data || [], total: (data || []).length };
 }
 
 /**

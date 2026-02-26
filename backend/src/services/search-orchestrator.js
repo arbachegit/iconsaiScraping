@@ -264,16 +264,15 @@ function analyzeCompanyQuery({ nome, cnpj, cidade, segmento, regime, extractedFi
     };
   }
 
-  // 1 significant token, no filters → weak
+  // 1 significant token, no filters → medium (allow federated search)
   if (!cidade) missingFields.push('cidade');
-  if (!segmento) missingFields.push('segmento');
   return {
     type: 'company',
-    strength: 'weak',
+    strength: 'medium',
     extractedFields,
     missingFields,
-    strategy: 'refine',
-    reason: `"${nome.trim()}" pode retornar muitos resultados. Adicione cidade ou segmento para refinar.`
+    strategy: 'federated',
+    reason: `"${nome.trim()}" — busca federada. Adicione cidade para resultados mais precisos.`
   };
 }
 
@@ -535,7 +534,8 @@ export function buildRefinementResponse(analysis, cardinality) {
   }
 
   // Even for federated/direct, warn if cardinality is very high
-  if (cardinality.estimatedMatches > 10000) {
+  // Only block for heuristic-based estimates (not actual DB counts)
+  if (cardinality.estimatedMatches > 100000 && cardinality.source === 'heuristic') {
     return {
       status: 'REFINE_REQUIRED',
       message: `Estimativa de ${formatNumber(cardinality.estimatedMatches)} correspondências possíveis. Refine a busca para resultados mais precisos.`,
