@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
           source: '/api/auth/:path*',
           destination: `${PYTHON_API_URL}/auth/:path*`,
         },
+        // Admin routes -> Python API (port 8000)
+        {
+          source: '/api/admin/:path*',
+          destination: `${PYTHON_API_URL}/admin/:path*`,
+        },
         // Atlas agent -> Python API
         {
           source: '/api/atlas/:path*',
