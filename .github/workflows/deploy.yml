@@ -324,6 +324,13 @@ jobs:
             done
             sleep 3
 
+            # Free disk space by removing old images before pulling
+            echo "Cleaning up old Docker images..."
+            docker image prune -af --filter "until=48h" 2>/dev/null || true
+            docker system prune -f --volumes 2>/dev/null || true
+            echo "Disk space after cleanup:"
+            df -h / | tail -1
+
             # Pull images after stopping containers
             echo "Pulling images with SHA: ${GIT_SHA}..."
             docker-compose -f $COMPOSE_FILE pull
