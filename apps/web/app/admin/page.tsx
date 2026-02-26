@@ -29,6 +29,7 @@ import {
   adminCreateUserFlow,
   adminUpdateUser,
   adminDeleteUser,
+  adminResendInvite,
   type AdminUser,
   type AdminCreateUserRequest,
   type AdminCreateUserFlowRequest,
@@ -195,14 +196,24 @@ export default function AdminPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      {user.is_active ? (
-                        <Badge variant="success">Ativo</Badge>
-                      ) : (
-                        <Badge variant="destructive">Inativo</Badge>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {user.is_active ? (
+                          <Badge variant="success">Ativo</Badge>
+                        ) : (
+                          <Badge variant="destructive">Inativo</Badge>
+                        )}
+                        {!user.is_verified && (
+                          <Badge variant="outline" className="text-amber-400 border-amber-400/30">
+                            Pendente
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        {!user.is_verified && (
+                          <ResendInviteButton userId={user.id} queryClient={queryClient} />
+                        )}
                         <button
                           onClick={() => setEditingUser(user)}
                           className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:bg-cyan-500/10 hover:text-cyan-400 transition-colors"
@@ -296,6 +307,51 @@ function ReactivateButton({
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
       ) : (
         <UserCheck className="h-3.5 w-3.5" />
+      )}
+    </button>
+  );
+}
+
+// ===========================================
+// Resend Invite Button
+// ===========================================
+
+function ResendInviteButton({
+  userId,
+  queryClient,
+}: {
+  userId: number;
+  queryClient: ReturnType<typeof useQueryClient>;
+}) {
+  const [sent, setSent] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: () => adminResendInvite(userId),
+    onSuccess: () => {
+      setSent(true);
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+  });
+
+  if (sent) {
+    return (
+      <span className="inline-flex items-center justify-center h-8 px-2 rounded-lg text-green-400 text-[11px]">
+        Enviado
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:bg-amber-500/10 hover:text-amber-400 transition-colors disabled:opacity-50"
+      title="Reenviar Convite"
+    >
+      {mutation.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Send className="h-3.5 w-3.5" />
       )}
     </button>
   );

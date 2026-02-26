@@ -1151,6 +1151,7 @@ export interface AdminUser {
   is_admin: boolean;
   permissions: string[];
   is_active: boolean;
+  is_verified: boolean;
 }
 
 export interface AdminListUsersResponse {
@@ -1263,6 +1264,19 @@ export async function adminDeleteUser(userId: number): Promise<{ success: boolea
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Erro ao desativar usuario' }));
     throw new Error(error.detail || 'Erro ao desativar usuario');
+  }
+
+  return res.json();
+}
+
+export async function adminResendInvite(userId: number): Promise<{ success: boolean; message: string }> {
+  const res = await fetchWithAuth(`${API_BASE}/admin/users/${userId}/resend-invite`, {
+    method: 'POST',
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Erro ao reenviar convite' }));
+    throw new Error(error.detail || 'Erro ao reenviar convite');
   }
 
   return res.json();

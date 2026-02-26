@@ -73,5 +73,14 @@ async def seed_super_admin() -> None:
         else:
             logger.error("seed_admin_insert_failed", email=settings.seed_admin_email)
 
+        # Ensure all admin users have is_verified = true
+        try:
+            client.table("users").update(
+                {"is_verified": True}
+            ).eq("is_admin", True).execute()
+            logger.info("seed_admin_verified_all", msg="All admin users marked as verified.")
+        except Exception as ve:
+            logger.warning("seed_verify_admins_error", error=str(ve))
+
     except Exception as e:
         logger.error("seed_admin_error", error=str(e))

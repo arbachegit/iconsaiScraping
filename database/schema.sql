@@ -2,14 +2,18 @@
 -- IconsAI Scraping - Database Schema
 -- ===========================================
 
--- Usuarios
+-- Usuarios (Level 1: is_admin BOOLEAN, sem role)
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255),
     name VARCHAR(255),
-    role VARCHAR(50) DEFAULT 'user',
+    is_admin BOOLEAN DEFAULT false,
     is_active BOOLEAN DEFAULT true,
+    is_verified BOOLEAN DEFAULT false,
+    cpf_encrypted TEXT,
+    phone_encrypted TEXT,
+    permissions TEXT[] DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -83,10 +87,10 @@ CREATE INDEX IF NOT EXISTS idx_scrapes_url ON scrapes(url);
 CREATE INDEX IF NOT EXISTS idx_api_logs_user ON api_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_logs_created ON api_logs(created_at);
 
--- Usuario admin padrao (senha: admin123)
--- Hash gerado com: from passlib.hash import bcrypt; bcrypt.hash("admin123")
-INSERT INTO users (email, password_hash, name, role)
-VALUES ('admin@iconsai.ai', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.4qtOxwOT3cWvGi', 'Admin', 'admin')
+-- Usuario admin padrao (Level 1: is_admin = true, sem role)
+-- Seed real e feito via api/seed.py com env vars
+INSERT INTO users (email, password_hash, name, is_admin, is_active, is_verified)
+VALUES ('admin@iconsai.ai', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.4qtOxwOT3cWvGi', 'Admin', true, true, true)
 ON CONFLICT (email) DO NOTHING;
 
 -- Creditos iniciais para admin

@@ -794,6 +794,8 @@ class AdminUserCreate(BaseModel):
     password: str = Field(min_length=6, max_length=128)
     is_admin: bool = False
     permissions: List[str] = Field(default_factory=list)
+    cpf: Optional[str] = None
+    phone: Optional[str] = None
 
     @field_validator("email")
     @classmethod
@@ -853,6 +855,7 @@ async def list_users(current_user: TokenData = Depends(require_admin)):
                 "is_admin": user.get("is_admin", False),
                 "permissions": user.get("permissions", []),
                 "is_active": user.get("is_active", True),
+                "is_verified": user.get("is_verified", True),
             })
 
         return {"users": users}
@@ -883,6 +886,20 @@ async def create_user(
         if existing.data:
             raise HTTPException(status_code=400, detail="Email ja cadastrado")
 
+        # Encrypt sensitive fields
+        cpf_encrypted = None
+        phone_encrypted = None
+        if user_data.cpf and field_encryption.is_configured:
+            try:
+                cpf_encrypted = field_encryption.encrypt_cpf(user_data.cpf)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        if user_data.phone and field_encryption.is_configured:
+            try:
+                phone_encrypted = field_encryption.encrypt_phone(user_data.phone)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
         # Criar usuario
         new_user = {
             "email": user_data.email,  # Já normalizado pelo validator
@@ -891,6 +908,9 @@ async def create_user(
             "is_admin": user_data.is_admin,
             "permissions": user_data.permissions,
             "is_active": True,
+            "is_verified": True,  # Created with password = already verified
+            "cpf_encrypted": cpf_encrypted,
+            "phone_encrypted": phone_encrypted,
         }
 
         result = supabase.table("users").insert(new_user).execute()
@@ -906,6 +926,56 @@ async def create_user(
     except Exception as e:
         logger.error("create_user_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/admin/users/{user_id}/resend-invite", tags=["Admin"])
+async def resend_invite(
+    user_id: int,
+    request: Request,
+    current_user: TokenData = Depends(require_admin),
+):
+    """Resend set-password invite email for an unverified user."""
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        result = supabase.table("users").select("id, email, name, is_verified").eq("id", user_id).limit(1).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+
+        user = result.data[0]
+
+        if user.get("is_verified"):
+            raise HTTPException(status_code=400, detail="Usuario ja esta verificado")
+
+        # Generate new set-password token
+        set_pwd_token = create_set_password_token(user["id"], user["email"])
+
+        # Send email
+        await send_set_password_email(user["email"], user.get("name", ""), set_pwd_token)
+
+        # Audit log
+        await log_action(
+            current_user.user_id,
+            "admin.resend_invite",
+            f"users/{user_id}",
+            details={"email": user["email"]},
+            request=request,
+        )
+
+        logger.info("admin_resend_invite", email=user["email"], by=current_user.email)
+
+        return {
+            "success": True,
+            "message": f"Convite reenviado para {user['email']}.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("resend_invite_error", error=str(e))
+        raise HTTPException(status_code=500, detail="Erro ao reenviar convite")
 
 
 @app.get("/admin/users/{user_id}", tags=["Admin"])
