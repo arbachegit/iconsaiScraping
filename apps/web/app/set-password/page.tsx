@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { Suspense, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { KeyRound, Loader2 } from 'lucide-react';
@@ -17,6 +17,14 @@ import {
 import { setPassword } from '@/lib/api';
 
 export default function SetPasswordPage() {
+  return (
+    <Suspense>
+      <SetPasswordContent />
+    </Suspense>
+  );
+}
+
+function SetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from 'react';
+import { Suspense, useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { CheckCircle2, Loader2 } from 'lucide-react';
@@ -16,6 +16,14 @@ import {
 import { verifyCode, resendCode } from '@/lib/api';
 
 export default function VerifyPage() {
+  return (
+    <Suspense>
+      <VerifyContent />
+    </Suspense>
+  );
+}
+
+function VerifyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get('email') || '';
