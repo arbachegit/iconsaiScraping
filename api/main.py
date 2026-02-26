@@ -43,6 +43,7 @@ from api.encryption import field_encryption
 from api.verification import create_verification_code, verify_code
 from backend.src.services.person_enrichment import PersonEnrichmentService
 from config.settings import settings
+from src.database.client import get_supabase
 
 logger = structlog.get_logger()
 
@@ -218,6 +219,20 @@ class RecoverPasswordRequest(BaseModel):
         return v.lower().strip()
 
 
+class ResendCodeRequest(BaseModel):
+    """Schema para reenvio de codigo."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    email: EmailStr
+    code_type: str = Field(default="activation", pattern=r"^(activation|password_reset)$")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.lower().strip()
+
+
 class ResetPasswordRequest(BaseModel):
     """Schema para redefinir senha."""
 
@@ -261,10 +276,10 @@ async def admin_create_user_flow(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Acesso negado. Requer administrador.")
 
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
-    supabase = create_client(settings.supabase_url, settings.supabase_service_key)
     normalized_email = email.lower().strip()
 
     # Check if email already exists
@@ -354,10 +369,9 @@ async def set_password(data: SetPasswordRequest, request: Request):
     if not user_id or not email:
         raise HTTPException(status_code=400, detail="Token malformado")
 
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-
-    supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
     # Verify user exists and has no password yet
     user_result = supabase.table("users").select("*").eq("id", user_id).execute()
@@ -383,6 +397,7 @@ async def set_password(data: SetPasswordRequest, request: Request):
     return {
         "success": True,
         "message": "Senha definida. Codigo de ativacao enviado para o email.",
+        "email": email,
     }
 
 
@@ -392,10 +407,9 @@ async def verify_account(data: VerifyCodeRequest, request: Request):
     Verify account with 6-digit code.
     Activates the user account.
     """
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-
-    supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
     # Find user
     user_result = (
@@ -425,6 +439,34 @@ async def verify_account(data: VerifyCodeRequest, request: Request):
     return {"success": True, "message": "Conta ativada com sucesso."}
 
 
+@app.post("/auth/resend-code", tags=["Auth Level 1"])
+async def resend_code(data: ResendCodeRequest, request: Request):
+    """Resend verification code. Always returns success to prevent enumeration."""
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    user_result = (
+        supabase.table("users")
+        .select("id, email")
+        .eq("email", data.email)
+        .eq("is_active", True)
+        .limit(1)
+        .execute()
+    )
+
+    if user_result.data:
+        user = user_result.data[0]
+        code = await create_verification_code(user["id"], data.code_type)
+        if code:
+            await send_verification_code_email(user["email"], code, data.code_type)
+
+    return {
+        "success": True,
+        "message": "Se o email estiver cadastrado, um novo codigo sera enviado.",
+    }
+
+
 @app.post("/auth/recover-password", tags=["Auth Level 1"])
 async def recover_password(data: RecoverPasswordRequest, request: Request):
     """
@@ -432,10 +474,9 @@ async def recover_password(data: RecoverPasswordRequest, request: Request):
     Sends a reset token + 6-digit code via email.
     Always returns success to prevent email enumeration.
     """
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-
-    supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
     user_result = (
         supabase.table("users")
@@ -487,10 +528,9 @@ async def reset_password(data: ResetPasswordRequest, request: Request):
     if not is_valid:
         raise HTTPException(status_code=400, detail="Codigo invalido ou expirado")
 
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-
-    supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
     # Update password
     supabase.table("users").update(
@@ -790,11 +830,11 @@ def require_admin(current_user: TokenData = Depends(get_current_user)) -> TokenD
 @app.get("/admin/users", tags=["Admin"])
 async def list_users(current_user: TokenData = Depends(require_admin)):
     """Lista todos os usuarios."""
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
         result = supabase.table("users").select("*").order("created_at").execute()
 
         users = []
@@ -821,12 +861,11 @@ async def create_user(
     current_user: TokenData = Depends(require_admin),
 ):
     """Cria novo usuario."""
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
         # Verificar se email ja existe
         existing = (
             supabase.table("users")
@@ -868,11 +907,11 @@ async def get_user(
     current_user: TokenData = Depends(require_admin),
 ):
     """Busca usuario por ID."""
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
         result = supabase.table("users").select("*").eq("id", user_id).execute()
 
         if not result.data:
@@ -902,12 +941,11 @@ async def update_admin_user(
     current_user: TokenData = Depends(require_admin),
 ):
     """Atualiza usuario."""
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
         # Verificar se usuario existe
         existing = supabase.table("users").select("id").eq("id", user_id).execute()
         if not existing.data:
@@ -950,12 +988,11 @@ async def delete_user(
     current_user: TokenData = Depends(require_admin),
 ):
     """Desativa usuario (soft delete)."""
-    if not settings.supabase_url or not settings.supabase_service_key:
+    supabase = get_supabase()
+    if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-
         # Nao permitir auto-exclusao
         existing = supabase.table("users").select("email").eq("id", user_id).execute()
         if existing.data and existing.data[0]["email"] == current_user.email:

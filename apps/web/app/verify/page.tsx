@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { CheckCircle2, Loader2 } from 'lucide-react';
@@ -13,7 +13,7 @@ import {
   CardDescription,
   CardFooter,
 } from '@/components/ui/card';
-import { verifyCode } from '@/lib/api';
+import { verifyCode, resendCode } from '@/lib/api';
 
 export default function VerifyPage() {
   const router = useRouter();
@@ -24,7 +24,29 @@ export default function VerifyPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  async function handleResend() {
+    if (!email || resending || resendCooldown > 0) return;
+    setResending(true);
+    setError('');
+    try {
+      await resendCode(email);
+      setResendCooldown(60);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao reenviar codigo');
+    } finally {
+      setResending(false);
+    }
+  }
 
   function handleDigitChange(index: number, value: string) {
     if (!/^\d*$/.test(value)) return;
@@ -152,6 +174,21 @@ export default function VerifyPage() {
                     'Verificar Codigo'
                   )}
                 </Button>
+
+                <div className="text-center text-sm text-muted-foreground">
+                  {resendCooldown > 0 ? (
+                    <p>Reenviar codigo em {resendCooldown}s</p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={resending || !email}
+                      className="text-cyan-400 hover:text-cyan-300 underline disabled:opacity-50 disabled:no-underline"
+                    >
+                      {resending ? 'Reenviando...' : 'Reenviar codigo'}
+                    </button>
+                  )}
+                </div>
               </form>
             </>
           )}

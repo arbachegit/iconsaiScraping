@@ -72,6 +72,21 @@ export async function verifyCode(email: string, code: string): Promise<{ success
   return res.json();
 }
 
+export async function resendCode(email: string, codeType: string = 'activation'): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/auth/resend-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code_type: codeType }),
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Erro ao reenviar codigo' }));
+    throw new Error(error.detail || 'Erro ao reenviar codigo');
+  }
+
+  return res.json();
+}
+
 export async function recoverPassword(email: string): Promise<{ success: boolean; message: string }> {
   const res = await fetch(`${API_BASE}/auth/recover-password`, {
     method: 'POST',

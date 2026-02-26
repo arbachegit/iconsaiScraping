@@ -5,7 +5,6 @@ Records user actions for security auditing and compliance.
 All entries are stored in the audit_logs table via Supabase.
 """
 
-import json
 from typing import Any, Dict, Optional
 
 import structlog
@@ -63,7 +62,7 @@ async def log_action(
             "user_id": user_id,
             "action": action,
             "resource": resource,
-            "details": json.dumps(details) if details else None,
+            "details": details,
             "ip_address": ip_address,
             "user_agent": user_agent,
         }

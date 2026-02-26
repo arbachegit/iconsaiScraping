@@ -51,7 +51,7 @@ def get_database_url() -> str:
 
     project_ref = match.group(1)
     # Default Supabase PostgreSQL connection
-    return f"postgresql://postgres.{project_ref}:{supabase_key}@aws-0-sa-east-1.pooler.supabase.com:6543/postgres"
+    return f"postgresql://postgres.{project_ref}:{supabase_key}@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 
 
 def apply_migration() -> None:
