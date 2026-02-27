@@ -68,5 +68,5 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key $USER@$HOST "
             cd /opt/iconsai-scraping && \
-            docker compose exec -T scheduler python -m scripts.audit_graphs $FIX_FLAG $CAT_FLAG
+            docker compose -f docker-compose.prod.yml exec -T scheduler python -m scripts.audit_graphs $FIX_FLAG $CAT_FLAG
           "
