@@ -14,8 +14,8 @@ Uses Supabase SQL HTTP API (no psycopg2/DATABASE_URL needed).
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 from pathlib import Path
 
 import structlog
