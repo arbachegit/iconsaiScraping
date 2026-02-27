@@ -615,11 +615,18 @@ async def backfill_stats_history(
     days: int = Query(default=30, ge=7, le=365),
 ):
     """
-    Popula stats_historico com dados retroativos.
-    Estrategia:
-    1. Conta insercoes diarias via created_at nas tabelas fonte
-    2. Calcula totais acumulados de tras pra frente
-    3. Upsert tudo em stats_historico
+    Popula stats_historico com dados retroativos (acumulacao PARA FRENTE).
+
+    Estrategia matematicamente correta:
+    1. Conta insercoes diarias via created_at/criado_em nas tabelas fonte
+    2. Calcula total base = total_atual - soma_insercoes_no_periodo
+    3. Acumula para frente: dia_N = dia_N-1 + insercoes_dia_N
+    4. Ultimo dia = contagem REAL atual (mostra reducoes por dedup)
+
+    Isto garante que:
+    - Bulk imports aparecem como saltos reais no grafico
+    - Reducoes (deduplicacao) aparecem como queda real
+    - O grafico e matematicamente honesto
     """
     if not settings.supabase_url or not settings.supabase_service_key:
         raise HTTPException(status_code=500, detail="Supabase not configured")
@@ -642,7 +649,7 @@ async def backfill_stats_history(
                 results[cat] = {"skipped": True, "reason": "no client"}
                 continue
 
-            # Contar insercoes diarias via created_at/criado_em
+            # 1. Contar insercoes diarias via created_at/criado_em
             daily_inserts = []
             for d_str in dates:
                 # Sao Paulo midnight = 03:00 UTC
@@ -662,21 +669,27 @@ async def backfill_stats_history(
                 except Exception:
                     daily_inserts.append({"date": d_str, "count": 0})
 
-            # Calcular totais acumulados de tras pra frente
+            # 2. Calcular total base (antes do periodo)
             current_total = counts.get(cat, 0)
-            snapshots = []
-            running_total = current_total
+            total_period_inserts = sum(di["count"] for di in daily_inserts)
+            starting_total = max(0, current_total - total_period_inserts)
 
-            # Do mais recente ao mais antigo
-            for entry in reversed(daily_inserts):
+            # 3. Acumular PARA FRENTE (matematicamente correto)
+            snapshots = []
+            running = starting_total
+            for entry in daily_inserts:
+                running += entry["count"]
                 snapshots.append({
                     "data": entry["date"],
                     "categoria": cat,
-                    "total": running_total,
+                    "total": running,
                 })
-                running_total = max(0, running_total - entry["count"])
 
-            # Upsert todos
+            # 4. Ultimo dia = contagem REAL atual (mostra reducao por dedup)
+            if snapshots:
+                snapshots[-1]["total"] = current_total
+
+            # 5. Upsert todos
             for snap in snapshots:
                 try:
                     supabase_client.from_("stats_historico").upsert(
@@ -686,11 +699,13 @@ async def backfill_stats_history(
                 except Exception as e:
                     logger.warning("backfill_upsert_failed", snap=snap, error=str(e))
 
-            oldest = snapshots[-1] if snapshots else None
-            newest = snapshots[0] if snapshots else None
+            oldest = snapshots[0] if snapshots else None
+            newest = snapshots[-1] if snapshots else None
             results[cat] = {
                 "days": len(snapshots),
                 "currentTotal": current_total,
+                "totalPeriodInserts": total_period_inserts,
+                "startingTotal": starting_total,
                 "oldestDate": oldest["data"] if oldest else None,
                 "oldestTotal": oldest["total"] if oldest else None,
                 "newestDate": newest["data"] if newest else None,

@@ -50,9 +50,11 @@ async function countDayInserts(client, table, dateStr, col) {
     nextDay.setUTCDate(nextDay.getUTCDate() + 1);
     const dayEnd = nextDay.toISOString();
 
+    // CRITICO: 'estimated' ignora filtros WHERE no PostgreSQL (usa pg_class.reltuples)
+    // Deve usar 'exact' para contagens filtradas por data
     const { count } = await client
       .from(table)
-      .select('id', { count: 'estimated', head: true })
+      .select('id', { count: 'exact', head: true })
       .gte(col, dayStart)
       .lt(col, dayEnd);
 
@@ -111,35 +113,36 @@ async function main() {
     console.log(`  Diferenca: ${(currentTotals[cat] - totalCounted).toLocaleString()}\n`);
   }
 
-  // 4. Construir totais acumulados
-  console.log('4. Construindo totais acumulados...\n');
+  // 4. Construir totais acumulados (PARA FRENTE - matematicamente correto)
+  console.log('4. Construindo totais acumulados (forward cumulative)...\n');
   const snapshots = []; // { data, categoria, total }
 
   for (const [cat, inserts] of Object.entries(dailyInserts)) {
-    let cumulative = 0;
-    let lastCumulative = -1;
+    const totalPeriodInserts = Object.values(inserts).reduce((a, b) => a + b, 0);
+    const currentTotal = currentTotals[cat] || 0;
 
+    // Total base = o que existia ANTES do periodo
+    const startingTotal = Math.max(0, currentTotal - totalPeriodInserts);
+
+    console.log(`  ${cat}: base=${startingTotal.toLocaleString()} + inserts=${totalPeriodInserts.toLocaleString()} → real=${currentTotal.toLocaleString()}`);
+
+    let running = startingTotal;
     for (const dateStr of dates) {
       const dayCount = inserts[dateStr] || 0;
-      cumulative += dayCount;
-
-      // So registra se houve mudanca real (evita duplicatas)
-      if (cumulative > 0 && cumulative !== lastCumulative) {
-        snapshots.push({ data: dateStr, categoria: cat, total: cumulative });
-        lastCumulative = cumulative;
-      }
+      running += dayCount;
+      snapshots.push({ data: dateStr, categoria: cat, total: running });
     }
 
-    // Garantir que o ultimo dia tenha o total atual real
+    // Ultimo dia = contagem REAL atual (mostra reducao por dedup se houver)
     const lastSnap = snapshots.filter(s => s.categoria === cat).pop();
-    if (lastSnap && lastSnap.total !== currentTotals[cat]) {
-      // Adicionar snapshot de hoje com total real
-      snapshots.push({ data: today, categoria: cat, total: currentTotals[cat] });
-      console.log(`  ${cat}: ajustado total final ${lastSnap.total.toLocaleString()} -> ${currentTotals[cat].toLocaleString()}`);
-    } else if (!lastSnap && currentTotals[cat] > 0) {
-      // Nenhum insert diario encontrado, mas tabela tem dados - snapshot so de hoje
-      snapshots.push({ data: today, categoria: cat, total: currentTotals[cat] });
-      console.log(`  ${cat}: sem inserts diarios detectados, criando snapshot apenas de hoje: ${currentTotals[cat].toLocaleString()}`);
+    if (lastSnap) {
+      if (lastSnap.total !== currentTotal) {
+        lastSnap.total = currentTotal;
+        console.log(`  ${cat}: ajustado ultimo dia para total real ${currentTotal.toLocaleString()} (dedup detectada)`);
+      }
+    } else if (currentTotal > 0) {
+      snapshots.push({ data: today, categoria: cat, total: currentTotal });
+      console.log(`  ${cat}: sem inserts diarios, criando snapshot de hoje: ${currentTotal.toLocaleString()}`);
     }
   }
 
