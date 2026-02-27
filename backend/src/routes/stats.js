@@ -5,6 +5,22 @@ import logger from '../utils/logger.js';
 
 const router = Router();
 
+// Cache in-memory para getAllCounts() — zero deps, TTL 30s
+let countsCache = null;
+let countsCacheTime = 0;
+const COUNTS_CACHE_TTL = 30_000; // 30 segundos
+
+async function getAllCountsCached() {
+  const now = Date.now();
+  if (countsCache && (now - countsCacheTime) < COUNTS_CACHE_TTL) {
+    return countsCache;
+  }
+  const counts = await getAllCounts();
+  countsCache = counts;
+  countsCacheTime = now;
+  return counts;
+}
+
 // Cliente Supabase para brasil-data-hub (políticos e mandatos)
 const brasilDataHub = process.env.BRASIL_DATA_HUB_URL && process.env.BRASIL_DATA_HUB_KEY
   ? createClient(process.env.BRASIL_DATA_HUB_URL, process.env.BRASIL_DATA_HUB_KEY)
@@ -83,9 +99,14 @@ router.get('/', async (req, res) => {
  */
 async function safeCount(client, table) {
   try {
-    const { count } = await client.from(table).select('id', { count: 'estimated', head: true });
+    const { count, error } = await client.from(table).select('id', { count: 'estimated', head: true });
+    if (error) {
+      logger.warn('safeCount error', { table, error: error.message });
+      return 0;
+    }
     return count || 0;
-  } catch {
+  } catch (err) {
+    logger.error('safeCount exception', { table, error: err.message });
     return 0;
   }
 }
@@ -176,7 +197,7 @@ function fillDateGapsCumulative(points) {
  */
 router.get('/current', async (req, res) => {
   try {
-    const counts = await getAllCounts();
+    const counts = await getAllCountsCached();
 
     const hoje = new Date();
     const ontem = new Date(hoje);
@@ -274,7 +295,7 @@ router.get('/history', async (req, res) => {
     }
 
     // Get current counts for today's live data
-    const counts = await getAllCounts();
+    const counts = await getAllCountsCached();
     const hojeISO = new Date().toISOString().split('T')[0];
 
     // Build response: points contain cumulative totals directly
@@ -358,32 +379,33 @@ router.get('/history', async (req, res) => {
  */
 router.post('/snapshot', async (req, res) => {
   try {
-    const counts = await getAllCounts();
+    const counts = await getAllCountsCached();
     const hojeISO = new Date().toISOString().split('T')[0];
 
-    // Buscar snapshots existentes de hoje
+    // Buscar snapshots existentes de hoje (ou do último dia disponível)
     const { data: existingToday } = await supabase
       .from('stats_historico')
       .select('categoria, total')
       .eq('data', hojeISO);
 
-    const todayTotals = {};
+    const existingTotals = {};
     for (const row of existingToday || []) {
-      todayTotals[row.categoria] = row.total;
+      existingTotals[row.categoria] = row.total;
     }
 
-    // SEMPRE buscar o último snapshot do dia anterior (proteção contra estimativas flutuantes)
-    const previousDayTotals = {};
-    const { data: lastSnaps } = await supabase
-      .from('stats_historico')
-      .select('categoria, total')
-      .lt('data', hojeISO)
-      .order('data', { ascending: false })
-      .limit(10);
+    // Se não tiver dados de hoje, buscar o último snapshot conhecido
+    if (Object.keys(existingTotals).length === 0) {
+      const { data: lastSnaps } = await supabase
+        .from('stats_historico')
+        .select('categoria, total')
+        .lt('data', hojeISO)
+        .order('data', { ascending: false })
+        .limit(10);
 
-    for (const row of lastSnaps || []) {
-      if (!previousDayTotals[row.categoria]) {
-        previousDayTotals[row.categoria] = row.total;
+      for (const row of lastSnaps || []) {
+        if (!existingTotals[row.categoria]) {
+          existingTotals[row.categoria] = row.total;
+        }
       }
     }
 
@@ -392,20 +414,18 @@ router.post('/snapshot', async (req, res) => {
 
     for (const cat of categories) {
       const currentEstimate = counts[cat] || 0;
-      const todayValue = todayTotals[cat] || 0;
-      const previousDayValue = previousDayTotals[cat] || 0;
+      const previousTotal = existingTotals[cat] || 0;
 
-      // REGRA: nunca diminuir — usar o MAIOR entre estimativa, hoje e dia anterior
-      const total = Math.max(currentEstimate, todayValue, previousDayValue);
+      // REGRA: nunca diminuir (estimated count flutua)
+      const total = Math.max(currentEstimate, previousTotal);
 
       snapshots.push({ data: hojeISO, categoria: cat, total });
 
-      if (currentEstimate < todayValue || currentEstimate < previousDayValue) {
+      if (currentEstimate < previousTotal) {
         logger.warn('Estimated count dropped (protected)', {
           categoria: cat,
           estimated: currentEstimate,
-          todayExisting: todayValue,
-          previousDay: previousDayValue,
+          previous: previousTotal,
           kept: total,
         });
       }
@@ -551,6 +571,59 @@ router.post('/backfill', async (req, res) => {
       success: false,
       error: 'Failed to backfill stats',
     });
+  }
+});
+
+/**
+ * GET /stats/diagnostic
+ * Returns per-category count, latency, errors, and cache status.
+ */
+router.get('/diagnostic', async (req, res) => {
+  try {
+    const results = {};
+    const mapping = getCategoryMapping();
+
+    for (const [cat, { client, table }] of Object.entries(mapping)) {
+      if (!client) {
+        results[cat] = { table, count: 0, error: 'no client configured', latency_ms: 0 };
+        continue;
+      }
+      const start = Date.now();
+      try {
+        const { count, error } = await client.from(table).select('id', { count: 'estimated', head: true });
+        results[cat] = {
+          table,
+          count: count || 0,
+          error: error?.message || null,
+          latency_ms: Date.now() - start,
+          client: client === brasilDataHub ? 'brasil_data_hub' : 'local',
+        };
+      } catch (err) {
+        results[cat] = { table, count: 0, error: err.message, latency_ms: Date.now() - start };
+      }
+    }
+
+    // Historico count por categoria
+    const { data: hist } = await supabase
+      .from('stats_historico')
+      .select('categoria')
+      .order('data', { ascending: false })
+      .limit(100);
+
+    const histCount = {};
+    for (const row of hist || []) {
+      histCount[row.categoria] = (histCount[row.categoria] || 0) + 1;
+    }
+
+    res.json({
+      success: true,
+      categories: results,
+      stats_historico_rows: histCount,
+      cache_age_ms: countsCacheTime > 0 ? Date.now() - countsCacheTime : null,
+    });
+  } catch (error) {
+    logger.error('Error in stats diagnostic', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to run diagnostic' });
   }
 });
 

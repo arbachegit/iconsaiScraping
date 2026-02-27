@@ -31,6 +31,7 @@ const CATEGORY_MAP = {
   noticias: { client: supabase, table: 'fato_noticias', col: 'created_at' },
   politicos: { client: brasilDataHub, table: 'dim_politicos', col: 'criado_em' },
   mandatos: { client: brasilDataHub, table: 'fato_politicos_mandatos', col: 'criado_em' },
+  emendas: { client: brasilDataHub, table: 'fato_emendas_parlamentares', col: 'criado_em' },
 };
 
 async function safeEstimatedCount(client, table) {
@@ -192,8 +193,8 @@ async function main() {
 
   console.log(`Total registros em stats_historico: ${(allData || []).length}\n`);
 
-  console.log('DATA       | empresas    | pessoas     | politicos   | mandatos    | noticias');
-  console.log('-'.repeat(85));
+  console.log('DATA       | empresas    | pessoas     | politicos   | mandatos    | emendas     | noticias');
+  console.log('-'.repeat(99));
 
   const byDate = {};
   for (const row of allData || []) {
@@ -209,13 +210,14 @@ async function main() {
       String(r.pessoas ?? '-').padStart(11) + ' | ' +
       String(r.politicos ?? '-').padStart(11) + ' | ' +
       String(r.mandatos ?? '-').padStart(11) + ' | ' +
+      String(r.emendas ?? '-').padStart(11) + ' | ' +
       String(r.noticias ?? '-').padStart(11)
     );
   }
 
   // Comparar com totais reais
   console.log('\n--- COMPARACAO COM TOTAIS REAIS ---\n');
-  const categories = ['empresas', 'pessoas', 'politicos', 'mandatos', 'noticias'];
+  const categories = ['empresas', 'pessoas', 'politicos', 'mandatos', 'emendas', 'noticias'];
   const lastDate = Object.keys(byDate).sort().pop();
   const lastSnaps = byDate[lastDate] || {};
 

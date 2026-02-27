@@ -38,6 +38,7 @@ const DATA_AVAILABILITY = {
   noticias: '2026-02-16', // Migration 010 created noticias schema on 2026-02-16
   politicos: '2026-02-05',
   mandatos: '2026-02-05',
+  emendas: '2026-02-27', // Primeira data com emendas no stats
 };
 
 function getDateRange() {
@@ -98,6 +99,7 @@ async function main() {
     noticias: await safeEstimatedCount(supabase, 'fato_noticias'),
     politicos: brasilDataHub ? await safeEstimatedCount(brasilDataHub, 'dim_politicos') : 0,
     mandatos: brasilDataHub ? await safeEstimatedCount(brasilDataHub, 'fato_politicos_mandatos') : 0,
+    emendas: brasilDataHub ? await safeEstimatedCount(brasilDataHub, 'fato_emendas_parlamentares') : 0,
   };
 
   console.log('');

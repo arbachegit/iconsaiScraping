@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -107,15 +107,6 @@ export default function DashboardPage() {
       setVersion('v' + healthQuery.data.version);
     }
   }, [healthQuery.data]);
-
-  // Create initial snapshot to populate stats_historico
-  const snapshotDoneRef = useRef(false);
-  useEffect(() => {
-    if (!snapshotDoneRef.current) {
-      snapshotDoneRef.current = true;
-      createStatsSnapshot().catch(() => {});
-    }
-  }, []);
 
   // Load stats
   const statsQuery = useQuery({
