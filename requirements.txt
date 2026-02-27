@@ -47,7 +47,7 @@ anyio==4.0.0
 
 # Data Processing
 pandas==2.0.0
-numpy==1.24.0
+numpy==2.2.6
 
 # Validation
 validators==0.22.0
