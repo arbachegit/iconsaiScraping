@@ -166,6 +166,9 @@ export default function AdminPage() {
                     Usuario
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    CPF
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Telefone
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -192,6 +195,11 @@ export default function AdminPage() {
                         </span>
                         <span className="text-xs text-slate-400 truncate">{user.email}</span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-slate-300 whitespace-nowrap">
+                        {user.cpf || '-'}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-sm text-slate-300 whitespace-nowrap">
@@ -255,7 +263,7 @@ export default function AdminPage() {
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-400">
                       Nenhum usuario cadastrado.
                     </td>
                   </tr>

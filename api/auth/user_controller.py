@@ -53,11 +53,21 @@ async def list_users(current_user: TokenData = Depends(require_admin)):
                 except Exception:
                     phone_display = phone_raw
 
+            # Decrypt CPF if present
+            cpf_raw = user.get("cpf_encrypted") or ""
+            cpf_display = ""
+            if cpf_raw and field_encryption:
+                try:
+                    cpf_display = field_encryption.decrypt(cpf_raw)
+                except Exception:
+                    cpf_display = cpf_raw
+
             users.append({
                 "id": user.get("id"),
                 "email": user.get("email"),
                 "name": user.get("name"),
                 "phone": phone_display,
+                "cpf": cpf_display,
                 "is_admin": user.get("is_admin", False),
                 "is_active": user.get("is_active", True),
                 "is_verified": user.get("is_verified", True),

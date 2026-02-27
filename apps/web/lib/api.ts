@@ -1315,6 +1315,7 @@ export interface AdminUser {
   email: string;
   name: string | null;
   phone: string;
+  cpf: string;
   is_admin: boolean;
   is_active: boolean;
   is_verified: boolean;
