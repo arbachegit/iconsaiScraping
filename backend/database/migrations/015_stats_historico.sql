@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS stats_historico (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     data DATE NOT NULL,
-    categoria TEXT NOT NULL CHECK (categoria IN ('empresas', 'pessoas', 'politicos', 'noticias')),
+    categoria TEXT NOT NULL CHECK (categoria IN ('empresas', 'pessoas', 'politicos', 'mandatos', 'emendas', 'noticias')),
     total INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS stats_historico (
 -- Comentarios
 COMMENT ON TABLE stats_historico IS 'Historico diario de contagens para dashboard badges';
 COMMENT ON COLUMN stats_historico.data IS 'Data do snapshot (YYYY-MM-DD)';
-COMMENT ON COLUMN stats_historico.categoria IS 'Categoria: empresas, pessoas, politicos, noticias';
+COMMENT ON COLUMN stats_historico.categoria IS 'Categoria: empresas, pessoas, politicos, mandatos, emendas, noticias';
 COMMENT ON COLUMN stats_historico.total IS 'Total acumulado na data';
 
 -- Indices para performance

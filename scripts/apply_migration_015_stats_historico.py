@@ -22,7 +22,7 @@ MIGRATION_SQL = """
 CREATE TABLE IF NOT EXISTS stats_historico (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     data DATE NOT NULL,
-    categoria TEXT NOT NULL CHECK (categoria IN ('empresas', 'pessoas', 'politicos', 'noticias')),
+    categoria TEXT NOT NULL CHECK (categoria IN ('empresas', 'pessoas', 'politicos', 'mandatos', 'emendas', 'noticias')),
     total INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(data, categoria)
