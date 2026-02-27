@@ -197,8 +197,28 @@ async def invite_user(
         # Generate set-password token
         set_pwd_token = create_set_password_token(user_id, normalized_email)
 
-        # Send email
-        await send_set_password_email(normalized_email, user_data.name, set_pwd_token)
+        # Send email — propagate failure to the admin
+        try:
+            email_sent = await send_set_password_email(
+                normalized_email, user_data.name, set_pwd_token
+            )
+        except Exception as email_err:
+            logger.error(
+                "invite_email_failed",
+                email=normalized_email,
+                user_id=user_id,
+                error=str(email_err),
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Usuario criado (ID {user_id}), mas falha ao enviar email: {email_err}",
+            )
+
+        if not email_sent:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Usuario criado (ID {user_id}), mas falha ao enviar email. Tente reenviar o convite.",
+            )
 
         # Audit log
         await log_action(
@@ -255,8 +275,28 @@ async def resend_invite(
         # Generate new set-password token
         set_pwd_token = create_set_password_token(user["id"], user["email"])
 
-        # Send email
-        await send_set_password_email(user["email"], user.get("name", ""), set_pwd_token)
+        # Send email — propagate failure to the admin
+        try:
+            email_sent = await send_set_password_email(
+                user["email"], user.get("name", ""), set_pwd_token
+            )
+        except Exception as email_err:
+            logger.error(
+                "resend_invite_email_failed",
+                email=user["email"],
+                user_id=user_id,
+                error=str(email_err),
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Falha ao enviar email: {email_err}",
+            )
+
+        if not email_sent:
+            raise HTTPException(
+                status_code=502,
+                detail="Falha ao enviar email. Verifique configuracao SMTP.",
+            )
 
         # Audit log
         await log_action(

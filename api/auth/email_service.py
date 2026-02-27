@@ -15,19 +15,29 @@ logger = structlog.get_logger()
 
 
 async def _send_smtp(to_email: str, subject: str, body_html: str) -> bool:
-    """Send an email via SMTP using aiosmtplib."""
+    """Send an email via SMTP using aiosmtplib. Raises on failure."""
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    import aiosmtplib
+
+    logger.info(
+        "email_smtp_attempt",
+        to=to_email,
+        subject=subject,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_user=settings.smtp_user,
+        email_from=settings.email_from,
+    )
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = settings.email_from
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body_html, "html", "utf-8"))
+
     try:
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-
-        import aiosmtplib
-
-        msg = MIMEMultipart("alternative")
-        msg["From"] = settings.email_from
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body_html, "html", "utf-8"))
-
         await aiosmtplib.send(
             msg,
             hostname=settings.smtp_host,
@@ -40,8 +50,17 @@ async def _send_smtp(to_email: str, subject: str, body_html: str) -> bool:
         logger.info("email_sent", to=to_email, subject=subject)
         return True
     except Exception as e:
-        logger.error("email_send_failed", to=to_email, error=str(e))
-        return False
+        logger.error(
+            "email_send_failed",
+            to=to_email,
+            subject=subject,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            smtp_user=settings.smtp_user,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
 
 
 def _is_smtp_configured() -> bool:
