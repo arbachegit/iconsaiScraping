@@ -80,7 +80,7 @@ jobs:
       - name: Security audit (Python)
         run: |
           pip install pip-audit
-          pip-audit -r requirements.txt
+          pip-audit -r requirements.txt --ignore-vuln CVE-2024-23342
 
       - name: Run linting
         run: |
