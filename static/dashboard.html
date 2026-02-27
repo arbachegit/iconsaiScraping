@@ -3448,7 +3448,8 @@
       // Formatar data brasileira
       function formatDateBR(dateStr) {
         if (!dateStr) return '--/--/----';
-        const date = new Date(dateStr);
+        const raw = String(dateStr);
+        const date = raw.length === 10 ? new Date(raw + 'T12:00:00') : new Date(raw);
         return date.toLocaleDateString('pt-BR');
       }
 
@@ -3526,7 +3527,8 @@
 
         // Preparar dados
         const labels = historyData.map(d => {
-          const date = new Date(d.data);
+          const raw = String(d.data);
+          const date = raw.length === 10 ? new Date(raw + 'T12:00:00') : new Date(raw);
           return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         });
         const values = historyData.map(d => d.total);
