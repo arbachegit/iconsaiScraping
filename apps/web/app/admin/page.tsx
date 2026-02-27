@@ -158,6 +158,7 @@ export default function AdminPage() {
           </div>
         ) : (
           <div className="bg-[#0f1629]/80 border border-white/5 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/5">
@@ -165,7 +166,10 @@ export default function AdminPage() {
                     Usuario
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Tipo
+                    Telefone
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Endereco
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Status
@@ -182,17 +186,31 @@ export default function AdminPage() {
                     className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="px-4 py-3">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-slate-200">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium text-slate-200 truncate">
                           {user.name || '-'}
                         </span>
-                        <span className="text-xs text-slate-400">{user.email}</span>
+                        <span className="text-xs text-slate-400 truncate">{user.email}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={user.is_admin ? 'default' : 'outline'}>
-                        {user.is_admin ? 'Admin' : 'Usuario'}
-                      </Badge>
+                      <span className="text-sm text-slate-300 whitespace-nowrap">
+                        {user.phone || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {user.cep ? (
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm text-slate-300 truncate">
+                            {user.logradouro}{user.numero ? `, ${user.numero}` : ''}{user.complemento ? ` - ${user.complemento}` : ''}
+                          </span>
+                          <span className="text-xs text-slate-400 truncate">
+                            {user.bairro}{user.cidade ? ` - ${user.cidade}` : ''}{user.uf ? `/${user.uf}` : ''} - CEP {user.cep}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Nao preenchido</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
@@ -237,13 +255,14 @@ export default function AdminPage() {
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
                       Nenhum usuario cadastrado.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </main>

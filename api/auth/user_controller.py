@@ -44,14 +44,30 @@ async def list_users(current_user: TokenData = Depends(require_admin)):
 
         users = []
         for user in result.data:
+            # Decrypt phone if present
+            phone_raw = user.get("phone_encrypted") or user.get("phone") or ""
+            phone_display = ""
+            if phone_raw and field_encryption:
+                try:
+                    phone_display = field_encryption.decrypt(phone_raw)
+                except Exception:
+                    phone_display = phone_raw
+
             users.append({
                 "id": user.get("id"),
                 "email": user.get("email"),
                 "name": user.get("name"),
+                "phone": phone_display,
                 "is_admin": user.get("is_admin", False),
-                "permissions": user.get("permissions", []),
                 "is_active": user.get("is_active", True),
                 "is_verified": user.get("is_verified", True),
+                "cep": user.get("cep") or "",
+                "logradouro": user.get("logradouro") or "",
+                "numero": user.get("numero") or "",
+                "complemento": user.get("complemento") or "",
+                "bairro": user.get("bairro") or "",
+                "cidade": user.get("cidade") or "",
+                "uf": user.get("uf") or "",
             })
 
         return {"users": users}

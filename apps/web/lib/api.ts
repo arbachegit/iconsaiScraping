@@ -1314,10 +1314,17 @@ export interface AdminUser {
   id: number;
   email: string;
   name: string | null;
+  phone: string;
   is_admin: boolean;
-  permissions: string[];
   is_active: boolean;
   is_verified: boolean;
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
 }
 
 export interface AdminListUsersResponse {
