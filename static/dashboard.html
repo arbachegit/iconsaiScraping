@@ -3525,17 +3525,13 @@
         const ctx = canvas.getContext('2d');
         const colors = categoryColors[categoria];
 
-        // Extrair pontos: suporta formato objeto {points} e array legado
-        const points = Array.isArray(historyData) ? historyData : (historyData.points || []);
-        if (points.length === 0) return;
-
         // Preparar dados
-        const labels = points.map(d => {
+        const labels = historyData.map(d => {
           const raw = String(d.data);
           const date = raw.length === 10 ? new Date(raw + 'T12:00:00') : new Date(raw);
           return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         });
-        const values = points.map(d => d.value ?? d.total ?? 0);
+        const values = historyData.map(d => d.total);
 
         // Destruir grafico existente
         if (statsCharts[categoria]) {
