@@ -334,15 +334,18 @@ def _get_all_counts(supabase_client, brasil_data_hub_client):
 
     politicos = 0
     mandatos = 0
+    emendas = 0
     if brasil_data_hub_client:
         politicos = _get_safe_count(brasil_data_hub_client, "dim_politicos")
         mandatos = _get_safe_count(brasil_data_hub_client, "fato_politicos_mandatos")
+        emendas = _get_safe_count(brasil_data_hub_client, "fato_emendas_parlamentares")
 
     return {
         "empresas": empresas,
         "pessoas": pessoas,
         "politicos": politicos,
         "mandatos": mandatos,
+        "emendas": emendas,
         "noticias": noticias,
     }
 
@@ -368,6 +371,7 @@ CATEGORY_TABLE_MAP = {
     "noticias": ("local", "fato_noticias", "created_at"),
     "politicos": ("brasil_data_hub", "dim_politicos", "criado_em"),
     "mandatos": ("brasil_data_hub", "fato_politicos_mandatos", "criado_em"),
+    "emendas": ("brasil_data_hub", "fato_emendas_parlamentares", "criado_em"),
 }
 
 
@@ -516,6 +520,62 @@ async def get_stats_history(
 
     except Exception as e:
         logger.error("get_stats_history_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stats/diagnostic", tags=["Stats"])
+async def get_stats_diagnostic():
+    """
+    Diagnostico: contagem, latencia e erros por categoria + status do cache.
+    """
+    try:
+        supabase_client, brasil_data_hub_client = _get_clients()
+        results = {}
+
+        for cat, (source, table, _col) in CATEGORY_TABLE_MAP.items():
+            client = brasil_data_hub_client if source == "brasil_data_hub" else supabase_client
+            if not client:
+                results[cat] = {"table": table, "count": 0, "error": "no client configured", "latency_ms": 0}
+                continue
+
+            import time
+            start = time.time()
+            try:
+                resp = client.from_(table).select("id", count="estimated").limit(0).execute()
+                count_val = resp.count if resp.count is not None else 0
+                results[cat] = {
+                    "table": table,
+                    "count": count_val,
+                    "error": None,
+                    "latency_ms": round((time.time() - start) * 1000),
+                    "client": source,
+                }
+            except Exception as err:
+                results[cat] = {
+                    "table": table,
+                    "count": 0,
+                    "error": str(err),
+                    "latency_ms": round((time.time() - start) * 1000),
+                }
+
+        # Historico count por categoria
+        hist_resp = supabase_client.from_("stats_historico").select("categoria").order(
+            "data", desc=True
+        ).limit(100).execute()
+
+        hist_count = {}
+        for row in hist_resp.data or []:
+            cat = row["categoria"]
+            hist_count[cat] = hist_count.get(cat, 0) + 1
+
+        return {
+            "success": True,
+            "categories": results,
+            "stats_historico_rows": hist_count,
+        }
+
+    except Exception as e:
+        logger.error("get_stats_diagnostic_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
