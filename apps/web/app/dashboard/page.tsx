@@ -11,6 +11,7 @@ import {
   LogOut,
   Shield,
   Vote,
+  CircleDollarSign,
 } from 'lucide-react';
 import { getUser, getHealth, getStatsCurrent, getStatsHistory, createStatsSnapshot, type StatItem, type CategoryHistory } from '@/lib/api';
 import { isAuthenticated, clearTokens } from '@/lib/auth';
@@ -35,7 +36,8 @@ const categoryConfig = {
   empresas: { icon: Building2, color: 'red' as const, label: 'Empresas' },
   pessoas: { icon: Users, color: 'orange' as const, label: 'Pessoas' },
   politicos: { icon: Flag, color: 'blue' as const, label: 'Politicos' },
-  mandatos: { icon: Vote, color: 'purple' as const, label: 'Mandatos' },
+  mandatos: { icon: Vote, color: 'yellow' as const, label: 'Mandatos' },
+  emendas: { icon: CircleDollarSign, color: 'purple' as const, label: 'Emendas' },
   noticias: { icon: Newspaper, color: 'green' as const, label: 'Noticias' },
 };
 
@@ -171,6 +173,12 @@ export default function DashboardPage() {
     setPoliticosListingOpen(true);
   }
 
+  function openEmendasFromCard() {
+    // Stub: opens Atlas chat with emendas prompt
+    const atlasBtn = document.querySelector('[data-atlas-toggle]') as HTMLButtonElement;
+    if (atlasBtn) atlasBtn.click();
+  }
+
   // Build stats data
   const statsMap = new Map<string, StatItem>();
   for (const stat of statsQuery.data?.stats || []) {
@@ -252,6 +260,15 @@ export default function DashboardPage() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-4">
         <div className="max-w-6xl mx-auto">
+          {/* Compact Action Cards — 5 horizontal */}
+          <div className="flex flex-nowrap gap-3 mb-5 overflow-x-auto">
+            <CompactActionCard icon={Building2} label="Empresas" color="red" onClick={() => setCompanyModalOpen(true)} />
+            <CompactActionCard icon={Users} label="Pessoas" color="orange" onClick={() => setPeopleModalOpen(true)} />
+            <CompactActionCard icon={Flag} label="Politicos" color="blue" onClick={openPoliticosFromCard} />
+            <CompactActionCard icon={CircleDollarSign} label="Emendas" color="purple" onClick={openEmendasFromCard} />
+            <CompactActionCard icon={Newspaper} label="Noticias" color="green" onClick={() => setNewsModalOpen(true)} />
+          </div>
+
           {/* Stats Badges */}
           <div className="mb-6">
             <h2 className="text-[25px] font-semibold text-slate-400 mb-3">Estatisticas em Tempo Real</h2>
@@ -285,7 +302,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 2: Politicos + Mandatos (large) */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 mb-4">
               {(['politicos', 'mandatos'] as CategoryKey[]).map((cat) => {
                 const config = categoryConfig[cat];
                 const stat = statsMap.get(cat);
@@ -311,41 +328,33 @@ export default function DashboardPage() {
                 );
               })}
             </div>
-          </div>
 
-          {/* Module Cards */}
-          <div>
-            <h2 className="text-[25px] font-semibold text-slate-400 mb-3">Modulos de Inteligencia</h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-              <CompactModuleCard
-                icon={Building2}
-                iconColor="red"
-                title="Empresas"
-                description="CNPJ via BrasilAPI + Serper"
-                onClick={() => setCompanyModalOpen(true)}
-              />
-              <CompactModuleCard
-                icon={Users}
-                iconColor="orange"
-                title="Pessoas"
-                description="Perfis profissionais"
-                onClick={() => setPeopleModalOpen(true)}
-              />
-              <CompactModuleCard
-                icon={Flag}
-                iconColor="blue"
-                title="Politicos"
-                description="Perfis e percepcao"
-                badge="Ativo"
-                onClick={openPoliticosFromCard}
-              />
-              <CompactModuleCard
-                icon={Newspaper}
-                iconColor="green"
-                title="Noticias"
-                description="Monitore noticias"
-                onClick={() => setNewsModalOpen(true)}
-              />
+            {/* Row 3: Emendas + Noticias (large) */}
+            <div className="grid grid-cols-2 gap-4">
+              {(['emendas', 'noticias'] as CategoryKey[]).map((cat) => {
+                const config = categoryConfig[cat];
+                const stat = statsMap.get(cat);
+                const catHistory = historyMap[cat];
+                return (
+                  <StatsBadgeCard
+                    key={cat}
+                    icon={config.icon}
+                    label={config.label}
+                    total={stat?.total || 0}
+                    todayInserts={stat?.today_inserts ?? catHistory?.today ?? 0}
+                    periodTotal={catHistory?.periodTotal ?? 0}
+                    crescimento={stat?.crescimento_percentual || 0}
+                    dataReferencia={dataReferencia}
+                    online={isOnline}
+                    history={catHistory?.points || []}
+                    color={config.color}
+                    countdown={countdown}
+                    maxCountdown={COUNTDOWN_MAX}
+                    size="large"
+                    isLoading={isStatsLoading}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>
@@ -414,51 +423,35 @@ export default function DashboardPage() {
   );
 }
 
-function CompactModuleCard({
+function CompactActionCard({
   icon: Icon,
-  iconColor,
-  title,
-  description,
-  badge,
+  label,
+  color,
   onClick,
 }: {
   icon: typeof Building2;
-  iconColor: 'red' | 'orange' | 'blue' | 'green' | 'cyan' | 'purple';
-  title: string;
-  description: string;
-  badge?: string;
+  label: string;
+  color: 'red' | 'orange' | 'blue' | 'green' | 'purple' | 'yellow';
   onClick: () => void;
 }) {
-  const iconColorMap = {
-    red: 'bg-red-500/10 text-red-400',
-    orange: 'bg-orange-500/10 text-orange-400',
-    blue: 'bg-blue-500/10 text-blue-400',
-    green: 'bg-green-500/10 text-green-400',
-    cyan: 'bg-cyan-500/10 text-cyan-400',
-    purple: 'bg-purple-500/10 text-purple-400',
+  const colorMap: Record<string, { bg: string; text: string; border: string }> = {
+    red: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' },
+    orange: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' },
+    blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30' },
+    green: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
+    purple: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30' },
+    yellow: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' },
   };
 
+  const c = colorMap[color];
+
   return (
-    <div
+    <button
       onClick={onClick}
-      className="bg-[#0f1629]/80 border border-white/5 rounded-xl p-5 cursor-pointer transition-all duration-300 hover:border-cyan-500/30 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/10"
+      className={`flex-shrink-0 flex items-center gap-2 h-[60px] px-4 rounded-xl border ${c.border} ${c.bg} cursor-pointer transition-all duration-200 hover:scale-[1.03] hover:shadow-md`}
     >
-      <div className="flex items-center gap-3.5 mb-3">
-        <div
-          className={`w-14 h-14 rounded-lg flex items-center justify-center ${iconColorMap[iconColor]}`}
-        >
-          <Icon className="w-7 h-7" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-lg font-semibold text-slate-300 truncate">{title}</h3>
-          {badge && (
-            <span className="inline-block px-2.5 py-0.5 text-[13px] bg-green-500/10 border border-green-500/30 text-green-400 rounded">
-              {badge}
-            </span>
-          )}
-        </div>
-      </div>
-      <p className="text-slate-400/80 text-base leading-relaxed line-clamp-2">{description}</p>
-    </div>
+      <Icon className={`w-5 h-5 flex-shrink-0 ${c.text}`} />
+      <span className={`text-sm font-semibold whitespace-nowrap ${c.text}`}>{label}</span>
+    </button>
   );
 }
