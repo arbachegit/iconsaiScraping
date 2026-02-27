@@ -36,12 +36,7 @@ def execute_sql_via_supabase(sql: str) -> dict:
     if not supabase_url or not service_key:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env")
 
-    # Supabase pg-meta SQL endpoint
-    url = f"{supabase_url}/rest/v1/rpc/exec_sql"
-
-    # First try pg-meta endpoint, then fall back to direct REST
-    # The most reliable way: use the Supabase Management API pg endpoint
-    # Format: POST {supabase_url}/pg/query with service_role key
+    # Supabase pg/query endpoint (accepts DDL with service_role key)
     pg_url = f"{supabase_url}/pg/query"
 
     headers = {
