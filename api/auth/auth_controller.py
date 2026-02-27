@@ -19,7 +19,6 @@ from api.auth.auth_service import (
     create_access_token,
     create_password_reset_token,
     create_refresh_token,
-    create_set_password_token,
     decode_special_token,
     hash_password,
     update_user,
@@ -39,7 +38,6 @@ from api.auth.schemas.auth_schemas import (
     SetPasswordRequest,
     TokenData,
     TokenWithRefresh,
-    UserResponse,
     UserUpdate,
     VerifyCodeRequest,
 )

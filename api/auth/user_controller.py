@@ -5,13 +5,12 @@ Handles: list users, create user (direct + invite), update, delete,
          resend invite.
 """
 
-from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth.audit_service import log_action
-from api.auth.auth_middleware import get_current_user, require_admin
+from api.auth.auth_middleware import require_admin
 from api.auth.auth_service import create_set_password_token, hash_password
 from api.auth.email_service import send_set_password_email
 from api.auth.field_encryption import field_encryption
@@ -20,7 +19,6 @@ from api.auth.schemas.user_schemas import (
     AdminCreateUserDirect,
     AdminInviteUser,
     AdminUpdateUser,
-    AdminUserResponse,
 )
 from src.database.client import get_supabase
 

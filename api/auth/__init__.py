@@ -17,6 +17,8 @@ Re-exports below provide backwards compatibility for code that imports from api.
 """
 
 # Re-export from auth_service (functions + constants)
+# Re-export from auth_middleware
+from api.auth.auth_middleware import get_current_user, require_admin
 from api.auth.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -30,9 +32,6 @@ from api.auth.auth_service import (
     validate_refresh_token,
     verify_password,
 )
-
-# Re-export from auth_middleware
-from api.auth.auth_middleware import get_current_user, require_admin
 
 # Re-export schemas (backwards compat)
 from api.auth.schemas.auth_schemas import (

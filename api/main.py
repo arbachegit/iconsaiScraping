@@ -7,21 +7,19 @@ import re
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from supabase import create_client
 
 from api.auth.auth_controller import router as auth_router
-from api.auth.auth_middleware import get_current_user, require_admin
-from api.auth.schemas.auth_schemas import TokenData
+from api.auth.auth_middleware import get_current_user
 from api.auth.user_controller import router as user_router
 from backend.src.services.person_enrichment import PersonEnrichmentService
 from config.settings import settings
-from src.database.client import get_supabase
 
 logger = structlog.get_logger()
 

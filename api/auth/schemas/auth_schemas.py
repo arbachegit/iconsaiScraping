@@ -5,7 +5,7 @@ Includes: login, set-password, verify, recover, reset, refresh, tokens, user res
 """
 
 import re
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
