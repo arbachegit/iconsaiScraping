@@ -202,6 +202,11 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ steps.vars.outputs.sha_full }}
 
+      - name: Set up Python for SBOM
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Generate SBOM (CycloneDX)
         run: |
           pip install cyclonedx-bom
