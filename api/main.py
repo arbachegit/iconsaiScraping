@@ -10,9 +10,12 @@ from pathlib import Path
 from typing import Optional
 
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from supabase import create_client
 
 from api.auth.auth_controller import router as auth_router
@@ -22,6 +25,9 @@ from backend.src.services.person_enrichment import PersonEnrichmentService
 from config.settings import settings
 
 logger = structlog.get_logger()
+
+# Rate limiter — 100 requests/minute per IP (matches Node.js backend)
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 
 # ===========================================
@@ -74,6 +80,10 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS
 app.add_middleware(
@@ -145,7 +155,9 @@ async def version():
 
 
 @app.get("/api/cnae", tags=["CNAE"])
+@limiter.limit("100/minute")
 async def list_cnae(
+    request: Request,
     search: str = Query(default="", max_length=100),
     limit: int = Query(default=100, ge=1, le=2000),
     offset: int = Query(default=0, ge=0),
@@ -199,7 +211,9 @@ async def list_cnae(
 
 
 @app.post("/api/enrich/people", tags=["Enrichment"])
+@limiter.limit("100/minute")
 async def enrich_people(
+    request: Request,
     limit: int = Query(default=10, ge=1, le=100),
     current_user=Depends(get_current_user),
 ):
@@ -376,7 +390,8 @@ CATEGORY_TABLE_MAP = {
 
 
 @app.get("/api/stats/current", tags=["Stats"])
-async def get_current_stats():
+@limiter.limit("100/minute")
+async def get_current_stats(request: Request):
     """
     Retorna contagens atuais + today_inserts + % crescimento vs dia anterior.
     Usado pelos badges do dashboard.
@@ -432,7 +447,9 @@ async def get_current_stats():
 
 
 @app.get("/api/stats/history", tags=["Stats"])
+@limiter.limit("100/minute")
 async def get_stats_history(
+    request: Request,
     categoria: Optional[str] = Query(default=None, description="Filtrar por categoria"),
     limit: int = Query(default=365, ge=1, le=1000),
 ):
@@ -524,7 +541,8 @@ async def get_stats_history(
 
 
 @app.get("/api/stats/diagnostic", tags=["Stats"])
-async def get_stats_diagnostic():
+@limiter.limit("100/minute")
+async def get_stats_diagnostic(request: Request):
     """
     Diagnostico: contagem, latencia e erros por categoria + status do cache.
     """
@@ -611,7 +629,9 @@ def _fill_date_gaps_cumulative(points: list) -> list:
 
 
 @app.post("/api/stats/backfill", tags=["Stats"])
+@limiter.limit("100/minute")
 async def backfill_stats_history(
+    request: Request,
     days: int = Query(default=30, ge=7, le=365),
 ):
     """
@@ -733,7 +753,8 @@ async def backfill_stats_history(
 
 
 @app.post("/api/stats/snapshot", tags=["Stats"])
-async def create_stats_snapshot():
+@limiter.limit("100/minute")
+async def create_stats_snapshot(request: Request):
     """
     Cria um snapshot das estatisticas atuais.
     Chamado pelo cron job a cada 5 minutos.

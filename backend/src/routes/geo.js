@@ -13,6 +13,7 @@ import express from 'express';
 import { z } from 'zod';
 import brasilDataHub from '../services/brasil-data-hub.js';
 import logger from '../utils/logger.js';
+import { sendError } from '../utils/response.js';
 
 const router = express.Router();
 
@@ -39,19 +40,16 @@ router.get('/municipios/:codigoIbge', async (req, res) => {
     const municipio = await brasilDataHub.getMunicipioByCodigo(codigoIbge);
 
     if (!municipio) {
-      return res.status(404).json({
-        error: 'Município não encontrado',
-        codigo_ibge: codigoIbge
-      });
+      return sendError(res, 404, 'Município não encontrado');
     }
 
     res.json(municipio);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return sendError(res, 400, error.errors[0].message);
     }
     logger.error('Erro ao buscar municipio', { error: error.message });
-    res.status(500).json({ error: 'Erro interno' });
+    sendError(res, 500, 'Erro interno');
   }
 });
 
@@ -65,26 +63,22 @@ router.get('/municipios/search', async (req, res) => {
     const uf = ufSchema.parse(req.query.uf);
 
     if (!nome) {
-      return res.status(400).json({ error: 'Parâmetro nome é obrigatório' });
+      return sendError(res, 400, 'Parâmetro nome é obrigatório');
     }
 
     const municipio = await brasilDataHub.getMunicipioByNome(nome, uf);
 
     if (!municipio) {
-      return res.status(404).json({
-        error: 'Município não encontrado',
-        nome,
-        uf
-      });
+      return sendError(res, 404, 'Município não encontrado');
     }
 
     res.json(municipio);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return sendError(res, 400, error.errors[0].message);
     }
     logger.error('Erro ao buscar municipio por nome', { error: error.message });
-    res.status(500).json({ error: 'Erro interno' });
+    sendError(res, 500, 'Erro interno');
   }
 });
 
@@ -97,7 +91,7 @@ router.get('/municipios', async (req, res) => {
     const uf = req.query.uf ? ufSchema.parse(req.query.uf) : null;
 
     if (!uf) {
-      return res.status(400).json({ error: 'Parâmetro uf é obrigatório' });
+      return sendError(res, 400, 'Parâmetro uf é obrigatório');
     }
 
     const municipios = await brasilDataHub.getMunicipiosByUf(uf);
@@ -109,10 +103,10 @@ router.get('/municipios', async (req, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return sendError(res, 400, error.errors[0].message);
     }
     logger.error('Erro ao listar municipios', { error: error.message });
-    res.status(500).json({ error: 'Erro interno' });
+    sendError(res, 500, 'Erro interno');
   }
 });
 
@@ -137,10 +131,10 @@ router.get('/capitais', async (req, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return sendError(res, 400, error.errors[0].message);
     }
     logger.error('Erro ao listar capitais', { error: error.message });
-    res.status(500).json({ error: 'Erro interno' });
+    sendError(res, 500, 'Erro interno');
   }
 });
 
@@ -165,10 +159,10 @@ router.get('/estados', async (req, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return sendError(res, 400, error.errors[0].message);
     }
     logger.error('Erro ao listar estados', { error: error.message });
-    res.status(500).json({ error: 'Erro interno' });
+    sendError(res, 500, 'Erro interno');
   }
 });
 
@@ -183,19 +177,16 @@ router.get('/estados/:sigla', async (req, res) => {
     const estado = await brasilDataHub.getEstadoBySigla(sigla);
 
     if (!estado) {
-      return res.status(404).json({
-        error: 'Estado não encontrado',
-        sigla
-      });
+      return sendError(res, 404, 'Estado não encontrado');
     }
 
     res.json(estado);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return sendError(res, 400, error.errors[0].message);
     }
     logger.error('Erro ao buscar estado', { error: error.message });
-    res.status(500).json({ error: 'Erro interno' });
+    sendError(res, 500, 'Erro interno');
   }
 });
 
@@ -213,17 +204,13 @@ router.post('/resolve', async (req, res) => {
     const { cidade, estado } = req.body;
 
     if (!cidade || !estado) {
-      return res.status(400).json({ error: 'cidade e estado são obrigatórios' });
+      return sendError(res, 400, 'cidade e estado são obrigatórios');
     }
 
     const codigoIbge = await brasilDataHub.resolveCodigoIbge(cidade, estado);
 
     if (!codigoIbge) {
-      return res.status(404).json({
-        error: 'Município não encontrado',
-        cidade,
-        estado
-      });
+      return sendError(res, 404, 'Município não encontrado');
     }
 
     res.json({
@@ -233,7 +220,7 @@ router.post('/resolve', async (req, res) => {
     });
   } catch (error) {
     logger.error('Erro ao resolver codigo IBGE', { error: error.message });
-    res.status(500).json({ error: 'Erro interno' });
+    sendError(res, 500, 'Erro interno');
   }
 });
 
