@@ -9,6 +9,7 @@ import { calcularInferenciaVAR, getPesosVAR, getLimitesRegime } from '../service
 import { LINKEDIN_STATUS, DATA_SOURCES } from '../constants.js';
 import { searchCompanySchema, detailsCompanySchema, sociosSchema, approveCompanySchema, recalculateSchema, listCompaniesSchema, validateBody, validateQuery } from '../validation/schemas.js';
 import logger from '../utils/logger.js';
+import { escapeLike } from '../utils/sanitize.js';
 import { analyzeQuery, estimateCardinality, rankResults, buildRefinementResponse, logEvidence } from '../services/search-orchestrator.js';
 
 const router = Router();
@@ -861,8 +862,8 @@ router.get('/list', validateQuery(listCompaniesSchema), async (req, res) => {
         .eq('ativo', true)
         .limit(1000);
 
-      if (segmento) preQuery = preQuery.ilike('cnae_descricao', `%${segmento}%`);
-      if (regime) preQuery = preQuery.ilike('regime_tributario', `%${regime}%`);
+      if (segmento) preQuery = preQuery.ilike('cnae_descricao', `%${escapeLike(segmento)}%`);
+      if (regime) preQuery = preQuery.ilike('regime_tributario', `%${escapeLike(regime)}%`);
 
       const { data: preRows } = await preQuery;
 

@@ -365,6 +365,26 @@ export const peopleAgentClearSessionSchema = z.object({
 });
 
 // ============================================
+// NEWS SCHEMAS
+// ============================================
+
+// News search query params (GET /api/news/search)
+export const newsSearchSchema = z.object({
+  q: z.string()
+    .min(1, 'Query "q" é obrigatória')
+    .max(300, 'Query muito longa (máximo 300 caracteres)')
+    .transform(val => val.trim()),
+  limit: z.coerce.number().int().min(1).max(100).default(50)
+});
+
+// News list query params (GET /api/news/list)
+export const newsListSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  segmento: z.string().max(100).transform(val => val?.trim()).optional()
+});
+
+// ============================================
 // PEOPLE BATCH SCHEMAS
 // ============================================
 

@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import logger from '../utils/logger.js';
+import { escapeLike } from '../utils/sanitize.js';
 
 // Ensure dotenv is loaded (ESM modules load before code execution)
 const __filename = fileURLToPath(import.meta.url);
@@ -284,15 +285,17 @@ export async function listCompanies(filters = {}) {
     if (words.length > 0) {
       // Use prefix match (word%) when possible for index usage, fallback to contains (%word%)
       for (const word of words) {
-        query = query.or(`razao_social.ilike.${word}%,nome_fantasia.ilike.${word}%,razao_social.ilike.% ${word}%,nome_fantasia.ilike.% ${word}%`);
+        const ew = escapeLike(word);
+        query = query.or(`razao_social.ilike.${ew}%,nome_fantasia.ilike.${ew}%,razao_social.ilike.% ${ew}%,nome_fantasia.ilike.% ${ew}%`);
       }
     } else {
-      query = query.or(`razao_social.ilike.${nome}%,nome_fantasia.ilike.${nome}%`);
+      const en = escapeLike(nome);
+      query = query.or(`razao_social.ilike.${en}%,nome_fantasia.ilike.${en}%`);
     }
   }
 
   if (cidade) {
-    query = query.ilike('cidade', `${cidade}%`);
+    query = query.ilike('cidade', `${escapeLike(cidade)}%`);
   }
 
   if (empresaIds && empresaIds.length > 0) {

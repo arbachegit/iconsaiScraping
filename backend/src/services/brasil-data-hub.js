@@ -11,6 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger.js';
+import { escapeLike } from '../utils/sanitize.js';
 
 // Configuracao do cliente brasil-data-hub
 const brasilDataHubUrl = process.env.BRASIL_DATA_HUB_URL;
@@ -76,7 +77,7 @@ export async function getMunicipioByNome(nome, uf) {
     const { data, error } = await client
       .from('geo_municipios')
       .select('*')
-      .ilike('nome', nome)
+      .ilike('nome', escapeLike(nome))
       .eq('uf', uf.toUpperCase())
       .single();
 

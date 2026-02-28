@@ -3,6 +3,9 @@ import { supabase } from '../database/supabase.js';
 import logger from '../utils/logger.js';
 import { transformToSearchPrompt } from '../services/anthropic.js';
 import { searchNews as perplexitySearchNews, getTrustedSources } from '../services/perplexity.js';
+import { validateQuery } from '../validation/schemas.js';
+import { newsSearchSchema, newsListSchema } from '../validation/schemas.js';
+import { escapeLike } from '../utils/sanitize.js';
 
 const router = Router();
 
@@ -10,11 +13,9 @@ const router = Router();
  * GET /api/news/list
  * List recent news
  */
-router.get('/list', async (req, res) => {
+router.get('/list', validateQuery(newsListSchema), async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
-    const offset = parseInt(req.query.offset) || 0;
-    const segmento = req.query.segmento;
+    const { limit, offset, segmento } = req.query;
 
     let query = supabase
       .from('dim_noticias')
@@ -49,20 +50,16 @@ router.get('/list', async (req, res) => {
  * GET /api/news/search
  * Search news by query text
  */
-router.get('/search', async (req, res) => {
+router.get('/search', validateQuery(newsSearchSchema), async (req, res) => {
   try {
-    const q = req.query.q?.trim();
-    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-
-    if (!q) {
-      return res.status(400).json({ success: false, error: 'Query parameter "q" is required' });
-    }
+    const { q, limit } = req.query;
 
     // Search in title and resumo using ilike
+    const escaped = escapeLike(q);
     const { data, error, count } = await supabase
       .from('dim_noticias')
       .select('id, titulo, resumo, fonte_nome, url, segmento, data_publicacao, relevancia_geral', { count: 'exact' })
-      .or(`titulo.ilike.%${q}%,resumo.ilike.%${q}%`)
+      .or(`titulo.ilike.%${escaped}%,resumo.ilike.%${escaped}%`)
       .order('data_publicacao', { ascending: false })
       .limit(limit);
 
@@ -335,7 +332,7 @@ router.get('/by-topic/:topico', async (req, res) => {
           relevancia_geral
         )
       `)
-      .ilike('topico_slug', `%${topicoSlug}%`)
+      .ilike('topico_slug', `%${escapeLike(topicoSlug)}%`)
       .order('relevancia', { ascending: false })
       .limit(limit);
 

@@ -7,6 +7,7 @@
 import logger from '../utils/logger.js';
 import { supabase } from '../database/supabase.js';
 import { INTENTS } from './intent-parser.js';
+import { escapeLike, maskPII } from '../utils/sanitize.js';
 
 // Import existing services
 import * as apolloService from '../services/apollo.js';
@@ -53,7 +54,7 @@ async function queryDatabase(entities) {
     const { data } = await supabase
       .from('dim_pessoas')
       .select('*')
-      .ilike('nome_completo', `%${entities.nome}%`)
+      .ilike('nome_completo', `%${escapeLike(entities.nome)}%`)
       .limit(10);
 
     if (data?.length) {
@@ -107,7 +108,7 @@ async function queryApollo(entities) {
     );
     return result;
   } catch (error) {
-    logger.warn('Apollo query failed', { error: error.message, name: entities.nome });
+    logger.warn('Apollo query failed', { error: error.message, name: maskPII(entities.nome) });
     return null;
   }
 }
@@ -125,7 +126,7 @@ async function queryPerplexity(entities) {
     );
     return result;
   } catch (error) {
-    logger.warn('Perplexity query failed', { error: error.message, name: entities.nome });
+    logger.warn('Perplexity query failed', { error: error.message, name: maskPII(entities.nome) });
     return null;
   }
 }

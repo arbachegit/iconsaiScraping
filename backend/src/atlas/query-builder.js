@@ -6,6 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger.js';
 import { INTENTS } from './intent-parser.js';
+import { escapeLike, maskPII } from '../utils/sanitize.js';
 
 // Brasil Data Hub client (dim_politicos, fato_politicos_mandatos)
 const brasilDataHub = process.env.BRASIL_DATA_HUB_URL && process.env.BRASIL_DATA_HUB_KEY
@@ -33,10 +34,11 @@ async function searchPolitician(entities) {
   }
 
   // Search in dim_politicos
+  const escapedNome = escapeLike(nome);
   const { data: politicos, error } = await brasilDataHub
     .from('dim_politicos')
     .select('id, nome_completo, nome_urna, sexo, ocupacao, grau_instrucao, data_nascimento')
-    .or(`nome_completo.ilike.%${nome}%,nome_urna.ilike.%${nome}%`)
+    .or(`nome_completo.ilike.%${escapedNome}%,nome_urna.ilike.%${escapedNome}%`)
     .limit(10);
 
   if (error) {
@@ -92,15 +94,16 @@ async function getPoliticianDetails(entities) {
     politico = data;
   } else if (nome) {
     // Search and get first match
+    const escapedNome = escapeLike(nome);
     const { data, error } = await brasilDataHub
       .from('dim_politicos')
       .select('id, nome_completo, nome_urna, data_nascimento, sexo, grau_instrucao, ocupacao')
-      .or(`nome_completo.ilike.%${nome}%,nome_urna.ilike.%${nome}%`)
+      .or(`nome_completo.ilike.%${escapedNome}%,nome_urna.ilike.%${escapedNome}%`)
       .limit(1)
       .single();
 
     if (error || !data) {
-      logger.error('Error getting politician by name', { error: error?.message, nome });
+      logger.error('Error getting politician by name', { error: error?.message, nome: maskPII(nome) });
       return { error: 'Político não encontrado', data: null };
     }
     politico = data;
@@ -153,7 +156,7 @@ async function getPoliticiansByParty(entities) {
     .limit(50);
 
   if (cargo) {
-    query = query.ilike('cargo', `%${cargo}%`);
+    query = query.ilike('cargo', `%${escapeLike(cargo)}%`);
   }
   if (ano_eleicao) {
     query = query.eq('ano_eleicao', ano_eleicao);
@@ -222,11 +225,11 @@ async function getPoliticiansByMunicipality(entities) {
   if (codigo_ibge) {
     query = query.eq('codigo_ibge', codigo_ibge);
   } else if (municipio) {
-    query = query.ilike('municipio', `%${municipio}%`);
+    query = query.ilike('municipio', `%${escapeLike(municipio)}%`);
   }
 
   if (cargo) {
-    query = query.ilike('cargo', `%${cargo}%`);
+    query = query.ilike('cargo', `%${escapeLike(cargo)}%`);
   }
   if (ano_eleicao) {
     query = query.eq('ano_eleicao', ano_eleicao);
@@ -281,10 +284,10 @@ async function getStatistics(entities) {
     query = query.eq('partido_sigla', partido.toUpperCase());
   }
   if (cargo) {
-    query = query.ilike('cargo', `%${cargo}%`);
+    query = query.ilike('cargo', `%${escapeLike(cargo)}%`);
   }
   if (municipio) {
-    query = query.ilike('municipio', `%${municipio}%`);
+    query = query.ilike('municipio', `%${escapeLike(municipio)}%`);
   }
   if (ano_eleicao) {
     query = query.eq('ano_eleicao', ano_eleicao);

@@ -13,6 +13,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import crypto from 'crypto';
 import { supabase } from '../database/supabase.js';
 import logger from '../utils/logger.js';
+import { escapeLike } from '../utils/sanitize.js';
 
 // Cliente Anthropic (Claude)
 const anthropic = new Anthropic({
@@ -217,10 +218,11 @@ export async function processAndSaveNews(noticias, segmento = 'geral') {
 
       // Relacionar com empresas mencionadas (se existirem no banco)
       for (const empresaNome of analysis.empresas_mencionadas) {
+        const escapedNome = escapeLike(empresaNome);
         const { data: empresa } = await supabase
           .from('dim_empresas')
           .select('id')
-          .or(`razao_social.ilike.%${empresaNome}%,nome_fantasia.ilike.%${empresaNome}%`)
+          .or(`razao_social.ilike.%${escapedNome}%,nome_fantasia.ilike.%${escapedNome}%`)
           .limit(1)
           .single();
 
@@ -243,7 +245,7 @@ export async function processAndSaveNews(noticias, segmento = 'geral') {
         const { data: pessoa } = await supabase
           .from('dim_pessoas')
           .select('id')
-          .ilike('nome_completo', `%${pessoaNome}%`)
+          .ilike('nome_completo', `%${escapeLike(pessoaNome)}%`)
           .limit(1)
           .single();
 
@@ -339,7 +341,7 @@ export async function getNewsByTopic(topico, segmento = null, limit = 20) {
         relevancia_geral
       )
     `)
-    .ilike('topico_slug', `%${slugify(topico)}%`)
+    .ilike('topico_slug', `%${escapeLike(slugify(topico))}%`)
     .order('relevancia', { ascending: false })
     .limit(limit);
 

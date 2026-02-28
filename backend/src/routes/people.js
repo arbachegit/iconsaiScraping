@@ -8,6 +8,7 @@ import { validateBody } from '../validation/schemas.js';
 import { searchPersonByCpfSchema, searchPersonV2Schema, saveBatchSchema } from '../validation/schemas.js';
 import { runGuardrail, maskCpf } from '../services/people-guardrail.js';
 import { analyzeQuery, estimateCardinality, rankResults, buildRefinementResponse, logEvidence } from '../services/search-orchestrator.js';
+import { escapeLike, maskPII } from '../utils/sanitize.js';
 
 const router = Router();
 
@@ -215,10 +216,11 @@ router.post('/search', async (req, res) => {
     }
 
     // Search in fato_pessoas by name
+    const escapedNome = escapeLike(nome.trim());
     const { data, error } = await supabase
       .from('fato_pessoas')
       .select('*')
-      .or(`nome_completo.ilike.%${nome.trim()}%,primeiro_nome.ilike.%${nome.trim()}%`)
+      .or(`nome_completo.ilike.%${escapedNome}%,primeiro_nome.ilike.%${escapedNome}%`)
       .limit(20);
 
     if (error) {
@@ -251,7 +253,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
 
     logger.info('Searching person', {
       cpf: hasCpf ? `***${cpf.slice(-4)}` : null,
-      nome: hasNome ? nome : null
+      nome: hasNome ? maskPII(nome) : null
     });
 
     // =============================================
@@ -263,10 +265,11 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
     if (hasNome && !nameHasSpace && !hasCpf) {
       const nameTrimmed = nome.trim();
 
+      const escapedName = escapeLike(nameTrimmed);
       const { data: dbMatches, error: dbError } = await supabase
         .from('fato_pessoas')
         .select('*')
-        .or(`primeiro_nome.ilike.%${nameTrimmed}%,nome_completo.ilike.%${nameTrimmed}%`)
+        .or(`primeiro_nome.ilike.%${escapedName}%,nome_completo.ilike.%${escapedName}%`)
         .limit(10);
 
       if (!dbError && dbMatches && dbMatches.length > 0) {
@@ -302,7 +305,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
           };
         });
 
-        logger.info('Single name pre-check: DB matches found', { nome: nameTrimmed, count: enrichedMatches.length });
+        logger.info('Single name pre-check: DB matches found', { nome: maskPII(nameTrimmed), count: enrichedMatches.length });
         return res.json({
           success: true,
           preliminary: true,
@@ -314,7 +317,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
       }
 
       // No matches in DB → ask for surname
-      logger.info('Single name pre-check: no DB matches, requesting surname', { nome: nameTrimmed });
+      logger.info('Single name pre-check: no DB matches, requesting surname', { nome: maskPII(nameTrimmed) });
       return res.json({
         success: true,
         needs_surname: true,
@@ -341,10 +344,11 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
     }
 
     if (!existingPerson && hasNome) {
+      const escapedNomeCpf = escapeLike(nome.trim());
       const { data, error } = await supabase
         .from('fato_pessoas')
         .select('*')
-        .or(`nome_completo.ilike.%${nome.trim()}%,primeiro_nome.ilike.%${nome.trim()}%`)
+        .or(`nome_completo.ilike.%${escapedNomeCpf}%,primeiro_nome.ilike.%${escapedNomeCpf}%`)
         .limit(1)
         .single();
       if (data && !error) existingPerson = data;
@@ -378,7 +382,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
     }
 
     if (perplexityResult?.success && perplexityResult?.found && perplexityResult?.pessoa) {
-      logger.info('Person found via Perplexity', { nome: perplexityResult.pessoa.nome_completo });
+      logger.info('Person found via Perplexity', { nome: maskPII(perplexityResult.pessoa.nome_completo) });
 
       // Enrich with Apollo
       let apolloData = null;
@@ -489,7 +493,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
         const hasData = empresa || cargo || linkedinUrl || apolloData || descricao;
 
         if (hasData) {
-          logger.info('Person found via Serper+Apollo', { nome: searchName, empresa, cargo });
+          logger.info('Person found via Serper+Apollo', { nome: maskPII(searchName), empresa, cargo });
 
           const fontes = organic.slice(0, 3).map(o => o.link).filter(Boolean);
 
@@ -527,7 +531,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
 
     logger.info('Person not found in any source', {
       cpf: hasCpf ? `***${cpf.slice(-4)}` : null,
-      nome: hasNome ? nome : null,
+      nome: hasNome ? maskPII(nome) : null,
       sources_tried: sourcesTried
     });
 
@@ -562,7 +566,7 @@ router.post('/save', async (req, res) => {
       });
     }
 
-    logger.info('Saving person', { nome: pessoa.nome_completo, aprovado_por });
+    logger.info('Saving person', { nome: maskPII(pessoa.nome_completo), aprovado_por });
 
     // Check if person already exists by CPF or nome in fato_pessoas
     if (pessoa.cpf) {
@@ -756,10 +760,11 @@ router.post('/search-v2', validateBody(searchPersonV2Schema), async (req, res) =
       }
     } else {
       const searchName = guardrail.normalizedQuery || nome.trim();
+      const escapedSearchName = escapeLike(searchName);
       let query = supabase
         .from('fato_pessoas')
         .select('*', { count: 'exact' })
-        .or(`nome_completo.ilike.%${searchName}%,primeiro_nome.ilike.%${searchName}%`);
+        .or(`nome_completo.ilike.%${escapedSearchName}%,primeiro_nome.ilike.%${escapedSearchName}%`);
 
       const { data, error, count } = await query
         .order('created_at', { ascending: false })

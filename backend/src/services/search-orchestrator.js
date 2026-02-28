@@ -13,6 +13,7 @@
 
 import { supabase } from '../database/supabase.js';
 import logger from '../utils/logger.js';
+import { escapeLike } from '../utils/sanitize.js';
 
 // ============================================
 // COMMON BRAZILIAN NAME/COMPANY HEURISTICS
@@ -331,10 +332,11 @@ async function estimatePersonCardinality(fields) {
   // Nome → count in DB + heuristic for external
   if (nome) {
     const searchName = nome.trim();
+    const escapedName = escapeLike(searchName);
     const { count } = await supabase
       .from('fato_pessoas')
       .select('id', { count: 'exact', head: true })
-      .or(`nome_completo.ilike.%${searchName}%,primeiro_nome.ilike.%${searchName}%`);
+      .or(`nome_completo.ilike.%${escapedName}%,primeiro_nome.ilike.%${escapedName}%`);
 
     const dbCount = count || 0;
     const normalized = searchName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -390,13 +392,14 @@ async function estimateCompanyCardinality(fields) {
   // Nome + optional cidade → count in DB + heuristic
   if (nome) {
     const searchName = nome.trim();
+    const escapedName = escapeLike(searchName);
     let query = supabase
       .from('dim_empresas')
       .select('id', { count: 'exact', head: true })
-      .or(`razao_social.ilike.%${searchName}%,nome_fantasia.ilike.%${searchName}%`);
+      .or(`razao_social.ilike.%${escapedName}%,nome_fantasia.ilike.%${escapedName}%`);
 
     if (cidade) {
-      query = query.ilike('cidade', `%${cidade}%`);
+      query = query.ilike('cidade', `%${escapeLike(cidade)}%`);
     }
 
     const { count } = await query;
