@@ -37,6 +37,7 @@ import {
   type AdminUpdateUserRequest,
 } from '@/lib/api';
 import { isAuthenticated } from '@/lib/auth';
+import { ALL_PERMISSIONS, PERMISSION_INFO, type Permission } from '@/lib/permissions';
 
 type CreateMode = 'password' | 'invite';
 type Tab = 'ativos' | 'inativos';
@@ -214,6 +215,9 @@ export default function AdminPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Permissoes
+                  </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Acoes
                   </th>
@@ -272,6 +276,22 @@ export default function AdminPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {(user.permissions || []).length > 0 ? (
+                          (user.permissions || []).map((perm) => (
+                            <span
+                              key={perm}
+                              className="inline-flex px-1.5 py-0.5 text-[10px] font-medium bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded"
+                            >
+                              {perm}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-500">Nenhuma</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         {!user.is_verified && (
                           <ResendInviteButton userId={user.id} queryClient={queryClient} />
@@ -309,7 +329,7 @@ export default function AdminPage() {
                 ))}
                 {displayedUsers.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-400">
                       {activeTab === 'ativos'
                         ? 'Nenhum usuario ativo.'
                         : 'Nenhum usuario inativo.'}
@@ -475,8 +495,15 @@ function CreateUserModal({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  function togglePermission(perm: string) {
+    setPermissions((prev) =>
+      prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]
+    );
+  }
 
   const createWithPasswordMutation = useMutation({
     mutationFn: (data: AdminCreateUserRequest) => adminCreateUser(data),
@@ -514,7 +541,7 @@ function CreateUserModal({
         name,
         email,
         password,
-        permissions: [],
+        permissions,
       });
     } else {
       createWithInviteMutation.mutate({
@@ -659,6 +686,45 @@ function CreateUserModal({
             </div>
           )}
 
+          {/* Permissions */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-300">Permissoes</label>
+            <div className="grid grid-cols-2 gap-2">
+              {ALL_PERMISSIONS.map((perm) => (
+                <label
+                  key={perm}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                    permissions.includes(perm)
+                      ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                      : 'bg-[#0a0e1a] border-white/5 text-slate-400 hover:border-white/10'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={permissions.includes(perm)}
+                    onChange={() => togglePermission(perm)}
+                    className="sr-only"
+                  />
+                  <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
+                    permissions.includes(perm)
+                      ? 'bg-cyan-500 border-cyan-500'
+                      : 'border-slate-500'
+                  }`}>
+                    {permissions.includes(perm) && (
+                      <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium">{PERMISSION_INFO[perm as Permission].label}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-500">Selecione os modulos que o usuario podera acessar</p>
+          </div>
+
           {/* Submit */}
           <div className="pt-2">
             <Button type="submit" className="w-full gap-1.5" disabled={isLoading}>
@@ -700,9 +766,16 @@ function EditUserModal({
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
   const [name, setName] = useState(user.name || '');
+  const [editPermissions, setEditPermissions] = useState<string[]>(user.permissions || []);
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  function toggleEditPermission(perm: string) {
+    setEditPermissions((prev) =>
+      prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]
+    );
+  }
 
   const mutation = useMutation({
     mutationFn: (data: AdminUpdateUserRequest) => adminUpdateUser(user.id, data),
@@ -724,6 +797,11 @@ function EditUserModal({
     const updates: AdminUpdateUserRequest = {};
     if (name !== (user.name || '')) updates.name = name;
     if (newPassword) updates.new_password = newPassword;
+
+    // Check if permissions changed
+    const prevPerms = [...(user.permissions || [])].sort().join(',');
+    const newPerms = [...editPermissions].sort().join(',');
+    if (prevPerms !== newPerms) updates.permissions = editPermissions;
 
     if (Object.keys(updates).length === 0) {
       setError('Nenhuma alteracao para salvar.');
@@ -809,6 +887,44 @@ function EditUserModal({
                 className="pl-10 h-10"
                 minLength={6}
               />
+            </div>
+          </div>
+
+          {/* Permissions */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-300">Permissoes</label>
+            <div className="grid grid-cols-2 gap-2">
+              {ALL_PERMISSIONS.map((perm) => (
+                <label
+                  key={perm}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                    editPermissions.includes(perm)
+                      ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                      : 'bg-[#0a0e1a] border-white/5 text-slate-400 hover:border-white/10'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={editPermissions.includes(perm)}
+                    onChange={() => toggleEditPermission(perm)}
+                    className="sr-only"
+                  />
+                  <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
+                    editPermissions.includes(perm)
+                      ? 'bg-cyan-500 border-cyan-500'
+                      : 'border-slate-500'
+                  }`}>
+                    {editPermissions.includes(perm) && (
+                      <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium">{PERMISSION_INFO[perm as Permission].label}</span>
+                  </div>
+                </label>
+              ))}
             </div>
           </div>
 

@@ -19,7 +19,8 @@ import atlasRouter from './routes/atlas.js';
 import peopleAgentRouter from './routes/people-agent.js';
 import statsRouter from './routes/stats.js';
 import { logger, requestLogger } from './utils/logger.js';
-import { requireAuth } from './middleware/auth.js';
+import { requireAuth, requirePermission } from './middleware/auth.js';
+import { PERMISSIONS } from './constants.js';
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3001;
@@ -55,13 +56,15 @@ app.use('/people-agent', limiter);
 
 // Routes (nginx strips /api/ prefix, so use /companies directly)
 // All data routes require JWT authentication
-app.use('/companies', requireAuth, companiesRouter);
-app.use('/people', requireAuth, peopleRouter);
-app.use('/news', requireAuth, newsRouter);
-app.use('/politicians', requireAuth, politiciansRouter);
+// Module routes also require specific permissions
+app.use('/companies', requireAuth, requirePermission(PERMISSIONS.EMPRESAS), companiesRouter);
+app.use('/people', requireAuth, requirePermission(PERMISSIONS.PESSOAS), peopleRouter);
+app.use('/news', requireAuth, requirePermission(PERMISSIONS.NOTICIAS), newsRouter);
+app.use('/politicians', requireAuth, requirePermission(PERMISSIONS.POLITICOS), politiciansRouter);
+app.use('/people-agent', requireAuth, requirePermission(PERMISSIONS.PESSOAS), peopleAgentRouter);
+// Auth-only routes (no module permission required)
 app.use('/geo', requireAuth, geoRouter);
 app.use('/atlas', requireAuth, atlasRouter);
-app.use('/people-agent', requireAuth, peopleAgentRouter);
 app.use('/stats', requireAuth, statsRouter);
 
 // Health check

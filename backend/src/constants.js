@@ -167,5 +167,15 @@ export const DATA_SOURCES = {
   }
 };
 
+// Module permissions
+export const PERMISSIONS = {
+  EMPRESAS: 'empresas',
+  PESSOAS: 'pessoas',
+  POLITICOS: 'politicos',
+  NOTICIAS: 'noticias',
+};
+
+export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
+
 // Search sources order (fallback chain)
 export const SEARCH_FALLBACK_ORDER = ['serper', 'perplexity', 'serper_exact'];

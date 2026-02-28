@@ -2,6 +2,8 @@
 Auth middleware - FastAPI dependencies for authentication and authorization.
 """
 
+from typing import Callable
+
 import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -14,6 +16,8 @@ logger = structlog.get_logger()
 
 SECRET_KEY = settings.jwt_secret_key
 ALGORITHM = settings.jwt_algorithm
+
+VALID_PERMISSIONS = {"empresas", "pessoas", "politicos", "noticias"}
 
 security = HTTPBearer()
 
@@ -52,5 +56,37 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     return token_data
+
+
+def require_permission(permission: str) -> Callable:
+    """
+    FastAPI dependency factory that checks if the current user has a specific permission.
+    Returns 403 Forbidden if the user does not have the required permission.
+
+    Usage:
+        @router.get("/endpoint", dependencies=[Depends(require_permission("empresas"))])
+    """
+    if permission not in VALID_PERMISSIONS:
+        raise ValueError(
+            f"Invalid permission: {permission}. Valid: {VALID_PERMISSIONS}"
+        )
+
+    async def _check_permission(
+        current_user: TokenData = Depends(get_current_user),
+    ) -> TokenData:
+        if permission not in (current_user.permissions or []):
+            logger.warning(
+                "permission_denied",
+                user=current_user.email,
+                required=permission,
+                has=current_user.permissions,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission '{permission}' required",
+            )
+        return current_user
+
+    return _check_permission
 
 

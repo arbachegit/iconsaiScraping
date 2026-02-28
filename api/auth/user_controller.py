@@ -71,6 +71,7 @@ async def list_users(current_user: TokenData = Depends(get_current_user)):
                 "phone": phone_display,
                 "cpf": cpf_display,
                 "is_admin": user.get("is_admin", False),
+                "permissions": user.get("permissions", []),
                 "is_active": user.get("is_active", True),
                 "is_verified": user.get("is_verified", True),
                 "cep": user.get("cep") or "",

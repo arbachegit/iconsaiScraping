@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger.js';
+import { ALL_PERMISSIONS } from '../constants.js';
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY;
 const JWT_ALGORITHM = process.env.JWT_ALGORITHM || 'HS256';
@@ -61,5 +62,34 @@ export function requireAuth(req, res, next) {
       error: 'Invalid token'
     });
   }
+}
+
+/**
+ * Middleware factory that checks if the authenticated user has a specific permission.
+ * Must be used AFTER requireAuth so that req.user is populated.
+ * Returns 403 if the user does not have the required permission.
+ */
+export function requirePermission(permission) {
+  if (!ALL_PERMISSIONS.includes(permission)) {
+    throw new Error(`Invalid permission: ${permission}. Valid: ${ALL_PERMISSIONS.join(', ')}`);
+  }
+
+  return (req, res, next) => {
+    const userPermissions = req.user?.permissions || [];
+
+    if (!userPermissions.includes(permission)) {
+      logger.warn('Permission denied', {
+        user: req.user?.email,
+        required: permission,
+        has: userPermissions,
+      });
+      return res.status(403).json({
+        success: false,
+        error: `Permission '${permission}' required`,
+      });
+    }
+
+    next();
+  };
 }
 

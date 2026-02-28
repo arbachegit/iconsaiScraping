@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { getUser, getHealth, getStatsCurrent, getStatsHistory, createStatsSnapshot, type StatItem, type CategoryHistory } from '@/lib/api';
 import { isAuthenticated, clearTokens } from '@/lib/auth';
+import { hasModuleAccess, MODULE_PERMISSIONS } from '@/lib/permissions';
 import { AtlasChat } from '@/components/atlas/atlas-chat';
 import { CompanyModal } from '@/components/modals/company-modal';
 import { CnaeModal } from '@/components/modals/cnae-modal';
@@ -48,6 +49,7 @@ export default function DashboardPage() {
   const queryClient = useQueryClient();
   const [userName, setUserName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [version, setVersion] = useState('v1.14.2026');
   const [countdown, setCountdown] = useState(COUNTDOWN_MAX);
 
@@ -85,6 +87,7 @@ export default function DashboardPage() {
     if (userQuery.data) {
       setUserName(userQuery.data.name || userQuery.data.email);
       setIsAdmin(userQuery.data.is_admin);
+      setUserPermissions(userQuery.data.permissions || []);
     }
     if (userQuery.isError) {
       handleLogout();
@@ -248,38 +251,46 @@ export default function DashboardPage() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-4">
         <div className="max-w-6xl mx-auto">
-          {/* Intelligence Modules - Neo Glow Cards */}
+          {/* Intelligence Modules - Neo Glow Cards (filtered by permissions) */}
           <div className="py-5 mb-2">
             <div className="flex flex-wrap justify-center gap-4">
-              <NeoGlowCompactCard
-                icon={Building2}
-                iconColor="red"
-                title="Empresas"
-                description="CNPJ via BrasilAPI + Serper"
-                onClick={() => setCompanyModalOpen(true)}
-              />
-              <NeoGlowCompactCard
-                icon={Users}
-                iconColor="orange"
-                title="Pessoas"
-                description="Perfis profissionais"
-                onClick={() => setPeopleModalOpen(true)}
-              />
-              <NeoGlowCompactCard
-                icon={Flag}
-                iconColor="blue"
-                title="Politicos"
-                description="Perfis e percepcao"
-                badge="Ativo"
-                onClick={openPoliticosFromCard}
-              />
-              <NeoGlowCompactCard
-                icon={Newspaper}
-                iconColor="green"
-                title="Noticias"
-                description="Monitore noticias"
-                onClick={() => setNewsModalOpen(true)}
-              />
+              {hasModuleAccess(userPermissions, 'empresas') && (
+                <NeoGlowCompactCard
+                  icon={Building2}
+                  iconColor="red"
+                  title="Empresas"
+                  description="CNPJ via BrasilAPI + Serper"
+                  onClick={() => setCompanyModalOpen(true)}
+                />
+              )}
+              {hasModuleAccess(userPermissions, 'pessoas') && (
+                <NeoGlowCompactCard
+                  icon={Users}
+                  iconColor="orange"
+                  title="Pessoas"
+                  description="Perfis profissionais"
+                  onClick={() => setPeopleModalOpen(true)}
+                />
+              )}
+              {hasModuleAccess(userPermissions, 'politicos') && (
+                <NeoGlowCompactCard
+                  icon={Flag}
+                  iconColor="blue"
+                  title="Politicos"
+                  description="Perfis e percepcao"
+                  badge="Ativo"
+                  onClick={openPoliticosFromCard}
+                />
+              )}
+              {hasModuleAccess(userPermissions, 'noticias') && (
+                <NeoGlowCompactCard
+                  icon={Newspaper}
+                  iconColor="green"
+                  title="Noticias"
+                  description="Monitore noticias"
+                  onClick={() => setNewsModalOpen(true)}
+                />
+              )}
             </div>
           </div>
 

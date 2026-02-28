@@ -9,6 +9,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+VALID_PERMISSIONS = {"empresas", "pessoas", "politicos", "noticias"}
+
 
 class AdminInviteUser(BaseModel):
     """Creates user by invite (name + email + phone, no CPF)."""
@@ -53,6 +55,16 @@ class AdminCreateUserDirect(BaseModel):
     def normalize_email(cls, v: str) -> str:
         return v.lower().strip()
 
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, v: List[str]) -> List[str]:
+        invalid = set(v) - VALID_PERMISSIONS
+        if invalid:
+            raise ValueError(
+                f"Invalid permissions: {invalid}. Valid: {VALID_PERMISSIONS}"
+            )
+        return list(set(v))
+
 
 class AdminUpdateUser(BaseModel):
     """Updates user fields."""
@@ -63,6 +75,18 @@ class AdminUpdateUser(BaseModel):
     permissions: Optional[List[str]] = None
     is_active: Optional[bool] = None
     new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        invalid = set(v) - VALID_PERMISSIONS
+        if invalid:
+            raise ValueError(
+                f"Invalid permissions: {invalid}. Valid: {VALID_PERMISSIONS}"
+            )
+        return list(set(v))
 
 
 class AdminUserResponse(BaseModel):

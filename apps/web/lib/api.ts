@@ -1317,6 +1317,7 @@ export interface AdminUser {
   phone: string;
   cpf: string;
   is_admin: boolean;
+  permissions: string[];
   is_active: boolean;
   is_verified: boolean;
   cep: string;

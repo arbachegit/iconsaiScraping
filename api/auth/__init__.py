@@ -19,7 +19,7 @@ Re-exports below provide backwards compatibility for code that imports from api.
 
 # Re-export from auth_service (functions + constants)
 # Re-export from auth_middleware
-from api.auth.auth_middleware import get_current_user
+from api.auth.auth_middleware import get_current_user, require_permission
 from api.auth.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -66,6 +66,7 @@ __all__ = [
     "get_current_user",
     "hash_password",
     "messaging_service",
+    "require_permission",
     "update_user",
     "validate_refresh_token",
     "verify_password",
