@@ -455,11 +455,14 @@ O layout aprovado do dashboard é imutável sem aprovação explícita documenta
 
 **Layout aprovado (top→bottom):**
 1. Header
-2. Título "Módulos de Inteligência"
-3. 5 Compact Cards (130x60px, horizontal): empresas, pessoas, políticos, emendas, notícias
-4. 6 Stats Badges (180x90px): empresas, pessoas, políticos, mandatos, emendas, notícias
-5. Counter Line (6 items): empresas | pessoas | políticos | mandatos | emendas | notícias
-6. Atlas FAB
+2. Counter Line (6 items): empresas | pessoas | politicos | mandatos | emendas | noticias
+3. Título "Estatisticas em Tempo Real"
+4. Row 1 Stats Badges (large): empresas + pessoas
+5. Row 2 Stats Badges (large): politicos + mandatos
+6. Row 3 Stats Badges (large): emendas + noticias
+7. Título "Modulos de Inteligencia"
+8. 4 Compact Cards: empresas, pessoas, politicos, noticias
+9. Atlas FAB
 
 **Para alterar:**
 - Requer aprovação explícita do usuário
@@ -493,6 +496,26 @@ Scripts aprovados e em produção são imutáveis até update explícito documen
 
 ---
 
+<!-- GOLDEN_RULE_APPROVED: STATS_GRAPHS_IMMUTABILITY | 2026-02-28 | v3.2.0 -->
+### Golden Rule 4: Stats Graphs Immutability
+
+Os gráficos de Stats Badges aprovados são imutáveis sem aprovação explícita documentada.
+
+**Gráficos protegidos (6 categorias):**
+- Row 1: `empresas` (red) + `pessoas` (orange)
+- Row 2: `politicos` (blue) + `mandatos` (purple)
+- Row 3: `emendas` (cyan) + `noticias` (green)
+
+**Componentes protegidos:**
+- `apps/web/components/stats/stats-badge-card.tsx` — StatsBadgeCard + MiniSparkline + StatsCounterLine
+- `apps/web/app/dashboard/page.tsx` — Layout das 3 rows de Stats Badges
+
+**Para alterar:**
+- Requer ordem explícita do usuário
+- Documentar mudança no Change Log abaixo
+
+---
+
 ## CHANGE LOG (Aprovações)
 
 | Data | Versão | Mudança | Aprovado por |
@@ -501,6 +524,8 @@ Scripts aprovados e em produção são imutáveis até update explícito documen
 | 2026-02-27 | v3.1.0 | Dashboard: +compact cards, +emendas/mandatos badges | Fernando |
 | 2026-02-27 | v3.1.0 | Backend: +emendas em stats.js, +constants | Fernando |
 | 2026-02-27 | v3.1.0 | Scripts: +audit_graphs.py, +audit cron 3AM | Fernando |
+| 2026-02-28 | v3.2.0 | Stats Badges: +Row 3 emendas (cyan) + noticias (green) | Fernando |
+| 2026-02-28 | v3.2.0 | Golden Rule 4: Stats Graphs Immutability adicionada | Fernando |
 
 ---
 

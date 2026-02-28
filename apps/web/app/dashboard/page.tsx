@@ -11,6 +11,7 @@ import {
   LogOut,
   Shield,
   Vote,
+  Receipt,
 } from 'lucide-react';
 import { getUser, getHealth, getStatsCurrent, getStatsHistory, createStatsSnapshot, type StatItem, type CategoryHistory } from '@/lib/api';
 import { isAuthenticated, clearTokens } from '@/lib/auth';
@@ -36,6 +37,7 @@ const categoryConfig = {
   pessoas: { icon: Users, color: 'orange' as const, label: 'Pessoas' },
   politicos: { icon: Flag, color: 'blue' as const, label: 'Politicos' },
   mandatos: { icon: Vote, color: 'purple' as const, label: 'Mandatos' },
+  emendas: { icon: Receipt, color: 'cyan' as const, label: 'Emendas' },
   noticias: { icon: Newspaper, color: 'green' as const, label: 'Noticias' },
 };
 
@@ -280,8 +282,36 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 2: Politicos + Mandatos (large) */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 mb-4">
               {(['politicos', 'mandatos'] as CategoryKey[]).map((cat) => {
+                const config = categoryConfig[cat];
+                const stat = statsMap.get(cat);
+                const catHistory = historyMap[cat];
+                return (
+                  <StatsBadgeCard
+                    key={cat}
+                    icon={config.icon}
+                    label={config.label}
+                    total={stat?.total || 0}
+                    todayInserts={stat?.today_inserts ?? catHistory?.today ?? 0}
+                    periodTotal={catHistory?.periodTotal ?? 0}
+                    crescimento={stat?.crescimento_percentual || 0}
+                    dataReferencia={dataReferencia}
+                    online={isOnline}
+                    history={catHistory?.points || []}
+                    color={config.color}
+                    countdown={countdown}
+                    maxCountdown={COUNTDOWN_MAX}
+                    size="large"
+                    isLoading={isStatsLoading}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Row 3: Emendas + Noticias (large) */}
+            <div className="grid grid-cols-2 gap-4">
+              {(['emendas', 'noticias'] as CategoryKey[]).map((cat) => {
                 const config = categoryConfig[cat];
                 const stat = statsMap.get(cat);
                 const catHistory = historyMap[cat];
