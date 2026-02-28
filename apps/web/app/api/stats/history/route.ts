@@ -7,12 +7,18 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = searchParams.get('limit') || '30';
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const authHeader = request.headers.get('authorization');
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
     const response = await fetch(
       `${NODEJS_API_URL}/stats/history?limit=${limit}`,
       {
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         cache: 'no-store',
       }
     );

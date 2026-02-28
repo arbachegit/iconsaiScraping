@@ -19,6 +19,7 @@ import atlasRouter from './routes/atlas.js';
 import peopleAgentRouter from './routes/people-agent.js';
 import statsRouter from './routes/stats.js';
 import { logger, requestLogger } from './utils/logger.js';
+import { requireAuth } from './middleware/auth.js';
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3001;
@@ -32,8 +33,16 @@ const limiter = rateLimit({
   legacyHeaders: false
 });
 
-// Middleware
-app.use(cors());
+// CORS - whitelist from ALLOWED_ORIGINS env var
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 app.use(express.json());
 app.use(requestLogger);
 app.use('/companies', limiter);
@@ -45,14 +54,15 @@ app.use('/atlas', limiter);
 app.use('/people-agent', limiter);
 
 // Routes (nginx strips /api/ prefix, so use /companies directly)
-app.use('/companies', companiesRouter);
-app.use('/people', peopleRouter);
-app.use('/news', newsRouter);
-app.use('/politicians', politiciansRouter);
-app.use('/geo', geoRouter);
-app.use('/atlas', atlasRouter);
-app.use('/people-agent', peopleAgentRouter);
-app.use('/stats', statsRouter);
+// All data routes require JWT authentication
+app.use('/companies', requireAuth, companiesRouter);
+app.use('/people', requireAuth, peopleRouter);
+app.use('/news', requireAuth, newsRouter);
+app.use('/politicians', requireAuth, politiciansRouter);
+app.use('/geo', requireAuth, geoRouter);
+app.use('/atlas', requireAuth, atlasRouter);
+app.use('/people-agent', requireAuth, peopleAgentRouter);
+app.use('/stats', requireAuth, statsRouter);
 
 // Health check
 app.get('/health', (req, res) => {
