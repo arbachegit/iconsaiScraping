@@ -835,11 +835,11 @@ async def create_stats_snapshot(request: Request):
 async def startup():
     import sys
 
-    ALLOWED_PORT = 8000
+    allowed_port = 8000
     port = int(os.environ.get("PORT", os.environ.get("PYTHON_PORT", "8000")))
-    if port != ALLOWED_PORT:
+    if port != allowed_port:
         logger.error(
-            f"PORTA BLOQUEADA: API Python tentou iniciar na porta {port}. Porta permitida: {ALLOWED_PORT}"
+            f"PORTA BLOQUEADA: API Python tentou iniciar na porta {port}. Porta permitida: {allowed_port}"
         )
         sys.exit(1)
 

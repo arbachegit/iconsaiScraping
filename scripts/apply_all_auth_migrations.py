@@ -177,7 +177,7 @@ def apply_migration() -> None:
     import psycopg2
 
     database_url = get_database_url()
-    print(f"Connecting to database...")
+    print("Connecting to database...")
 
     conn = psycopg2.connect(database_url)
     cur = conn.cursor()
@@ -217,8 +217,8 @@ def apply_migration() -> None:
         errors = 0
         for idx, stmt in enumerate(statements, 1):
             clean = "\n".join(
-                l for l in stmt.split("\n")
-                if l.strip() and not l.strip().startswith("--")
+                line for line in stmt.split("\n")
+                if line.strip() and not line.strip().startswith("--")
             )
             if not clean:
                 continue

@@ -23,9 +23,9 @@ Tabela: emprego_municipios (UNIQUE(codigo_ibge, ano))
 import os
 import sys
 import time
-import json
-import requests
 from typing import Optional
+
+import requests
 from dotenv import load_dotenv
 
 # Carregar .env do diretório brasil-data-hub-etl
@@ -231,7 +231,7 @@ def process_year(ano: int) -> int:
     print(f"  Existentes: {total_existing} ({real} CEMPRE, {projected} projeções)")
 
     if real > 0 and projected == 0:
-        print(f"  Já tem dados reais CEMPRE, pulando.")
+        print("  Já tem dados reais CEMPRE, pulando.")
         return 0
 
     # Buscar dados CEMPRE

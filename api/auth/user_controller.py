@@ -10,7 +10,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth.audit_service import log_action
-from api.auth.auth_middleware import get_current_user, require_admin, require_superadmin
+from api.auth.auth_middleware import require_admin, require_superadmin
 from api.auth.auth_service import create_set_password_token, hash_password
 from api.auth.email_service import send_set_password_email
 from api.auth.field_encryption import field_encryption
@@ -183,6 +183,14 @@ async def invite_user(
 
     normalized_email = user_data.email.lower().strip()
 
+    # Guard: only superadmin can set role != "user"
+    if user_data.role != "user" and current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Apenas SuperAdmin pode definir role diferente de usuario")
+
+    # Nobody can invite as superadmin
+    if user_data.role == "superadmin":
+        raise HTTPException(status_code=403, detail="Nao e possivel convidar como SuperAdmin")
+
     # Check if email already exists
     existing = supabase.table("users").select("id").eq("email", normalized_email).execute()
     if existing.data:
@@ -196,14 +204,20 @@ async def invite_user(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    # Create user without password (invited users are always role='user')
+    # Determine role, permissions, is_admin
+    role = user_data.role
+    is_admin = role in ("superadmin", "admin")
+    all_perms = ["empresas", "pessoas", "politicos", "mandatos", "emendas", "noticias"]
+    permissions = all_perms if role == "admin" else user_data.permissions
+
+    # Create user without password
     new_user = {
         "email": normalized_email,
         "name": user_data.name,
         "password_hash": "",  # No password yet
-        "permissions": [],
-        "role": "user",
-        "is_admin": False,
+        "permissions": permissions,
+        "role": role,
+        "is_admin": is_admin,
         "is_active": True,
         "is_verified": False,
         "phone_encrypted": phone_encrypted,
