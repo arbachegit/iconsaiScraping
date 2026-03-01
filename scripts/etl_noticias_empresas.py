@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import time
+
 import requests
 from dotenv import load_dotenv
 
@@ -114,7 +115,7 @@ def fetch_noticias_empresa() -> list[dict]:
 
 def lookup_empresa_cnpj(cnpj: str) -> dict | None:
     """Busca empresa por CNPJ (indexado, rápido)."""
-    for attempt in range(2):
+    for _attempt in range(2):
         try:
             r = requests.get(
                 f"{SUPABASE_URL}/rest/v1/dim_empresas",
@@ -267,7 +268,7 @@ def main():
         if (i + 1) % 500 == 0:
             print(f"    Processadas: {i + 1}/{len(noticias)} (matched: {matched})")
 
-    print(f"\n  Resultado matching (CNPJ-only):")
+    print("\n  Resultado matching (CNPJ-only):")
     print(f"    Matched: {matched}")
     print(f"    Sem CNPJ no texto: {no_cnpj}")
     print(f"    CNPJ não encontrado em dim_empresas: {no_match}")

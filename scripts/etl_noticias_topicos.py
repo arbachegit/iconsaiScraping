@@ -18,6 +18,7 @@ import re
 import sys
 import time
 import unicodedata
+
 import requests
 from dotenv import load_dotenv
 
