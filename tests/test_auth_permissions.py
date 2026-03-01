@@ -24,10 +24,24 @@ import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
 
-from api.auth.auth_middleware import VALID_PERMISSIONS, VALID_ROLES, require_admin, require_permission, require_superadmin
+from api.auth.auth_middleware import (
+    ALGORITHM as TEST_ALGORITHM,
+)
+from api.auth.auth_middleware import (
+    SECRET_KEY as TEST_SECRET,
+)
+from api.auth.auth_middleware import (
+    VALID_PERMISSIONS,
+    VALID_ROLES,
+    require_admin,
+    require_permission,
+    require_superadmin,
+)
 from api.auth.schemas.auth_schemas import TokenData
 from api.auth.schemas.user_schemas import (
     VALID_PERMISSIONS as SCHEMA_VALID_PERMISSIONS,
+)
+from api.auth.schemas.user_schemas import (
     AdminCreateUserDirect,
     AdminUpdateUser,
 )
@@ -36,10 +50,6 @@ from api.main import app
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-# Import the actual secret used by the app middleware so tokens we generate are accepted.
-from api.auth.auth_middleware import ALGORITHM as TEST_ALGORITHM
-from api.auth.auth_middleware import SECRET_KEY as TEST_SECRET
 
 client = TestClient(app)
 
@@ -285,7 +295,7 @@ class TestRequirePermissionUnit:
 
     def test_valid_permissions_set(self):
         """VALID_PERMISSIONS should contain exactly the 4 module permissions."""
-        assert VALID_PERMISSIONS == {"empresas", "pessoas", "politicos", "noticias"}
+        assert {"empresas", "pessoas", "politicos", "noticias"} == VALID_PERMISSIONS
 
 
 class TestRequireAdminUnit:
@@ -410,7 +420,6 @@ class TestNodeJsConstants:
 
     def test_constants_file_has_permissions(self):
         """backend/src/constants.js should export the same 4 permissions."""
-        import re
         from pathlib import Path
 
         constants_path = Path("backend/src/constants.js")
@@ -542,7 +551,7 @@ class TestRoleSystem:
 
     def test_valid_roles_set(self):
         """VALID_ROLES should contain exactly 3 roles."""
-        assert VALID_ROLES == {"superadmin", "admin", "user"}
+        assert {"superadmin", "admin", "user"} == VALID_ROLES
 
     def test_token_data_has_role(self):
         """TokenData should accept role field."""
