@@ -127,3 +127,7 @@ static.legacy/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/console_evidence.txt
+
+# Deploy versions (generated)
+.deploy_versions/
+.claude/deploy_versions/
