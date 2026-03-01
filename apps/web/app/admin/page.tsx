@@ -296,7 +296,7 @@ export default function AdminPage() {
                         );
                       })()}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         {user.is_active ? (
                           <Badge variant="success">Ativo</Badge>
@@ -343,7 +343,7 @@ export default function AdminPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1">
                         {!user.is_verified && (
                           <ResendInviteButton userId={user.id} queryClient={queryClient} />
@@ -610,6 +610,10 @@ function CreateUserModal({
         name,
         email,
         phone,
+        role: selectedRole,
+        permissions: selectedRole === 'admin'
+          ? ['empresas', 'pessoas', 'politicos', 'mandatos', 'emendas', 'noticias']
+          : permissions,
       });
     }
   }
@@ -750,8 +754,8 @@ function CreateUserModal({
             </div>
           )}
 
-          {/* Role (password mode only, superadmin only) */}
-          {mode === 'password' && canCreateWithPassword && (
+          {/* Role (superadmin only, both modes) */}
+          {canCreateWithPassword && (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-300">Role</label>
               <div className="grid grid-cols-2 gap-2">
@@ -789,7 +793,7 @@ function CreateUserModal({
           )}
 
           {/* Permissions (only for role=user) */}
-          {(selectedRole === 'user' || mode === 'invite') && (
+          {selectedRole === 'user' && (
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">Permissoes</label>
             <div className="grid grid-cols-3 gap-1.5">
@@ -826,7 +830,7 @@ function CreateUserModal({
               })}
             </div>
             <p className="text-[10px] text-slate-500">
-              {selectedRole === 'admin' ? 'Admins tem acesso a todos os modulos automaticamente' : 'Selecione os modulos que o usuario podera acessar'}
+              Selecione os modulos que o usuario podera acessar
             </p>
           </div>
           )}
