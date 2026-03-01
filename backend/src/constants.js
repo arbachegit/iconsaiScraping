@@ -177,5 +177,14 @@ export const PERMISSIONS = {
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
 
+// User roles
+export const ROLES = {
+  SUPERADMIN: 'superadmin',
+  ADMIN: 'admin',
+  USER: 'user',
+};
+
+export const ALL_ROLES = Object.values(ROLES);
+
 // Search sources order (fallback chain)
 export const SEARCH_FALLBACK_ORDER = ['serper', 'perplexity', 'serper_exact'];

@@ -27,6 +27,7 @@ class TokenData(BaseModel):
     name: Optional[str] = None
     is_admin: bool = False
     permissions: Optional[list] = None
+    role: str = "user"
 
 
 class LoginRequest(BaseModel):
@@ -48,6 +49,7 @@ class UserResponse(BaseModel):
     email: str
     name: Optional[str]
     is_admin: bool
+    role: str = "user"
 
 
 class UserUpdate(BaseModel):

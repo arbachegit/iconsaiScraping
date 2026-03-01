@@ -1317,6 +1317,7 @@ export interface AdminUser {
   phone: string;
   cpf: string;
   is_admin: boolean;
+  role: string;
   permissions: string[];
   is_active: boolean;
   is_verified: boolean;
@@ -1338,6 +1339,7 @@ export interface AdminCreateUserRequest {
   email: string;
   password: string;
   permissions: string[];
+  role?: string;
 }
 
 export interface AdminCreateUserResponse {
@@ -1347,7 +1349,18 @@ export interface AdminCreateUserResponse {
 
 export interface AdminUpdateUserRequest {
   name?: string;
+  email?: string;
+  phone?: string;
+  cpf?: string;
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
   permissions?: string[];
+  role?: string;
   is_active?: boolean;
   new_password?: string;
 }

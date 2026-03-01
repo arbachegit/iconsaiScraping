@@ -54,3 +54,39 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
   politicos: { label: 'Politicos', description: 'Politicos, mandatos e emendas' },
   noticias: { label: 'Noticias', description: 'Busca e listagem de noticias' },
 };
+
+/**
+ * User roles: superadmin > admin > user
+ */
+export const ROLES = {
+  SUPERADMIN: 'superadmin',
+  ADMIN: 'admin',
+  USER: 'user',
+} as const;
+
+export type Role = (typeof ROLES)[keyof typeof ROLES];
+
+export const ALL_ROLES: Role[] = Object.values(ROLES);
+
+/**
+ * Role metadata for UI.
+ */
+export const ROLE_INFO: Record<Role, { label: string; description: string; color: string }> = {
+  superadmin: { label: 'SuperAdmin', description: 'Acesso total ao sistema', color: 'red' },
+  admin: { label: 'Admin', description: 'Gerencia usuarios e acesso a todos os modulos', color: 'amber' },
+  user: { label: 'Usuario', description: 'Acesso controlado por permissoes', color: 'blue' },
+};
+
+/**
+ * Check if a role has admin-level access (/admin page).
+ */
+export function isAdminRole(role: string | undefined | null): boolean {
+  return role === ROLES.SUPERADMIN || role === ROLES.ADMIN;
+}
+
+/**
+ * Check if a role is superadmin.
+ */
+export function isSuperAdmin(role: string | undefined | null): boolean {
+  return role === ROLES.SUPERADMIN;
+}

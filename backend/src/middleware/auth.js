@@ -40,12 +40,14 @@ export function requireAuth(req, res, next) {
       });
     }
 
+    const role = payload.role || 'user';
     req.user = {
       email: payload.sub,
       user_id: payload.user_id,
       name: payload.name,
       is_admin: payload.is_admin || false,
-      permissions: payload.permissions || []
+      permissions: payload.permissions || [],
+      role: role,
     };
 
     next();

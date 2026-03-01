@@ -37,7 +37,7 @@ import {
   type AdminUpdateUserRequest,
 } from '@/lib/api';
 import { isAuthenticated } from '@/lib/auth';
-import { ALL_PERMISSIONS, PERMISSION_INFO, type Permission } from '@/lib/permissions';
+import { ALL_PERMISSIONS, PERMISSION_INFO, ROLE_INFO, ROLES, isSuperAdmin, isAdminRole, type Permission, type Role } from '@/lib/permissions';
 
 type CreateMode = 'password' | 'invite';
 type Tab = 'ativos' | 'inativos';
@@ -96,6 +96,9 @@ export default function AdminPage() {
   if (!userQuery.data) {
     return null;
   }
+
+  const currentUserRole = (userQuery.data as { role?: string })?.role || 'user';
+  const currentIsSuperAdmin = isSuperAdmin(currentUserRole);
 
   const allUsers = usersQuery.data?.users || [];
   const activeUsers = allUsers.filter((u) => u.is_active);
@@ -217,6 +220,9 @@ export default function AdminPage() {
                     Endereco
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -266,6 +272,22 @@ export default function AdminPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
+                      {(() => {
+                        const role = (user.role || 'user') as Role;
+                        const info = ROLE_INFO[role] || ROLE_INFO.user;
+                        const colorMap: Record<string, string> = {
+                          red: 'bg-red-500/10 border-red-500/20 text-red-400',
+                          amber: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+                          blue: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+                        };
+                        return (
+                          <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold border rounded ${colorMap[info.color] || colorMap.blue}`}>
+                            {info.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         {user.is_active ? (
                           <Badge variant="success">Ativo</Badge>
@@ -300,32 +322,36 @@ export default function AdminPage() {
                         {!user.is_verified && (
                           <ResendInviteButton userId={user.id} queryClient={queryClient} />
                         )}
-                        <button
-                          onClick={() => setEditingUser(user)}
-                          className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:bg-cyan-500/10 hover:text-cyan-400 transition-colors"
-                          title="Editar"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        {user.is_active ? (
+                        {currentIsSuperAdmin && user.role !== 'superadmin' && (
                           <button
-                            onClick={() => setConfirmDeactivate(user)}
-                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
-                            title="Desativar"
+                            onClick={() => setEditingUser(user)}
+                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:bg-cyan-500/10 hover:text-cyan-400 transition-colors"
+                            title="Editar"
                           >
-                            <UserX className="h-3.5 w-3.5" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </button>
-                        ) : (
-                          <>
-                            <ReactivateButton userId={user.id} queryClient={queryClient} />
+                        )}
+                        {currentIsSuperAdmin && user.role !== 'superadmin' && (
+                          user.is_active ? (
                             <button
-                              onClick={() => setConfirmPermanentDelete(user)}
+                              onClick={() => setConfirmDeactivate(user)}
                               className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
-                              title="Excluir permanentemente"
+                              title="Desativar"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <UserX className="h-3.5 w-3.5" />
                             </button>
-                          </>
+                          ) : (
+                            <>
+                              <ReactivateButton userId={user.id} queryClient={queryClient} />
+                              <button
+                                onClick={() => setConfirmPermanentDelete(user)}
+                                className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                                title="Excluir permanentemente"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )
                         )}
                       </div>
                     </td>
@@ -333,7 +359,7 @@ export default function AdminPage() {
                 ))}
                 {displayedUsers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
                       {activeTab === 'ativos'
                         ? 'Nenhum usuario ativo.'
                         : 'Nenhum usuario inativo.'}
@@ -352,6 +378,7 @@ export default function AdminPage() {
         <CreateUserModal
           onClose={() => setShowCreateModal(false)}
           queryClient={queryClient}
+          currentUserRole={currentUserRole}
         />
       )}
 
@@ -490,15 +517,19 @@ function ResendInviteButton({
 function CreateUserModal({
   onClose,
   queryClient,
+  currentUserRole,
 }: {
   onClose: () => void;
   queryClient: ReturnType<typeof useQueryClient>;
+  currentUserRole: string;
 }) {
+  const canCreateWithPassword = isSuperAdmin(currentUserRole);
   const [mode, setMode] = useState<CreateMode>('invite');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [selectedRole, setSelectedRole] = useState<string>('user');
   const [permissions, setPermissions] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -545,7 +576,8 @@ function CreateUserModal({
         name,
         email,
         password,
-        permissions,
+        permissions: selectedRole === 'admin' ? ['empresas', 'pessoas', 'politicos', 'noticias'] : permissions,
+        role: selectedRole,
       });
     } else {
       createWithInviteMutation.mutate({
@@ -587,17 +619,19 @@ function CreateUserModal({
               <Send className="h-3 w-3" />
               Convite por Email
             </button>
-            <button
-              onClick={() => setMode('password')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
-                mode === 'password'
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                  : 'text-slate-400 hover:text-slate-300 border border-transparent'
-              }`}
-            >
-              <KeyRound className="h-3 w-3" />
-              Com Senha
-            </button>
+            {canCreateWithPassword && (
+              <button
+                onClick={() => setMode('password')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
+                  mode === 'password'
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                    : 'text-slate-400 hover:text-slate-300 border border-transparent'
+                }`}
+              >
+                <KeyRound className="h-3 w-3" />
+                Com Senha
+              </button>
+            )}
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
             {mode === 'invite'
@@ -690,7 +724,46 @@ function CreateUserModal({
             </div>
           )}
 
-          {/* Permissions */}
+          {/* Role (password mode only, superadmin only) */}
+          {mode === 'password' && canCreateWithPassword && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-300">Role</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['admin', 'user'] as const).map((role) => {
+                  const info = ROLE_INFO[role];
+                  const colorMap: Record<string, string> = {
+                    amber: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+                    blue: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+                  };
+                  return (
+                    <label
+                      key={role}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                        selectedRole === role
+                          ? colorMap[info.color] || 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                          : 'bg-[#0a0e1a] border-white/5 text-slate-400 hover:border-white/10'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="role"
+                        checked={selectedRole === role}
+                        onChange={() => setSelectedRole(role)}
+                        className="sr-only"
+                      />
+                      <div className="min-w-0">
+                        <span className="text-xs font-medium">{info.label}</span>
+                        <p className="text-[10px] opacity-70">{info.description}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Permissions (only for role=user) */}
+          {(selectedRole === 'user' || mode === 'invite') && (
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">Permissoes</label>
             <div className="grid grid-cols-2 gap-2">
@@ -726,8 +799,11 @@ function CreateUserModal({
                 </label>
               ))}
             </div>
-            <p className="text-[10px] text-slate-500">Selecione os modulos que o usuario podera acessar</p>
+            <p className="text-[10px] text-slate-500">
+              {selectedRole === 'admin' ? 'Admins tem acesso a todos os modulos automaticamente' : 'Selecione os modulos que o usuario podera acessar'}
+            </p>
           </div>
+          )}
 
           {/* Submit */}
           <div className="pt-2">
@@ -769,7 +845,18 @@ function EditUserModal({
   onClose: () => void;
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
-  const [name, setName] = useState(user.name || '');
+  const [editName, setEditName] = useState(user.name || '');
+  const [editEmail, setEditEmail] = useState(user.email || '');
+  const [editPhone, setEditPhone] = useState(user.phone || '');
+  const [editCpf, setEditCpf] = useState(user.cpf || '');
+  const [editCep, setEditCep] = useState(user.cep || '');
+  const [editLogradouro, setEditLogradouro] = useState(user.logradouro || '');
+  const [editNumero, setEditNumero] = useState(user.numero || '');
+  const [editComplemento, setEditComplemento] = useState(user.complemento || '');
+  const [editBairro, setEditBairro] = useState(user.bairro || '');
+  const [editCidade, setEditCidade] = useState(user.cidade || '');
+  const [editUf, setEditUf] = useState(user.uf || '');
+  const [editRole, setEditRole] = useState(user.role || 'user');
   const [editPermissions, setEditPermissions] = useState<string[]>(user.permissions || []);
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
@@ -799,7 +886,18 @@ function EditUserModal({
     setSuccessMsg('');
 
     const updates: AdminUpdateUserRequest = {};
-    if (name !== (user.name || '')) updates.name = name;
+    if (editName !== (user.name || '')) updates.name = editName;
+    if (editEmail !== (user.email || '')) updates.email = editEmail;
+    if (editPhone !== (user.phone || '')) updates.phone = editPhone;
+    if (editCpf !== (user.cpf || '')) updates.cpf = editCpf;
+    if (editCep !== (user.cep || '')) updates.cep = editCep;
+    if (editLogradouro !== (user.logradouro || '')) updates.logradouro = editLogradouro;
+    if (editNumero !== (user.numero || '')) updates.numero = editNumero;
+    if (editComplemento !== (user.complemento || '')) updates.complemento = editComplemento;
+    if (editBairro !== (user.bairro || '')) updates.bairro = editBairro;
+    if (editCidade !== (user.cidade || '')) updates.cidade = editCidade;
+    if (editUf !== (user.uf || '')) updates.uf = editUf;
+    if (editRole !== (user.role || 'user')) updates.role = editRole;
     if (newPassword) updates.new_password = newPassword;
 
     // Check if permissions changed
@@ -815,11 +913,13 @@ function EditUserModal({
     mutation.mutate(updates);
   }
 
+  const roleInfo = ROLE_INFO[(user.role || 'user') as Role] || ROLE_INFO.user;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#0f1629] border border-white/10 rounded-xl w-full max-w-md mx-4 shadow-2xl">
+      <div className="bg-[#0f1629] border border-white/10 rounded-xl w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-[#0f1629] z-10">
           <div className="flex items-center gap-2">
             <Pencil className="h-4 w-4 text-cyan-400" />
             <h2 className="text-sm font-semibold text-slate-100">Editar Usuario</h2>
@@ -842,9 +942,13 @@ function EditUserModal({
               <p className="text-sm font-medium text-slate-200 truncate">{user.name || '-'}</p>
               <p className="text-xs text-slate-400 truncate">{user.email}</p>
             </div>
-            <Badge variant="outline" className="flex-shrink-0">
-              Usuario
-            </Badge>
+            <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold border rounded ${
+              roleInfo.color === 'red' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+              roleInfo.color === 'amber' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+              'bg-blue-500/10 border-blue-500/20 text-blue-400'
+            }`}>
+              {roleInfo.label}
+            </span>
           </div>
         </div>
 
@@ -861,40 +965,103 @@ function EditUserModal({
             </div>
           )}
 
-          {/* Name */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-300">Nome</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Nome completo"
-                className="pl-10 h-10"
-                minLength={2}
-              />
+          {/* Dados Pessoais */}
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider pt-1">Dados Pessoais</p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1 col-span-2">
+              <label className="text-xs font-medium text-slate-300">Nome</label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome completo" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">Email</label>
+              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="email@email.com" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">Telefone</label>
+              <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+55 11 99999-0000" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="text-xs font-medium text-slate-300">CPF</label>
+              <Input value={editCpf} onChange={(e) => setEditCpf(e.target.value)} placeholder="000.000.000-00" className="h-9 text-sm" />
             </div>
           </div>
 
-          {/* New Password */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-300">
-              Nova Senha <span className="text-slate-500">(deixe vazio para manter)</span>
-            </label>
-            <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Nova senha (opcional)"
-                className="pl-10 h-10"
-                minLength={6}
-              />
+          {/* Endereco */}
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider pt-2">Endereco</p>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">CEP</label>
+              <Input value={editCep} onChange={(e) => setEditCep(e.target.value)} placeholder="00000-000" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="text-xs font-medium text-slate-300">Logradouro</label>
+              <Input value={editLogradouro} onChange={(e) => setEditLogradouro(e.target.value)} placeholder="Rua, Av..." className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">Numero</label>
+              <Input value={editNumero} onChange={(e) => setEditNumero(e.target.value)} placeholder="123" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="text-xs font-medium text-slate-300">Complemento</label>
+              <Input value={editComplemento} onChange={(e) => setEditComplemento(e.target.value)} placeholder="Apto, Sala..." className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">Bairro</label>
+              <Input value={editBairro} onChange={(e) => setEditBairro(e.target.value)} placeholder="Bairro" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">Cidade</label>
+              <Input value={editCidade} onChange={(e) => setEditCidade(e.target.value)} placeholder="Cidade" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">UF</label>
+              <Input value={editUf} onChange={(e) => setEditUf(e.target.value)} placeholder="SP" maxLength={2} className="h-9 text-sm" />
             </div>
           </div>
 
-          {/* Permissions */}
+          {/* Acesso */}
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider pt-2">Acesso</p>
+
+          {/* Role */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-300">Role</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['admin', 'user'] as const).map((role) => {
+                const info = ROLE_INFO[role];
+                const colorMap: Record<string, string> = {
+                  amber: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+                  blue: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+                };
+                return (
+                  <label
+                    key={role}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                      editRole === role
+                        ? colorMap[info.color] || 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                        : 'bg-[#0a0e1a] border-white/5 text-slate-400 hover:border-white/10'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="editRole"
+                      checked={editRole === role}
+                      onChange={() => setEditRole(role)}
+                      className="sr-only"
+                    />
+                    <div className="min-w-0">
+                      <span className="text-xs font-medium">{info.label}</span>
+                      <p className="text-[10px] opacity-70">{info.description}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Permissions (only for role=user) */}
+          {editRole === 'user' && (
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">Permissoes</label>
             <div className="grid grid-cols-2 gap-2">
@@ -931,9 +1098,29 @@ function EditUserModal({
               ))}
             </div>
           </div>
+          )}
+
+          {editRole === 'admin' && (
+            <p className="text-[10px] text-amber-400/70">Admins tem acesso a todos os modulos automaticamente.</p>
+          )}
+
+          {/* Senha */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-300">
+              Nova Senha <span className="text-slate-500">(deixe vazio para manter)</span>
+            </label>
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Nova senha (opcional)"
+              className="h-9 text-sm"
+              minLength={6}
+            />
+          </div>
 
           {/* Submit */}
-          <div className="pt-2">
+          <div className="pt-2 pb-1">
             <Button type="submit" className="w-full gap-1.5" disabled={mutation.isPending}>
               {mutation.isPending ? (
                 <>

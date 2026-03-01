@@ -24,7 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
 
-from api.auth.auth_middleware import VALID_PERMISSIONS, require_admin, require_permission
+from api.auth.auth_middleware import VALID_PERMISSIONS, VALID_ROLES, require_admin, require_permission, require_superadmin
 from api.auth.schemas.auth_schemas import TokenData
 from api.auth.schemas.user_schemas import (
     VALID_PERMISSIONS as SCHEMA_VALID_PERMISSIONS,
@@ -51,6 +51,7 @@ def _make_token(
     is_admin: bool = False,
     permissions: Optional[list] = None,
     expired: bool = False,
+    role: str = "user",
 ) -> str:
     """Generate a valid JWT access token for testing."""
     if permissions is None:
@@ -64,6 +65,7 @@ def _make_token(
         "name": name,
         "is_admin": is_admin,
         "permissions": permissions,
+        "role": role,
         "type": "access",
         "exp": exp,
     }
@@ -159,24 +161,104 @@ class TestAdminProtection:
 
 
 class TestAdminAccess:
-    """Admin users pass the auth layer. DB errors (500) are acceptable."""
+    """Admin users pass the auth layer for list endpoints. DB errors (500) are acceptable."""
 
     def setup_method(self):
         self.token = _make_token(
             is_admin=True,
             permissions=["empresas", "pessoas", "politicos", "noticias"],
+            role="admin",
         )
         self.headers = _auth_header(self.token)
 
     def test_list_users_admin(self):
-        """Admin should pass auth — status is 200 or 500 (DB), never 403."""
+        """Admin should pass auth on list — status is 200 or 500 (DB), never 403."""
         r = client.get("/admin/users", headers=self.headers)
-        assert r.status_code != 403, "Admin should not get 403"
+        assert r.status_code != 403, "Admin should not get 403 on list_users"
 
-    def test_smtp_test_admin(self):
-        """Admin should pass auth on smtp-test."""
+    def test_smtp_test_admin_gets_403(self):
+        """Admin (non-superadmin) should get 403 on smtp-test (superadmin-only)."""
         r = client.get("/admin/smtp-test", headers=self.headers)
-        assert r.status_code != 403, "Admin should not get 403"
+        assert r.status_code == 403, "Non-superadmin should get 403 on smtp-test"
+
+
+class TestSuperAdminAccess:
+    """SuperAdmin users pass auth on all endpoints."""
+
+    def setup_method(self):
+        self.token = _make_token(
+            is_admin=True,
+            permissions=["empresas", "pessoas", "politicos", "noticias"],
+            role="superadmin",
+        )
+        self.headers = _auth_header(self.token)
+
+    def test_list_users_superadmin(self):
+        """SuperAdmin should pass auth on list — 200 or 500 (DB), never 403."""
+        r = client.get("/admin/users", headers=self.headers)
+        assert r.status_code != 403, "SuperAdmin should not get 403"
+
+    def test_smtp_test_superadmin(self):
+        """SuperAdmin should pass auth on smtp-test."""
+        r = client.get("/admin/smtp-test", headers=self.headers)
+        assert r.status_code != 403, "SuperAdmin should not get 403 on smtp-test"
+
+    def test_create_user_superadmin(self):
+        """SuperAdmin should pass auth on create_user — 200 or 400/500, never 403."""
+        r = client.post("/admin/users", headers=self.headers, json={
+            "name": "Test", "email": "new@test.com", "password": "Test1234",
+            "permissions": ["empresas"], "role": "user",
+        })
+        assert r.status_code != 403, "SuperAdmin should not get 403 on create_user"
+
+    def test_update_user_superadmin(self):
+        """SuperAdmin should pass auth on update — 200/404/500, never 403."""
+        r = client.put("/admin/users/99999", headers=self.headers, json={
+            "name": "Updated",
+        })
+        assert r.status_code != 403, "SuperAdmin should not get 403 on update_user"
+
+    def test_delete_user_superadmin(self):
+        """SuperAdmin should pass auth on delete — 200/404/500, never 403."""
+        r = client.delete("/admin/users/99999", headers=self.headers)
+        assert r.status_code != 403, "SuperAdmin should not get 403 on delete_user"
+
+
+class TestAdminCannotWrite:
+    """Admin (non-superadmin) cannot create/update/delete users."""
+
+    def setup_method(self):
+        self.token = _make_token(
+            is_admin=True,
+            permissions=["empresas", "pessoas", "politicos", "noticias"],
+            role="admin",
+        )
+        self.headers = _auth_header(self.token)
+
+    def test_create_user_admin_403(self):
+        """Admin should get 403 on create_user (superadmin-only)."""
+        r = client.post("/admin/users", headers=self.headers, json={
+            "name": "Test", "email": "t@t.com", "password": "Test1234",
+            "permissions": ["empresas"],
+        })
+        assert r.status_code == 403
+
+    def test_update_user_admin_403(self):
+        """Admin should get 403 on update_user (superadmin-only)."""
+        r = client.put("/admin/users/1", headers=self.headers, json={
+            "name": "New Name",
+        })
+        assert r.status_code == 403
+
+    def test_delete_user_admin_403(self):
+        """Admin should get 403 on delete_user (superadmin-only)."""
+        r = client.delete("/admin/users/1", headers=self.headers)
+        assert r.status_code == 403
+
+    def test_permanent_delete_admin_403(self):
+        """Admin should get 403 on permanent_delete (superadmin-only)."""
+        r = client.delete("/admin/users/1/permanent", headers=self.headers)
+        assert r.status_code == 403
 
 
 # ---------------------------------------------------------------------------
@@ -439,3 +521,168 @@ class TestFrontendPermissions:
         assert "ALL_PERMISSIONS" in admin  # checkbox iteration
         assert "PERMISSION_INFO" in admin  # label display
         assert "togglePermission" in admin or "toggleEditPermission" in admin
+
+    def test_admin_page_has_role_ui(self):
+        """Admin page should have role column and role selector."""
+        from pathlib import Path
+
+        admin = Path("apps/web/app/admin/page.tsx").read_text()
+        assert "ROLE_INFO" in admin
+        assert "isSuperAdmin" in admin
+        assert "editRole" in admin or "selectedRole" in admin
+
+
+# ---------------------------------------------------------------------------
+# 8. Role system tests
+# ---------------------------------------------------------------------------
+
+
+class TestRoleSystem:
+    """Tests for the 3-level role system (superadmin, admin, user)."""
+
+    def test_valid_roles_set(self):
+        """VALID_ROLES should contain exactly 3 roles."""
+        assert VALID_ROLES == {"superadmin", "admin", "user"}
+
+    def test_token_data_has_role(self):
+        """TokenData should accept role field."""
+        user = TokenData(
+            email="test@test.com",
+            user_id=1,
+            name="Test",
+            is_admin=True,
+            permissions=["empresas"],
+            role="superadmin",
+        )
+        assert user.role == "superadmin"
+
+    def test_token_data_default_role(self):
+        """TokenData role should default to 'user'."""
+        user = TokenData(email="test@test.com", user_id=1, name="Test")
+        assert user.role == "user"
+
+    @pytest.mark.asyncio
+    async def test_require_superadmin_passes(self):
+        """SuperAdmin should pass require_superadmin."""
+        user = TokenData(
+            email="super@iconsai.ai",
+            user_id=1,
+            name="Super",
+            is_admin=True,
+            permissions=["empresas"],
+            role="superadmin",
+        )
+        result = await require_superadmin(current_user=user)
+        assert result.role == "superadmin"
+
+    @pytest.mark.asyncio
+    async def test_require_superadmin_rejects_admin(self):
+        """Admin should get 403 from require_superadmin."""
+        from fastapi import HTTPException
+
+        user = TokenData(
+            email="admin@iconsai.ai",
+            user_id=2,
+            name="Admin",
+            is_admin=True,
+            permissions=["empresas", "pessoas", "politicos", "noticias"],
+            role="admin",
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await require_superadmin(current_user=user)
+        assert exc_info.value.status_code == 403
+        assert "SuperAdmin" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_require_superadmin_rejects_user(self):
+        """Regular user should get 403 from require_superadmin."""
+        from fastapi import HTTPException
+
+        user = TokenData(
+            email="user@iconsai.ai",
+            user_id=3,
+            name="User",
+            is_admin=False,
+            permissions=["empresas"],
+            role="user",
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await require_superadmin(current_user=user)
+        assert exc_info.value.status_code == 403
+
+
+class TestRoleSchemaValidation:
+    """Schema validation for role field."""
+
+    def test_create_user_valid_role(self):
+        """Valid roles should be accepted."""
+        for role in ["superadmin", "admin", "user"]:
+            user = AdminCreateUserDirect(
+                name="Test",
+                email="test@test.com",
+                password="Test1234",
+                role=role,
+            )
+            assert user.role == role
+
+    def test_create_user_invalid_role(self):
+        """Invalid role should be rejected."""
+        with pytest.raises(Exception, match="Invalid role"):
+            AdminCreateUserDirect(
+                name="Test",
+                email="test@test.com",
+                password="Test1234",
+                role="moderator",
+            )
+
+    def test_update_user_valid_role(self):
+        """AdminUpdateUser should accept valid role."""
+        update = AdminUpdateUser(role="admin")
+        assert update.role == "admin"
+
+    def test_update_user_invalid_role(self):
+        """AdminUpdateUser should reject invalid role."""
+        with pytest.raises(Exception, match="Invalid role"):
+            AdminUpdateUser(role="owner")
+
+    def test_update_user_null_role(self):
+        """AdminUpdateUser with None role (no change) should be accepted."""
+        update = AdminUpdateUser(name="New Name")
+        assert update.role is None
+
+    def test_create_user_default_role(self):
+        """Default role should be 'user'."""
+        user = AdminCreateUserDirect(
+            name="Test",
+            email="test@test.com",
+            password="Test1234",
+        )
+        assert user.role == "user"
+
+
+class TestNodeJsRoles:
+    """Verify Node.js backend has role constants."""
+
+    def test_constants_has_roles(self):
+        """backend/src/constants.js should export ROLES."""
+        from pathlib import Path
+
+        constants_path = Path("backend/src/constants.js")
+        if not constants_path.exists():
+            pytest.skip("Node.js constants file not found")
+
+        content = constants_path.read_text()
+        assert "ROLES" in content
+        assert "superadmin" in content
+        assert "admin" in content
+
+    def test_middleware_extracts_role(self):
+        """backend/src/middleware/auth.js should extract role from JWT."""
+        from pathlib import Path
+
+        auth_path = Path("backend/src/middleware/auth.js")
+        if not auth_path.exists():
+            pytest.skip("Node.js auth middleware not found")
+
+        content = auth_path.read_text()
+        assert "role" in content

@@ -57,6 +57,7 @@ async def seed_super_admin() -> None:
             "name": settings.seed_admin_name,
             "password_hash": hash_password(settings.seed_admin_password),
             "is_admin": True,
+            "role": "superadmin",
             "permissions": ["empresas", "pessoas", "politicos", "noticias"],
             "is_active": True,
             "is_verified": True,
@@ -81,6 +82,15 @@ async def seed_super_admin() -> None:
             logger.info("seed_admin_verified_all", msg="All admin users marked as verified.")
         except Exception as ve:
             logger.warning("seed_verify_admins_error", error=str(ve))
+
+        # Ensure seed admin has role=superadmin (backfill for existing installs)
+        try:
+            client.table("users").update(
+                {"role": "superadmin"}
+            ).eq("email", settings.seed_admin_email.lower()).execute()
+            logger.info("seed_admin_role_set", msg="Seed admin role set to superadmin.")
+        except Exception as re:
+            logger.warning("seed_admin_role_error", error=str(re))
 
     except Exception as e:
         logger.error("seed_admin_error", error=str(e))

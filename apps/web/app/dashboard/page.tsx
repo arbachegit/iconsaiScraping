@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { getUser, getHealth, getStatsCurrent, getStatsHistory, createStatsSnapshot, type StatItem, type CategoryHistory } from '@/lib/api';
 import { isAuthenticated, clearTokens } from '@/lib/auth';
-import { hasModuleAccess, MODULE_PERMISSIONS } from '@/lib/permissions';
+import { hasModuleAccess, MODULE_PERMISSIONS, isAdminRole } from '@/lib/permissions';
 import { AtlasChat } from '@/components/atlas/atlas-chat';
 import { CompanyModal } from '@/components/modals/company-modal';
 import { CnaeModal } from '@/components/modals/cnae-modal';
@@ -86,7 +86,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (userQuery.data) {
       setUserName(userQuery.data.name || userQuery.data.email);
-      setIsAdmin(userQuery.data.is_admin);
+      const role = (userQuery.data as { role?: string }).role;
+      setIsAdmin(isAdminRole(role) || userQuery.data.is_admin);
       setUserPermissions(userQuery.data.permissions || []);
     }
     if (userQuery.isError) {

@@ -10,7 +10,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth.audit_service import log_action
-from api.auth.auth_middleware import get_current_user, require_admin
+from api.auth.auth_middleware import get_current_user, require_admin, require_superadmin
 from api.auth.auth_service import create_set_password_token, hash_password
 from api.auth.email_service import send_set_password_email
 from api.auth.field_encryption import field_encryption
@@ -64,13 +64,15 @@ async def list_users(current_user: TokenData = Depends(require_admin)):
                 except Exception:
                     cpf_display = cpf_raw
 
+            role = user.get("role", "user")
             users.append({
                 "id": user.get("id"),
                 "email": user.get("email"),
                 "name": user.get("name"),
                 "phone": phone_display,
                 "cpf": cpf_display,
-                "is_admin": user.get("is_admin", False),
+                "is_admin": role in ("superadmin", "admin"),
+                "role": role,
                 "permissions": user.get("permissions", []),
                 "is_active": user.get("is_active", True),
                 "is_verified": user.get("is_verified", True),
@@ -94,12 +96,20 @@ async def list_users(current_user: TokenData = Depends(require_admin)):
 async def create_user(
     user_data: AdminCreateUserDirect,
     request: Request,
-    current_user: TokenData = Depends(require_admin),
+    current_user: TokenData = Depends(require_superadmin),
 ):
-    """Cria novo usuario com senha."""
+    """Cria novo usuario com senha. Apenas SuperAdmin."""
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Only superadmin can create admin/superadmin users
+    if user_data.role in ("admin", "superadmin") and current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Apenas SuperAdmin pode criar administradores")
+
+    # Nobody can create another superadmin
+    if user_data.role == "superadmin":
+        raise HTTPException(status_code=403, detail="Nao e possivel criar outro SuperAdmin")
 
     try:
         # Verificar se email ja existe
@@ -112,12 +122,22 @@ async def create_user(
         if existing.data:
             raise HTTPException(status_code=400, detail="Email ja cadastrado")
 
+        role = user_data.role
+        is_admin = role in ("superadmin", "admin")
+
+        # Admin role gets all permissions automatically
+        permissions = user_data.permissions
+        if role == "admin":
+            permissions = ["empresas", "pessoas", "politicos", "noticias"]
+
         # Criar usuario
         new_user = {
             "email": user_data.email,
             "name": user_data.name,
             "password_hash": hash_password(user_data.password),
-            "permissions": user_data.permissions,
+            "permissions": permissions,
+            "role": role,
+            "is_admin": is_admin,
             "is_active": True,
             "is_verified": True,  # Created with password = already verified
         }
@@ -126,13 +146,13 @@ async def create_user(
 
         if result.data:
             created = result.data[0]
-            logger.info("user_created", email=user_data.email, by=current_user.email)
+            logger.info("user_created", email=user_data.email, role=role, by=current_user.email)
 
             await log_action(
                 current_user.user_id,
                 "admin.user_created_direct",
                 f"users/{created['id']}",
-                details={"email": user_data.email},
+                details={"email": user_data.email, "role": role},
                 request=request,
             )
 
@@ -176,12 +196,14 @@ async def invite_user(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    # Create user without password
+    # Create user without password (invited users are always role='user')
     new_user = {
         "email": normalized_email,
         "name": user_data.name,
         "password_hash": "",  # No password yet
         "permissions": [],
+        "role": "user",
+        "is_admin": False,
         "is_active": True,
         "is_verified": False,
         "phone_encrypted": phone_encrypted,
@@ -330,11 +352,13 @@ async def get_user_by_id(
             raise HTTPException(status_code=404, detail="Usuario nao encontrado")
 
         user = result.data[0]
+        role = user.get("role", "user")
         return {
             "id": user.get("id"),
             "email": user.get("email"),
             "name": user.get("name"),
-            "is_admin": user.get("is_admin", False),
+            "is_admin": role in ("superadmin", "admin"),
+            "role": role,
             "permissions": user.get("permissions", []),
             "is_active": user.get("is_active", True),
             "is_verified": user.get("is_verified", True),
@@ -352,25 +376,75 @@ async def update_admin_user(
     user_id: int,
     user_data: AdminUpdateUser,
     request: Request,
-    current_user: TokenData = Depends(require_admin),
+    current_user: TokenData = Depends(require_superadmin),
 ):
-    """Atualiza usuario."""
+    """Atualiza usuario. Apenas SuperAdmin."""
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
         # Verificar se usuario existe
-        existing = supabase.table("users").select("id").eq("id", user_id).execute()
+        existing = supabase.table("users").select("*").eq("id", user_id).execute()
         if not existing.data:
             raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+
+        target_user = existing.data[0]
+
+        # Cannot edit another superadmin (only self for limited fields)
+        if target_user.get("role") == "superadmin" and user_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="Nao e possivel editar outro SuperAdmin")
+
+        # Cannot change role to superadmin
+        if user_data.role == "superadmin":
+            raise HTTPException(status_code=403, detail="Nao e possivel promover a SuperAdmin")
+
+        # Cannot downgrade superadmin role
+        if target_user.get("role") == "superadmin" and user_data.role is not None and user_data.role != "superadmin":
+            raise HTTPException(status_code=403, detail="Nao e possivel rebaixar o SuperAdmin")
 
         # Montar updates
         updates = {}
         if user_data.name is not None:
             updates["name"] = user_data.name
+        if user_data.email is not None:
+            # Check if email already taken
+            email_check = supabase.table("users").select("id").eq("email", user_data.email).execute()
+            if email_check.data and email_check.data[0]["id"] != user_id:
+                raise HTTPException(status_code=400, detail="Email ja cadastrado por outro usuario")
+            updates["email"] = user_data.email
+        if user_data.phone is not None:
+            if field_encryption.is_configured and user_data.phone:
+                updates["phone_encrypted"] = field_encryption.encrypt_phone(user_data.phone)
+            elif user_data.phone:
+                updates["phone_encrypted"] = user_data.phone
+        if user_data.cpf is not None:
+            if field_encryption.is_configured and user_data.cpf:
+                updates["cpf_encrypted"] = field_encryption.encrypt_cpf(user_data.cpf)
+            elif user_data.cpf:
+                updates["cpf_encrypted"] = user_data.cpf
+        if user_data.cep is not None:
+            updates["cep"] = user_data.cep
+        if user_data.logradouro is not None:
+            updates["logradouro"] = user_data.logradouro
+        if user_data.numero is not None:
+            updates["numero"] = user_data.numero
+        if user_data.complemento is not None:
+            updates["complemento"] = user_data.complemento
+        if user_data.bairro is not None:
+            updates["bairro"] = user_data.bairro
+        if user_data.cidade is not None:
+            updates["cidade"] = user_data.cidade
+        if user_data.uf is not None:
+            updates["uf"] = user_data.uf
         if user_data.permissions is not None:
             updates["permissions"] = user_data.permissions
+        if user_data.role is not None:
+            updates["role"] = user_data.role
+            updates["is_admin"] = user_data.role in ("superadmin", "admin")
+            # Admin gets all permissions automatically
+            if user_data.role == "admin":
+                updates["permissions"] = ["empresas", "pessoas", "politicos", "noticias"]
         if user_data.is_active is not None:
             updates["is_active"] = user_data.is_active
         if user_data.new_password:
@@ -382,7 +456,7 @@ async def update_admin_user(
         result = supabase.table("users").update(updates).eq("id", user_id).execute()
 
         if result.data:
-            logger.info("user_updated", user_id=user_id, by=current_user.email)
+            logger.info("user_updated", user_id=user_id, fields=list(updates.keys()), by=current_user.email)
 
             await log_action(
                 current_user.user_id,
@@ -407,18 +481,26 @@ async def update_admin_user(
 async def delete_user(
     user_id: int,
     request: Request,
-    current_user: TokenData = Depends(require_admin),
+    current_user: TokenData = Depends(require_superadmin),
 ):
-    """Desativa usuario (soft delete)."""
+    """Desativa usuario (soft delete). Apenas SuperAdmin."""
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
+        # Verificar se usuario existe
+        existing = supabase.table("users").select("email, role").eq("id", user_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+
         # Nao permitir auto-exclusao
-        existing = supabase.table("users").select("email").eq("id", user_id).execute()
-        if existing.data and existing.data[0]["email"] == current_user.email:
+        if existing.data[0]["email"] == current_user.email:
             raise HTTPException(status_code=400, detail="Nao pode desativar a si mesmo")
+
+        # Proteger superadmin
+        if existing.data[0].get("role") == "superadmin":
+            raise HTTPException(status_code=403, detail="SuperAdmin nao pode ser desativado")
 
         # Soft delete - apenas desativar
         result = (
@@ -453,20 +535,24 @@ async def delete_user(
 async def permanent_delete_user(
     user_id: int,
     request: Request,
-    current_user: TokenData = Depends(require_admin),
+    current_user: TokenData = Depends(require_superadmin),
 ):
-    """Remove usuario permanentemente do banco (hard delete)."""
+    """Remove usuario permanentemente do banco (hard delete). Apenas SuperAdmin."""
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
         # Nao permitir auto-exclusao
-        existing = supabase.table("users").select("email").eq("id", user_id).execute()
+        existing = supabase.table("users").select("email, role").eq("id", user_id).execute()
         if not existing.data:
             raise HTTPException(status_code=404, detail="Usuario nao encontrado")
         if existing.data[0]["email"] == current_user.email:
             raise HTTPException(status_code=400, detail="Nao pode excluir a si mesmo")
+
+        # Proteger superadmin
+        if existing.data[0].get("role") == "superadmin":
+            raise HTTPException(status_code=403, detail="SuperAdmin nao pode ser excluido")
 
         # Hard delete
         supabase.table("users").delete().eq("id", user_id).execute()
@@ -491,7 +577,7 @@ async def permanent_delete_user(
 
 
 @router.get("/smtp-test")
-async def smtp_test(current_user: TokenData = Depends(require_admin)):
+async def smtp_test(current_user: TokenData = Depends(require_superadmin)):
     """Diagnostico SMTP — testa conexao e autenticacao."""
     from config.settings import settings
 
