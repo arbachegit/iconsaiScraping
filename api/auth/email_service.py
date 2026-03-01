@@ -1,10 +1,8 @@
 """
 Email service for sending verification and password reset emails.
 
-Uses SMTP (aiosmtplib) for sending.
-In development mode (no SMTP configured), logs the code to console.
-
-Moved from api/email_service.py to api/auth/email_service.py
+Uses Resend API for sending.
+In development mode (no RESEND_API_KEY configured), logs the code to console.
 """
 
 import structlog
@@ -14,61 +12,43 @@ from config.settings import settings
 logger = structlog.get_logger()
 
 
-async def _send_smtp(to_email: str, subject: str, body_html: str) -> bool:
-    """Send an email via SMTP using aiosmtplib. Raises on failure."""
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
+async def _send_resend(to_email: str, subject: str, body_html: str) -> bool:
+    """Send an email via Resend API. Raises on failure."""
+    import resend
 
-    import aiosmtplib
+    resend.api_key = settings.resend_api_key
 
     logger.info(
-        "email_smtp_attempt",
+        "email_resend_attempt",
         to=to_email,
         subject=subject,
-        smtp_host=settings.smtp_host,
-        smtp_port=settings.smtp_port,
-        smtp_user=settings.smtp_user,
         email_from=settings.email_from,
     )
 
-    # Gmail requires FROM to match the authenticated account
-    sender = settings.smtp_user or settings.email_from
-
-    msg = MIMEMultipart("alternative")
-    msg["From"] = sender
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body_html, "html", "utf-8"))
-
     try:
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.smtp_host,
-            port=settings.smtp_port,
-            username=settings.smtp_user,
-            password=settings.smtp_password,
-            use_tls=False,
-            start_tls=True,
-        )
-        logger.info("email_sent", to=to_email, subject=subject)
+        params: resend.Emails.SendParams = {
+            "from": f"IconsAI <{settings.email_from}>",
+            "to": [to_email],
+            "subject": subject,
+            "html": body_html,
+        }
+        email_resp = resend.Emails.send(params)
+        logger.info("email_sent", to=to_email, subject=subject, resend_id=email_resp.get("id"))
         return True
     except Exception as e:
         logger.error(
             "email_send_failed",
             to=to_email,
             subject=subject,
-            smtp_host=settings.smtp_host,
-            smtp_port=settings.smtp_port,
-            smtp_user=settings.smtp_user,
             error=str(e),
             error_type=type(e).__name__,
         )
         raise
 
 
-def _is_smtp_configured() -> bool:
-    """Check if SMTP is properly configured."""
-    return bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
+def _is_email_configured() -> bool:
+    """Check if Resend is properly configured."""
+    return bool(settings.resend_api_key)
 
 
 async def send_set_password_email(
@@ -100,17 +80,17 @@ async def send_set_password_email(
     </html>
     """
 
-    if not _is_smtp_configured():
+    if not _is_email_configured():
         logger.info(
             "email_dev_mode",
             to=to_email,
             subject=subject,
             set_password_token=set_password_token,
-            msg="SMTP not configured. Token logged for development.",
+            msg="Resend not configured. Token logged for development.",
         )
         return True
 
-    return await _send_smtp(to_email, subject, body_html)
+    return await _send_resend(to_email, subject, body_html)
 
 
 async def send_verification_code_email(
@@ -137,17 +117,17 @@ async def send_verification_code_email(
     </html>
     """
 
-    if not _is_smtp_configured():
+    if not _is_email_configured():
         logger.info(
             "email_dev_mode",
             to=to_email,
             code=code,
             code_type=code_type,
-            msg="SMTP not configured. Code logged for development.",
+            msg="Resend not configured. Code logged for development.",
         )
         return True
 
-    return await _send_smtp(to_email, subject, body_html)
+    return await _send_resend(to_email, subject, body_html)
 
 
 async def send_password_reset_email(
@@ -178,13 +158,13 @@ async def send_password_reset_email(
     </html>
     """
 
-    if not _is_smtp_configured():
+    if not _is_email_configured():
         logger.info(
             "email_dev_mode",
             to=to_email,
             reset_token=reset_token,
-            msg="SMTP not configured. Token logged for development.",
+            msg="Resend not configured. Token logged for development.",
         )
         return True
 
-    return await _send_smtp(to_email, subject, body_html)
+    return await _send_resend(to_email, subject, body_html)

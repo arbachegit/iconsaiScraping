@@ -138,13 +138,10 @@ class Settings(BaseSettings):
     field_encryption_key: str = ""
 
     # ===========================================
-    # Email (SMTP)
+    # Email (Resend)
     # ===========================================
 
-    smtp_host: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
+    resend_api_key: str = ""
     email_from: str = "noreply@iconsai.ai"
     app_base_url: str = "https://scraping.iconsai.ai"
 

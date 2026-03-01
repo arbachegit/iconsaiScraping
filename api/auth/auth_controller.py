@@ -73,9 +73,8 @@ async def login(user_data: LoginRequest, request: Request):
             detail="Conta nao verificada. Verifique seu email.",
         )
 
-    role = user.get("role", "user")
-    # Backwards compat: derive is_admin from role
-    is_admin = role in ("superadmin", "admin")
+    role = user.get("role") or ("superadmin" if user.get("is_admin") else "user")
+    is_admin = role in ("superadmin", "admin") or user.get("is_admin", False)
 
     access_token = create_access_token(
         data={
@@ -128,12 +127,12 @@ async def get_me(current_user: TokenData = Depends(get_current_user)):
         if result.data:
             user = result.data[0]
             profile_complete = bool(user.get("cpf_encrypted") and user.get("cep"))
-            role = user.get("role", "user")
+            role = user.get("role") or ("superadmin" if user.get("is_admin") else "user")
             return {
                 "id": user.get("id"),
                 "email": user.get("email"),
                 "name": user.get("name"),
-                "is_admin": role in ("superadmin", "admin"),
+                "is_admin": role in ("superadmin", "admin") or user.get("is_admin", False),
                 "role": role,
                 "permissions": user.get("permissions", []),
                 "is_active": user.get("is_active", True),
@@ -409,8 +408,8 @@ async def refresh_access_token(data: RefreshTokenRequest, request: Request):
         raise HTTPException(status_code=401, detail="Refresh token invalido ou expirado")
 
     # Create new access token
-    role = user.get("role", "user")
-    is_admin = role in ("superadmin", "admin")
+    role = user.get("role") or ("superadmin" if user.get("is_admin") else "user")
+    is_admin = role in ("superadmin", "admin") or user.get("is_admin", False)
 
     access_token = create_access_token(
         data={

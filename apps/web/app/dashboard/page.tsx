@@ -179,7 +179,7 @@ export default function DashboardPage() {
   }
 
   const historyMap: Record<string, CategoryHistory> = historyQuery.data?.historico || {};
-  const dataReferencia = statsQuery.data?.data_referencia || new Date().toISOString();
+  const dataReferencia = statsQuery.data?.data_referencia || '';
   const isOnline = statsQuery.data?.online ?? false;
   const isStatsLoading = statsQuery.isFetching || historyQuery.isFetching;
 
@@ -255,8 +255,8 @@ export default function DashboardPage() {
       <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-4">
         <div className="max-w-6xl mx-auto">
           {/* Intelligence Modules - Neo Glow Cards (filtered by permissions) */}
-          <div className="py-3 mb-1 overflow-visible">
-            <div className="flex flex-wrap justify-center gap-2.5">
+          <div className="py-4 mb-1 overflow-visible">
+            <div className="flex flex-wrap justify-center gap-3">
               {hasModuleAccess(userPermissions, 'empresas') && (
                 <NeoGlowCompactCard
                   icon={Building2}
@@ -281,7 +281,24 @@ export default function DashboardPage() {
                   iconColor="blue"
                   title="Politicos"
                   description="Perfis e percepcao"
-                  badge="Ativo"
+                  onClick={openPoliticosFromCard}
+                />
+              )}
+              {hasModuleAccess(userPermissions, 'politicos') && (
+                <NeoGlowCompactCard
+                  icon={Vote}
+                  iconColor="purple"
+                  title="Mandatos"
+                  description="Cargos e mandatos"
+                  onClick={openPoliticosFromCard}
+                />
+              )}
+              {hasModuleAccess(userPermissions, 'politicos') && (
+                <NeoGlowCompactCard
+                  icon={Receipt}
+                  iconColor="cyan"
+                  title="Emendas"
+                  description="Emendas parlamentares"
                   onClick={openPoliticosFromCard}
                 />
               )}
@@ -479,25 +496,25 @@ function NeoGlowCompactCard({
   const glow = glowConfig[iconColor];
 
   return (
-    <div onClick={onClick} className="relative group cursor-pointer">
+    <div onClick={onClick} className="relative group cursor-pointer w-[160px] h-[80px]">
       {/* Neo Glow Layer */}
-      <div className={`absolute -inset-[1px] rounded-md bg-gradient-to-r ${glow.gradient} blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500 animate-pulse`} />
+      <div className={`absolute -inset-[2px] rounded-lg bg-gradient-to-r ${glow.gradient} blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500 animate-pulse`} />
       {/* Card */}
-      <div className="relative bg-[#0f1629]/95 backdrop-blur-sm border border-white/10 rounded-md p-1.5 transition-all duration-300 group-hover:border-white/20 group-hover:-translate-y-0.5">
-        <div className="flex items-center gap-1.5">
-          <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${glow.icon}`}>
-            <Icon className="w-2.5 h-2.5" />
+      <div className="relative bg-[#0f1629]/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 h-full flex flex-col justify-center transition-all duration-300 group-hover:border-white/20 group-hover:-translate-y-0.5">
+        <div className="flex items-center gap-2.5">
+          <div className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${glow.icon}`}>
+            <Icon className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <h3 className="text-xs font-semibold text-slate-300 truncate">{title}</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-semibold text-slate-300 truncate">{title}</h3>
               {badge && (
-                <span className="flex-shrink-0 px-1 py-px text-[7px] bg-green-500/10 border border-green-500/30 text-green-400 rounded">
+                <span className="flex-shrink-0 px-1.5 py-0.5 text-[8px] bg-green-500/10 border border-green-500/30 text-green-400 rounded">
                   {badge}
                 </span>
               )}
             </div>
-            <p className="text-[8px] text-slate-500 truncate">{description}</p>
+            <p className="text-[10px] text-slate-500 truncate">{description}</p>
           </div>
         </div>
       </div>
