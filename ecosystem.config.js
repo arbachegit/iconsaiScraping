@@ -15,7 +15,7 @@
 module.exports = {
   apps: [
     // =============================================
-    // Backend Node.js (porta 3001)
+    // Backend Node.js (porta 3006)
     // =============================================
     {
       name: 'backend',
@@ -25,7 +25,7 @@ module.exports = {
       ignore_watch: ['node_modules', 'logs'],
       env: {
         NODE_ENV: 'development',
-        PORT: 3001,
+        PORT: 3006,
       },
       env_file: '../.env',
       instances: 1,
@@ -59,7 +59,7 @@ module.exports = {
     },
 
     // =============================================
-    // Frontend Next.js (porta 3000)
+    // Frontend Next.js (porta 3002)
     // =============================================
     {
       name: 'web',
@@ -69,7 +69,7 @@ module.exports = {
       watch: false, // Next.js tem seu proprio watch
       env: {
         NODE_ENV: 'development',
-        PORT: 3000,
+        PORT: 3002,
       },
       instances: 1,
       autorestart: true,

@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3001';
+const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3006';
+
+const FALLBACK_RESPONSE = {
+  success: false,
+  stats: [],
+  data_referencia: new Date().toISOString().split('T')[0],
+  online: false,
+  proxima_atualizacao_segundos: 30,
+  timestamp: new Date().toISOString(),
+  error: 'Backend indisponivel',
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,31 +22,24 @@ export async function GET(request: NextRequest) {
       headers['Authorization'] = authHeader;
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     const response = await fetch(`${NODEJS_API_URL}/stats/current`, {
       headers,
       cache: 'no-store',
+      signal: controller.signal,
     });
 
+    clearTimeout(timeout);
+
     if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: 'Failed to fetch stats' },
-        { status: response.status }
-      );
+      return NextResponse.json(FALLBACK_RESPONSE, { status: 200 });
     }
 
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error) {
-    console.error('Error fetching stats:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        stats: [],
-        data_referencia: new Date().toISOString(),
-        online: false,
-        error: 'API unavailable',
-      },
-      { status: 500 }
-    );
+  } catch {
+    return NextResponse.json(FALLBACK_RESPONSE, { status: 200 });
   }
 }

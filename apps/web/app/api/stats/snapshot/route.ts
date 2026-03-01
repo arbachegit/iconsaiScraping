@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3001';
+const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3006';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,26 +12,31 @@ export async function POST(request: NextRequest) {
       headers['Authorization'] = authHeader;
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     const response = await fetch(`${NODEJS_API_URL}/stats/snapshot`, {
       method: 'POST',
       headers,
       cache: 'no-store',
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!response.ok) {
       return NextResponse.json(
-        { success: false, error: 'Failed to create snapshot' },
-        { status: response.status }
+        { success: false, error: 'Backend indisponivel' },
+        { status: 200 }
       );
     }
 
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error) {
-    console.error('Error creating stats snapshot:', error);
+  } catch {
     return NextResponse.json(
-      { success: false, error: 'API unavailable' },
-      { status: 500 }
+      { success: false, error: 'Backend indisponivel' },
+      { status: 200 }
     );
   }
 }

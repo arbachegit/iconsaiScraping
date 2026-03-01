@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 // API URLs - use container names in Docker, localhost in development
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
-const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3001';
+const NODEJS_API_URL = process.env.NODEJS_API_URL || 'http://localhost:3006';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
           destination: `${PYTHON_API_URL}/atlas/:path*`,
         },
         // Stats routes are handled by Next.js API routes (/app/api/stats/*)
-        // Other API routes -> Node.js backend (port 3001)
+        // Other API routes -> Node.js backend (port 3006)
         {
           source: '/api/:path*',
           destination: `${NODEJS_API_URL}/:path*`,

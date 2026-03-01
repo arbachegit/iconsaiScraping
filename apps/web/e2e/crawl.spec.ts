@@ -24,7 +24,7 @@ test.describe('Crawler - Massive UI Testing', () => {
 
     const visited = new Set<string>();
     const toVisit: string[] = ['/', '/dashboard'];
-    const baseURL = process.env.E2E_BASE_URL || 'http://localhost:3000';
+    const baseURL = process.env.E2E_BASE_URL || 'http://localhost:3002';
 
     // Set fake auth to access protected pages
     await page.addInitScript(() => {
