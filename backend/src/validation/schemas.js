@@ -356,7 +356,17 @@ export const peopleAgentChatSchema = z.object({
     .min(1, 'Mensagem não pode estar vazia')
     .max(1000, 'Mensagem muito longa (máximo 1000 caracteres)')
     .transform(val => val.trim()),
-  sessionId: z.string().uuid().optional().nullable()
+  sessionId: z.string().uuid().optional().nullable(),
+  searchContext: z.object({
+    query: z.string().max(200).optional(),
+    results: z.array(z.object({
+      nome_completo: z.string().optional(),
+      cargo_atual: z.string().optional().nullable(),
+      empresa_atual: z.string().optional().nullable(),
+      qualityScore: z.number().optional(),
+    }).passthrough()).max(10).optional(),
+    selectedPerson: z.any().optional()
+  }).optional().nullable()
 });
 
 // People Agent clear session request

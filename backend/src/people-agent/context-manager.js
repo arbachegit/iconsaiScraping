@@ -34,6 +34,7 @@ export function getOrCreateSession(sessionId) {
       currentPerson: null,  // { id, nome, cpf, empresa }
       currentCompany: null  // { nome, cnpj }
     },
+    searchContext: null,  // { query, results, selectedPerson }
     createdAt: Date.now(),
     lastActivity: Date.now()
   };
@@ -131,6 +132,41 @@ export function resolveReferences(entities, session) {
 
   if (!session?.resolvedEntities) return resolved;
 
+  // Check for ordinal references to search context results
+  // e.g. "o primeiro", "pessoa #2", "segundo resultado"
+  if (session.searchContext?.results?.length > 0 && resolved.rawMessage) {
+    const msg = resolved.rawMessage.toLowerCase();
+    const ordinals = {
+      'primeiro': 0, 'primeira': 0, '#1': 0, 'resultado 1': 0,
+      'segundo': 1, 'segunda': 1, '#2': 1, 'resultado 2': 1,
+      'terceiro': 2, 'terceira': 2, '#3': 2, 'resultado 3': 2,
+      'quarto': 3, 'quarta': 3, '#4': 3, 'resultado 4': 3,
+      'quinto': 4, 'quinta': 4, '#5': 4, 'resultado 5': 4,
+      'último': -1, 'ultima': -1,
+    };
+
+    for (const [keyword, index] of Object.entries(ordinals)) {
+      if (msg.includes(keyword)) {
+        const results = session.searchContext.results;
+        const resolvedIndex = index === -1 ? results.length - 1 : index;
+        const person = results[resolvedIndex];
+
+        if (person) {
+          if (person.nome_completo) resolved.nome = person.nome_completo;
+          if (person.empresa_atual && !resolved.empresa) resolved.empresa = person.empresa_atual;
+          resolved._resolvedFromSearchContext = true;
+
+          logger.debug('Resolved ordinal reference from search context', {
+            sessionId: session.id,
+            keyword,
+            resolvedName: person.nome_completo
+          });
+          break;
+        }
+      }
+    }
+  }
+
   // If no name/cpf specified, use current person from context
   if (!resolved.nome && !resolved.cpf && session.resolvedEntities.currentPerson) {
     const person = session.resolvedEntities.currentPerson;
@@ -165,6 +201,35 @@ export function getConversationContext(sessionId, maxMessages = 6) {
   return session.conversationHistory
     .slice(-maxMessages)
     .map(({ role, content }) => ({ role, content }));
+}
+
+/**
+ * Set search context from modal results
+ * @param {string} sessionId
+ * @param {Object} searchContext - { query, results, selectedPerson }
+ */
+export function setSearchContext(sessionId, searchContext) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  session.searchContext = searchContext;
+  session.lastActivity = Date.now();
+
+  logger.debug('Search context set', {
+    sessionId,
+    query: searchContext?.query,
+    resultsCount: searchContext?.results?.length || 0
+  });
+}
+
+/**
+ * Get search context for a session
+ * @param {string} sessionId
+ * @returns {Object|null}
+ */
+export function getSearchContext(sessionId) {
+  const session = sessions.get(sessionId);
+  return session?.searchContext || null;
 }
 
 /**
@@ -215,6 +280,8 @@ export default {
   updateLastQuery,
   resolveReferences,
   getConversationContext,
+  setSearchContext,
+  getSearchContext,
   clearSession,
   getStats
 };

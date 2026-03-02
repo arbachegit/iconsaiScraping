@@ -17,6 +17,7 @@ import {
   updateLastQuery,
   resolveReferences,
   getConversationContext,
+  setSearchContext,
   clearSession,
   getStats
 } from './context-manager.js';
@@ -30,12 +31,17 @@ import { getConfig } from '../atlas/llm-service.js';
  * @param {string} [params.sessionId] - Existing session ID
  * @returns {Object} - { success, sessionId, response, metadata }
  */
-export async function processChat({ message, sessionId }) {
+export async function processChat({ message, sessionId, searchContext }) {
   const startTime = Date.now();
 
   try {
     // Get or create session
     const session = getOrCreateSession(sessionId);
+
+    // If searchContext provided, store it in session
+    if (searchContext?.results?.length > 0) {
+      setSearchContext(session.id, searchContext);
+    }
 
     // Store user message in history
     addMessage(session.id, 'user', message);
@@ -51,6 +57,7 @@ export async function processChat({ message, sessionId }) {
     });
 
     // Step 2: Resolve References (pronoun/context resolution)
+    parsedIntent.entities.rawMessage = message;
     parsedIntent.entities = resolveReferences(parsedIntent.entities, session);
 
     // Check if we have enough info to query

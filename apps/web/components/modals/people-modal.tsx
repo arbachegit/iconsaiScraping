@@ -7,6 +7,7 @@ import {
   X, Search, Loader2, User, Building2, Briefcase,
   AlertCircle, Check, ChevronLeft, ChevronRight, Download,
   Database, Globe, Shield, ArrowLeft, ExternalLink,
+  MessageCircle, Filter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,7 +20,9 @@ import {
   type PeopleSearchV2Response,
   type PeopleSearchResult,
   type GuardrailResult,
+  type QualityGateResult,
 } from '@/lib/api';
+import { PeopleAgentInlineChat } from '@/components/people-agent/people-agent-inline-chat';
 
 interface PeopleModalProps {
   isOpen: boolean;
@@ -51,6 +54,9 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
 
   // Feedback
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  // Chat panel
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Abort controller
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -267,6 +273,7 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
     setMassInserting(false);
     setMessage(null);
     setDetailPerson(null);
+    setChatOpen(false);
     searchMutation.reset();
     onClose();
   }
@@ -277,6 +284,7 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
   const results = response?.results || [];
   const pagination = response?.pagination;
   const badges = response?.badges;
+  const qualityGate = response?.qualityGate;
   const showAuxFields = guardrailResult && !guardrailResult.allowed &&
     (guardrailResult.requiredFields || []).some(f => f === 'cidadeUf' || f === 'dataNascimento');
   const newCount = results.filter(r => {
@@ -284,11 +292,22 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
     return r._source === 'external' && !registeredIds.has(key);
   }).length;
 
+  // Build search context for chat panel
+  const searchContext = response?.results ? {
+    query: nome || cpf || '',
+    results: response.results.slice(0, 10).map(r => ({
+      nome_completo: r.nome_completo,
+      cargo_atual: r.cargo_atual,
+      empresa_atual: r.empresa_atual,
+      qualityScore: r.qualityScore,
+    })),
+  } : undefined;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
       <div
-        className="flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl"
-        style={{ width: 1000, maxWidth: '95vw', maxHeight: '90vh' }}
+        className="flex flex-col rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] shadow-2xl transition-all duration-300"
+        style={{ width: chatOpen ? 1380 : 1000, maxWidth: '95vw', maxHeight: '90vh' }}
       >
         {/* ---- Header ---- */}
         <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/5">
@@ -428,6 +447,23 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
               </Button>
             )}
 
+            {/* Chat toggle */}
+            {results.length > 0 && (
+              <Button
+                onClick={() => setChatOpen(prev => !prev)}
+                variant="outline"
+                className={cn(
+                  'h-10 px-4',
+                  chatOpen
+                    ? 'bg-violet-500/15 border-violet-500/50 text-violet-400'
+                    : 'border-white/10 text-slate-400 hover:border-violet-500/30 hover:text-violet-400'
+                )}
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Agent
+              </Button>
+            )}
+
             {/* Badges */}
             {badges && badges.total > 0 && (
               <div className="flex items-center gap-2 ml-auto">
@@ -440,6 +476,11 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
                 <span className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded bg-blue-500/10 border border-blue-500/30 text-blue-400">
                   <Globe className="h-3 w-3" /> Novos: {badges.new}
                 </span>
+                {qualityGate && qualityGate.filteredCount > 0 && (
+                  <span className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-400">
+                    <Filter className="h-3 w-3" /> Filtrados: {qualityGate.filteredCount}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -472,115 +513,143 @@ export function PeopleModal({ isOpen, onClose, onOpenListingModal, userName = 's
           )}
         </div>}
 
-        {/* ---- Results table (scrollable) ---- */}
+        {/* ---- Content area (results + chat) ---- */}
         {!detailPerson && (
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ maxHeight: '60vh' }}>
-          {isLoading && (
-            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-              <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
-              <span>Buscando em banco de dados e fontes externas...</span>
-            </div>
-          )}
+        <div className="flex-1 min-h-0 flex flex-row">
+          {/* Results table (scrollable) */}
+          <div className="flex-1 min-w-0 overflow-y-auto overscroll-contain" style={{ maxHeight: '60vh' }}>
+            {isLoading && (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
+                <span>Buscando em banco de dados e fontes externas...</span>
+              </div>
+            )}
 
-          {!isLoading && results.length === 0 && response && guardrailResult?.allowed && (
-            <div className="flex flex-col items-center justify-center py-16 text-slate-500">
-              <AlertCircle className="h-10 w-10 mb-3 opacity-40" />
-              <span>Nenhum resultado encontrado</span>
-            </div>
-          )}
+            {!isLoading && results.length === 0 && response && guardrailResult?.allowed && (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                <AlertCircle className="h-10 w-10 mb-3 opacity-40" />
+                <span>Nenhum resultado encontrado</span>
+              </div>
+            )}
 
-          {!isLoading && results.length > 0 && (
-            <div className="divide-y divide-white/5">
-              {results.map((pessoa, i) => {
-                const key = pessoa.id || pessoa.cpf || pessoa.nome_completo || String(i);
-                const isRegistered = registeredIds.has(pessoa.id || '') || registeredIds.has(pessoa.cpf || '') || registeredIds.has(pessoa.nome_completo || '');
-                const isDb = pessoa._source === 'db';
-                const isInserting = insertingId === key;
+            {!isLoading && results.length > 0 && (
+              <div className="divide-y divide-white/5">
+                {results.map((pessoa, i) => {
+                  const key = pessoa.id || pessoa.cpf || pessoa.nome_completo || String(i);
+                  const isRegistered = registeredIds.has(pessoa.id || '') || registeredIds.has(pessoa.cpf || '') || registeredIds.has(pessoa.nome_completo || '');
+                  const isDb = pessoa._source === 'db';
+                  const isInserting = insertingId === key;
 
-                return (
-                  <div
-                    key={key}
-                    className="flex items-center gap-3 px-6 py-3 hover:bg-white/[0.02] transition-colors cursor-pointer"
-                    onClick={() => setDetailPerson(pessoa)}
-                  >
-                    {/* Source badge */}
-                    <span
-                      className={cn(
-                        'flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded uppercase',
-                        isDb
-                          ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-                          : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
-                      )}
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-3 px-6 py-3 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                      onClick={() => setDetailPerson(pessoa)}
                     >
-                      {isDb ? 'DB' : 'NEW'}
-                    </span>
-
-                    {/* Avatar */}
-                    <div className="w-9 h-9 rounded-full bg-orange-500/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {pessoa.foto_url ? (
-                        <Image
-                          src={pessoa.foto_url}
-                          alt={pessoa.nome_completo || ''}
-                          width={36}
-                          height={36}
-                          className="w-full h-full object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <User className="h-4 w-4 text-orange-400" />
-                      )}
-                    </div>
-
-                    {/* Name + role */}
-                    <div className="min-w-0 flex-1">
-                      <div className="text-white text-sm font-medium truncate">
-                        {pessoa.nome_completo || 'Nome não disponível'}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
-                        {pessoa.cargo_atual && (
-                          <>
-                            <Briefcase className="h-3 w-3 flex-shrink-0" />
-                            <span className="truncate">{pessoa.cargo_atual}</span>
-                          </>
+                      {/* Source badge */}
+                      <span
+                        className={cn(
+                          'flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded uppercase',
+                          isDb
+                            ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                            : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
                         )}
-                        {pessoa.cargo_atual && pessoa.empresa_atual && (
-                          <span className="flex-shrink-0 text-slate-600">@</span>
-                        )}
-                        {pessoa.empresa_atual && (
-                          <>
-                            <Building2 className="h-3 w-3 flex-shrink-0" />
-                            <span className="truncate">{pessoa.empresa_atual}</span>
-                          </>
+                      >
+                        {isDb ? 'DB' : 'NEW'}
+                      </span>
+
+                      {/* Avatar */}
+                      <div className="w-9 h-9 rounded-full bg-orange-500/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {pessoa.foto_url ? (
+                          <Image
+                            src={pessoa.foto_url}
+                            alt={pessoa.nome_completo || ''}
+                            width={36}
+                            height={36}
+                            className="w-full h-full object-cover"
+                            unoptimized
+                          />
+                        ) : (
+                          <User className="h-4 w-4 text-orange-400" />
                         )}
                       </div>
-                    </div>
 
-                    {/* Action */}
-                    <div className="flex-shrink-0">
-                      {isRegistered || isDb ? (
-                        <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-green-500/10 text-green-400 border border-green-500/30 whitespace-nowrap">
-                          <Check className="h-3 w-3" />
-                          cadastrado
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => { e.stopPropagation(); handleInsertSingle(pessoa); }}
-                          disabled={isInserting || massInserting}
-                          className="h-7 px-2 text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/15"
-                        >
-                          {isInserting ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            'Inserir'
+                      {/* Name + role */}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-white text-sm font-medium truncate">
+                          {pessoa.nome_completo || 'Nome não disponível'}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
+                          {pessoa.cargo_atual && (
+                            <>
+                              <Briefcase className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{pessoa.cargo_atual}</span>
+                            </>
                           )}
-                        </Button>
+                          {pessoa.cargo_atual && pessoa.empresa_atual && (
+                            <span className="flex-shrink-0 text-slate-600">@</span>
+                          )}
+                          {pessoa.empresa_atual && (
+                            <>
+                              <Building2 className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{pessoa.empresa_atual}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Quality badge */}
+                      {pessoa.qualityScore !== undefined && (
+                        <span
+                          className={cn(
+                            'flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded tabular-nums',
+                            pessoa.qualityScore >= 75
+                              ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                              : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
+                          )}
+                        >
+                          {pessoa.qualityScore}%
+                        </span>
                       )}
+
+                      {/* Action */}
+                      <div className="flex-shrink-0">
+                        {isRegistered || isDb ? (
+                          <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-green-500/10 text-green-400 border border-green-500/30 whitespace-nowrap">
+                            <Check className="h-3 w-3" />
+                            cadastrado
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => { e.stopPropagation(); handleInsertSingle(pessoa); }}
+                            disabled={isInserting || massInserting}
+                            className="h-7 px-2 text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/15"
+                          >
+                            {isInserting ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              'Inserir'
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Chat panel (slide-in from right) */}
+          {chatOpen && (
+            <div className="w-[380px] flex-shrink-0 border-l border-white/5" style={{ maxHeight: '60vh' }}>
+              <PeopleAgentInlineChat
+                searchContext={searchContext}
+                onClose={() => setChatOpen(false)}
+                isOpen={chatOpen}
+              />
             </div>
           )}
         </div>

@@ -8,6 +8,7 @@ import { validateBody } from '../validation/schemas.js';
 import { searchPersonByCpfSchema, searchPersonV2Schema, saveBatchSchema } from '../validation/schemas.js';
 import { runGuardrail, maskCpf } from '../services/people-guardrail.js';
 import { analyzeQuery, estimateCardinality, rankResults, buildRefinementResponse, logEvidence } from '../services/search-orchestrator.js';
+import { runQualityGate } from '../services/quality-gate.js';
 import { escapeLike, maskPII } from '../utils/sanitize.js';
 
 const router = Router();
@@ -927,7 +928,44 @@ router.post('/search-v2', validateBody(searchPersonV2Schema), async (req, res) =
     }
 
     // ── 7. Rank results ──
-    const ranked = rankResults(merged, nome || cpf || '');
+    let ranked = rankResults(merged, nome || cpf || '');
+
+    // ── 7.5 Quality Gate (LLM batch scoring — page 1 only) ──
+    let qualityGate = { enabled: false, processedCount: 0, filteredCount: 0, totalBeforeFilter: ranked.length, durationMs: 0 };
+
+    if (ranked.length > 0 && page === 1) {
+      const qg = await runQualityGate(ranked.slice(0, 10), nome || cpf || '');
+
+      if (qg.scores.length > 0) {
+        qualityGate.enabled = true;
+        qualityGate.processedCount = qg.scores.length;
+        qualityGate.durationMs = qg.durationMs;
+
+        // Apply scores to results
+        for (const s of qg.scores) {
+          if (ranked[s.index]) {
+            ranked[s.index].qualityScore = s.score;
+            ranked[s.index].qualityLabel = s.label;
+
+            // Enrich empty fields from LLM inferences
+            if (s.enrichments && typeof s.enrichments === 'object') {
+              ranked[s.index].enrichedFields = [];
+              for (const [field, value] of Object.entries(s.enrichments)) {
+                if (value && !ranked[s.index][field]) {
+                  ranked[s.index][field] = value;
+                  ranked[s.index].enrichedFields.push(field);
+                }
+              }
+            }
+          }
+        }
+
+        // Filter out low-quality results (score < 50)
+        const beforeCount = ranked.length;
+        ranked = ranked.filter(r => r.qualityScore === undefined || r.qualityScore >= 50);
+        qualityGate.filteredCount = beforeCount - ranked.length;
+      }
+    }
 
     // ── 8. Badges + Pagination ──
     const dbCount = ranked.filter(r => r._source === 'db').length;
@@ -984,6 +1022,7 @@ router.post('/search-v2', validateBody(searchPersonV2Schema), async (req, res) =
         db: dbCount,
         new: newCount
       },
+      qualityGate,
       sources_tried: sourcesTried,
       requestId,
       durationMs

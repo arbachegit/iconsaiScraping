@@ -383,9 +383,21 @@ export async function atlasChat(data: AtlasChatRequest): Promise<AtlasChatRespon
 // PEOPLE AGENT CHAT API
 // ============================================
 
+export interface PeopleAgentSearchContext {
+  query?: string;
+  results?: Array<{
+    nome_completo?: string;
+    cargo_atual?: string | null;
+    empresa_atual?: string | null;
+    qualityScore?: number;
+  }>;
+  selectedPerson?: unknown;
+}
+
 export interface PeopleAgentChatRequest {
   message: string;
   sessionId?: string;
+  searchContext?: PeopleAgentSearchContext;
 }
 
 interface PeopleAgentBackendResponse {
@@ -948,6 +960,17 @@ export interface PeopleSearchResult {
   foto_url?: string;
   _source?: 'db' | 'external';
   _provider?: string;
+  qualityScore?: number;
+  qualityLabel?: 'high' | 'medium';
+  enrichedFields?: string[];
+}
+
+export interface QualityGateResult {
+  enabled: boolean;
+  processedCount: number;
+  filteredCount: number;
+  totalBeforeFilter: number;
+  durationMs: number;
 }
 
 export interface PeopleSearchV2Response {
@@ -968,6 +991,7 @@ export interface PeopleSearchV2Response {
     db: number;
     new: number;
   };
+  qualityGate?: QualityGateResult;
   sources_tried: string[];
   requestId: string;
   durationMs: number;

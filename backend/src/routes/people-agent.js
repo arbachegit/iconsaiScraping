@@ -15,14 +15,15 @@ const router = Router();
  */
 router.post('/chat', validateBody(peopleAgentChatSchema), async (req, res) => {
   try {
-    const { message, sessionId } = req.body;
+    const { message, sessionId, searchContext } = req.body;
 
     logger.info('People Agent chat request', {
       messageLength: message.length,
-      hasSession: !!sessionId
+      hasSession: !!sessionId,
+      hasSearchContext: !!searchContext
     });
 
-    const result = await processChat({ message, sessionId });
+    const result = await processChat({ message, sessionId, searchContext });
 
     if (!result.success && result.response.text.includes('não está configurado')) {
       return res.status(503).json(result);
