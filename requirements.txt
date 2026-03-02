@@ -5,7 +5,7 @@
 # ===========================================
 
 # Core
-python-dotenv==1.2.1
+python-dotenv==1.2.2
 fastapi==0.134.0
 uvicorn[standard]==0.41.0
 python-jose[cryptography]==3.5.0
