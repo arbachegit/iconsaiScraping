@@ -17,8 +17,9 @@ Tabela: financas_municipios (UNIQUE(codigo_ibge, ano))
 import os
 import sys
 import time
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
 from dotenv import load_dotenv
 
 ENV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "brasil-data-hub-etl", ".env")
@@ -68,7 +69,7 @@ DESPESA_KEYS = {
 def fetch_dca(id_ente: int, ano: int, anexo: str) -> list:
     """Fetch DCA com retry."""
     url = f"{SICONFI_BASE}/dca?an_exercicio={ano}&no_anexo={anexo}&id_ente={id_ente}"
-    for attempt in range(2):
+    for _attempt in range(2):
         try:
             resp = requests.get(url, timeout=30)
             if resp.status_code == 200:
@@ -216,9 +217,7 @@ def process_year(ano: int, all_entes: list[int]) -> int:
             executor.submit(extract_financas, eid, ano): eid
             for eid in missing
         }
-        done = 0
-        for future in as_completed(futures):
-            done += 1
+        for done, future in enumerate(as_completed(futures), 1):
             if done % 500 == 0:
                 print(f"    {done}/{len(missing)} processados...")
             try:
