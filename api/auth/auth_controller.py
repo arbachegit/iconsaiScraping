@@ -52,6 +52,53 @@ router = APIRouter(tags=["Auth"])
 
 
 # ===========================================
+# AUTH DIAGNOSTIC
+# ===========================================
+
+
+@router.get("/diagnostic")
+async def auth_diagnostic():
+    """Diagnostic endpoint to verify auth configuration (no secrets exposed)."""
+    from api.auth.auth_service import ALGORITHM, SECRET_KEY
+    from config.settings import settings
+
+    supabase = get_supabase()
+    user_count = 0
+    has_audit_table = False
+    has_refresh_table = False
+
+    if supabase:
+        try:
+            r = supabase.table("users").select("id", count="exact").limit(0).execute()
+            user_count = r.count or 0
+        except Exception as e:
+            user_count = -1
+            logger.warning("diagnostic_users_error", error=str(e))
+        try:
+            supabase.table("audit_logs").select("id").limit(1).execute()
+            has_audit_table = True
+        except Exception:
+            pass
+        try:
+            supabase.table("refresh_tokens").select("id").limit(1).execute()
+            has_refresh_table = True
+        except Exception:
+            pass
+
+    return {
+        "jwt_secret_key_set": bool(SECRET_KEY),
+        "jwt_secret_key_length": len(SECRET_KEY) if SECRET_KEY else 0,
+        "jwt_algorithm": ALGORITHM,
+        "supabase_connected": supabase is not None,
+        "supabase_url_set": bool(settings.supabase_url),
+        "users_count": user_count,
+        "seed_admin_email": settings.seed_admin_email or "(not set)",
+        "has_audit_logs_table": has_audit_table,
+        "has_refresh_tokens_table": has_refresh_table,
+    }
+
+
+# ===========================================
 # AUTH ENDPOINTS
 # ===========================================
 
@@ -59,8 +106,10 @@ router = APIRouter(tags=["Auth"])
 @router.post("/login", response_model=TokenWithRefresh)
 async def login(user_data: LoginRequest, request: Request):
     """User login — returns access + refresh token."""
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info("login_attempt", email=user_data.email, client_ip=client_ip)
+
     # Pre-check: Supabase must be available
-    from src.database.client import get_supabase
     if not get_supabase():
         logger.error("login_no_database", msg="Supabase client not available")
         raise HTTPException(
@@ -68,44 +117,64 @@ async def login(user_data: LoginRequest, request: Request):
             detail="Servico temporariamente indisponivel. Tente novamente.",
         )
 
-    user = await authenticate_user(user_data.email, user_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email ou senha incorretos",
+    try:
+        user = await authenticate_user(user_data.email, user_data.password)
+        if not user:
+            logger.warning("login_failed_credentials", email=user_data.email)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Email ou senha incorretos",
+            )
+
+        if not user.get("is_verified", True):
+            logger.warning("login_user_not_verified", email=user_data.email)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Conta nao verificada. Verifique seu email.",
+            )
+
+        role = user.get("role") or ("superadmin" if user.get("is_admin") else "user")
+        is_admin = role in ("superadmin", "admin") or user.get("is_admin", False)
+
+        access_token = create_access_token(
+            data={
+                "sub": user["email"],
+                "user_id": user.get("id"),
+                "name": user.get("name"),
+                "is_admin": is_admin,
+                "permissions": user.get("permissions", []),
+                "role": role,
+            },
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         )
 
-    if not user.get("is_verified", True):
-        logger.warning("login_user_not_verified", email=user_data.email)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Conta nao verificada. Verifique seu email.",
+        refresh_token = await create_refresh_token(user["id"])
+
+        try:
+            await log_action(user["id"], "user.login", f"users/{user['id']}", request=request)
+        except Exception as audit_err:
+            logger.warning("login_audit_log_failed", error=str(audit_err))
+
+        logger.info("login_success", email=user_data.email, role=role)
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token or "",
+            "token_type": "bearer",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "login_unhandled_error",
+            error=str(e),
+            error_type=type(e).__name__,
+            email=user_data.email,
         )
-
-    role = user.get("role") or ("superadmin" if user.get("is_admin") else "user")
-    is_admin = role in ("superadmin", "admin") or user.get("is_admin", False)
-
-    access_token = create_access_token(
-        data={
-            "sub": user["email"],
-            "user_id": user.get("id"),
-            "name": user.get("name"),
-            "is_admin": is_admin,
-            "permissions": user.get("permissions", []),
-            "role": role,
-        },
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
-
-    refresh_token = await create_refresh_token(user["id"])
-
-    await log_action(user["id"], "user.login", f"users/{user['id']}", request=request)
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token or "",
-        "token_type": "bearer",
-    }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro interno no login. Contate o administrador.",
+        )
 
 
 @router.get("/me", response_model=UserResponseExpanded)
@@ -434,36 +503,53 @@ async def refresh_access_token(data: RefreshTokenRequest, request: Request):
     Refresh access token using a valid refresh token.
     The old refresh token is revoked and a new one is issued (rotation).
     """
-    user = await validate_refresh_token(data.refresh_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Refresh token invalido ou expirado")
+    try:
+        user = await validate_refresh_token(data.refresh_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Refresh token invalido ou expirado")
 
-    # Create new access token
-    role = user.get("role") or ("superadmin" if user.get("is_admin") else "user")
-    is_admin = role in ("superadmin", "admin") or user.get("is_admin", False)
+        # Create new access token
+        role = user.get("role") or ("superadmin" if user.get("is_admin") else "user")
+        is_admin = role in ("superadmin", "admin") or user.get("is_admin", False)
 
-    access_token = create_access_token(
-        data={
-            "sub": user["email"],
-            "user_id": user.get("id"),
-            "name": user.get("name"),
-            "is_admin": is_admin,
-            "permissions": user.get("permissions", []),
-            "role": role,
-        },
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
+        access_token = create_access_token(
+            data={
+                "sub": user["email"],
+                "user_id": user.get("id"),
+                "name": user.get("name"),
+                "is_admin": is_admin,
+                "permissions": user.get("permissions", []),
+                "role": role,
+            },
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
 
-    # Create new refresh token (rotation)
-    new_refresh_token = await create_refresh_token(user["id"])
+        # Create new refresh token (rotation)
+        new_refresh_token = await create_refresh_token(user["id"])
 
-    await log_action(user["id"], "user.token_refreshed", f"users/{user['id']}", request=request)
+        try:
+            await log_action(user["id"], "user.token_refreshed", f"users/{user['id']}", request=request)
+        except Exception as audit_err:
+            logger.warning("refresh_audit_log_failed", error=str(audit_err))
 
-    return {
-        "access_token": access_token,
-        "refresh_token": new_refresh_token or "",
-        "token_type": "bearer",
-    }
+        return {
+            "access_token": access_token,
+            "refresh_token": new_refresh_token or "",
+            "token_type": "bearer",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "refresh_unhandled_error",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro interno ao renovar token.",
+        )
 
 
 # ===========================================
