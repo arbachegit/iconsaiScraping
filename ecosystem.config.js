@@ -42,10 +42,11 @@ module.exports = {
     // =============================================
     {
       name: 'api-python',
-      script: './.venv/bin/uvicorn',
-      args: 'api.main:app --host 0.0.0.0 --port 8000 --reload',
+      script: 'python3',
+      args: '-m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload',
       interpreter: 'none',
       watch: false,
+      env_file: './.env',
       env: {
         ENVIRONMENT: 'development',
       },
