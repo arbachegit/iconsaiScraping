@@ -5,10 +5,6 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Scraping Hub - IconsAI',
   description: 'Business Intelligence Brasil',
-  icons: {
-    icon: '/icon.svg',
-    apple: '/apple-icon.png',
-  },
 };
 
 export default function RootLayout({
