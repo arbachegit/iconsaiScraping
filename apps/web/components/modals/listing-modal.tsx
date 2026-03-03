@@ -1006,7 +1006,7 @@ function SortableHeader({
   );
 }
 
-function RegimeBadge({ regime }: { regime: string | undefined }) {
+function RegimeBadge({ regime }: { regime: string | null | undefined }) {
   if (!regime) return <span className="text-slate-500">-</span>;
 
   const colorMap: Record<string, string> = {
