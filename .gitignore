@@ -128,6 +128,9 @@ apps/web/test-results/
 apps/web/playwright-report/
 apps/web/console_evidence.txt
 
+# Cache files
+backend/scripts/.cep_cache.json
+
 # Deploy versions (generated)
 .deploy_versions/
 .claude/deploy_versions/
