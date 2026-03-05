@@ -166,7 +166,7 @@ def main() -> None:
             errors += len(batch)
             continue
 
-        for company, embedding in zip(batch, embeddings):
+        for company, embedding in zip(batch, embeddings, strict=False):
             ok = update_company_embedding(company["id"], embedding)
             if ok:
                 processed += 1

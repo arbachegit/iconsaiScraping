@@ -14,7 +14,6 @@ from typing import Any
 
 import asyncpg
 import structlog
-
 from storage.spaces_client import SpacesClient
 from workers.embedding_generator import generate_embeddings_for_entity
 from workers.relationship_detector import detect_relationships_for_entity

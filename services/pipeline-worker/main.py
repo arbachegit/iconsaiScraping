@@ -13,18 +13,16 @@ for real-time event-driven processing.
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Any
 
 import asyncpg
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from events.event_bus import start_listener
+from events.handlers import handle_event
 from fastapi import FastAPI
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from events.event_bus import start_listener
-from events.handlers import handle_event
 from storage.spaces_client import SpacesClient
 from workers.company_updater import update_stale_companies
 from workers.embedding_generator import generate_pending_embeddings

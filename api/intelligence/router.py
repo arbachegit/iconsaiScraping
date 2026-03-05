@@ -12,13 +12,13 @@ Endpoints:
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from api.intelligence.hypothesis_engine import generate_hypotheses
 from api.intelligence.intent_classifier import classify_intent
 from api.intelligence.query_decomposer import decompose_query
-from api.intelligence.hypothesis_engine import generate_hypotheses
 from api.intelligence.summary_generator import generate_summary
 
 logger = structlog.get_logger()

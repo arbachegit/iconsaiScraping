@@ -13,7 +13,6 @@ from typing import Any
 import asyncpg
 import httpx
 import structlog
-
 from storage.spaces_client import SpacesClient
 
 logger = structlog.get_logger(__name__)
@@ -259,7 +258,7 @@ async def _process_batch(
         return 0
 
     saved = 0
-    for company, embedding in zip(batch, embeddings):
+    for company, embedding in zip(batch, embeddings, strict=False):
         try:
             await _save_embedding(db_pool, company["id"], embedding)
             saved += 1

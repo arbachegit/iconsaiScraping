@@ -13,7 +13,7 @@ Supported shortcuts:
 
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import structlog

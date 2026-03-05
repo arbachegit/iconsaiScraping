@@ -9,6 +9,7 @@ Uses a two-phase approach:
 import json
 import re
 from enum import Enum
+
 import structlog
 from pydantic import BaseModel, Field
 

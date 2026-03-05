@@ -7,7 +7,6 @@ logs changes, and updates pipeline_events.
 """
 
 import json
-from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
@@ -220,7 +219,7 @@ async def _apply_updates(
         values.append(change["new"])
         param_idx += 1
 
-    set_clauses.append(f"updated_at = NOW()")
+    set_clauses.append("updated_at = NOW()")
 
     query = f"""
         UPDATE dim_empresas
