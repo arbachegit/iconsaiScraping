@@ -66,13 +66,13 @@ def split_sql_statements(sql: str) -> list[str]:
 
         if not in_dollar_block and stripped.endswith(";"):
             stmt = "\n".join(current).strip()
-            if stmt and not all(l.strip().startswith("--") or not l.strip() for l in current):
+            if stmt and not all(sql_line.strip().startswith("--") or not sql_line.strip() for sql_line in current):
                 statements.append(stmt)
             current = []
 
     if current:
         stmt = "\n".join(current).strip()
-        if stmt and not all(l.strip().startswith("--") or not l.strip() for l in current):
+        if stmt and not all(sql_line.strip().startswith("--") or not sql_line.strip() for sql_line in current):
             statements.append(stmt)
 
     return statements
