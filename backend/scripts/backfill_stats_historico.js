@@ -95,7 +95,7 @@ async function main() {
 
   const totals = {
     empresas: await safeEstimatedCount(supabase, 'dim_empresas'),
-    pessoas: await safeEstimatedCount(supabase, 'fato_pessoas'),
+    pessoas: await safeEstimatedCount(supabase, 'dim_pessoas'),
     noticias: await safeEstimatedCount(supabase, 'dim_noticias'),
     politicos: brasilDataHub ? await safeEstimatedCount(brasilDataHub, 'dim_politicos') : 0,
     mandatos: brasilDataHub ? await safeEstimatedCount(brasilDataHub, 'fato_politicos_mandatos') : 0,

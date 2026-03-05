@@ -138,9 +138,16 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       # Atlas LLM
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Python API (intelligence proxy)
+      - PYTHON_API_URL=http://api:8000
+      # Redis
+      - REDIS_URL=redis://redis:6379
       # Version tracking
       - GIT_SHA=${GIT_SHA}
       - BUILD_DATE=${BUILD_DATE}
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -150,6 +157,80 @@ services:
     labels:
       <<: *common-labels
       com.iconsai.service: "backend"
+    logging: *common-logging
+    networks:
+      - iconsai-network
+
+  # ============================================
+  # Redis — Cache + Queue (port 6379)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: iconsai-redis
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    labels:
+      <<: *common-labels
+      com.iconsai.service: "redis"
+    logging: *common-logging
+    networks:
+      - iconsai-network
+
+  # ============================================
+  # Pipeline Worker (continuous collection, port 8001)
+  # ============================================
+  pipeline-worker:
+    image: ${IMAGE_PREFIX:?IMAGE_PREFIX obrigatorio}-pipeline-worker:${IMAGE_TAG:?IMAGE_TAG obrigatorio}
+    container_name: iconsai-pipeline-worker
+    pull_policy: always
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      # Supabase (direct DB connection for LISTEN/NOTIFY)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      # APIs
+      - SERPER_API_KEY=${SERPER_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Internal services
+      - NODEJS_API_URL=http://backend:3001
+      - PYTHON_API_URL=http://api:8000
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      # DigitalOcean Spaces (Data Lake)
+      - DO_SPACES_KEY=${DO_SPACES_KEY}
+      - DO_SPACES_SECRET=${DO_SPACES_SECRET}
+      - DO_SPACES_REGION=${DO_SPACES_REGION:-nyc3}
+      - DO_SPACES_BUCKET=${DO_SPACES_BUCKET:-iconsai-data-lake}
+      # Version tracking
+      - GIT_SHA=${GIT_SHA}
+      - BUILD_DATE=${BUILD_DATE}
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    labels:
+      <<: *common-labels
+      com.iconsai.service: "pipeline-worker"
     logging: *common-logging
     networks:
       - iconsai-network
@@ -196,6 +277,7 @@ services:
 
 volumes:
   scheduler_logs:
+  redis_data:
 
 networks:
   iconsai-network:

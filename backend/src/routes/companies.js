@@ -4,12 +4,18 @@ import * as perplexity from '../services/perplexity.js';
 import * as brasilapi from '../services/brasilapi.js';
 import * as apollo from '../services/apollo.js';
 import * as cnpja from '../services/cnpja.js';
-import { supabase, insertCompany, insertPerson, insertTransacaoEmpresa, insertRegimeTributario, insertInferenciaLimites, insertRegimeHistorico, findCompanyByCnpj, listCompanies, getCompanyFullData, updateInferenciaLimites, registerDataSource, checkExistingCnpjs } from '../database/supabase.js';
+import * as gemini from '../services/gemini.js';
+import { supabase, insertCompany, insertPerson, insertTransacaoEmpresa, insertRegimeTributario, insertInferenciaLimites, insertRegimeHistorico, findCompanyByCnpj, listCompanies, getCompanyFullData, updateInferenciaLimites, registerDataSource, checkExistingCnpjs, invalidateApprovedCache } from '../database/supabase.js';
 import { calcularInferenciaVAR, getPesosVAR, getLimitesRegime } from '../services/var_inference.js';
-import { LINKEDIN_STATUS, DATA_SOURCES } from '../constants.js';
-import { searchCompanySchema, detailsCompanySchema, sociosSchema, approveCompanySchema, recalculateSchema, listCompaniesSchema, validateBody, validateQuery } from '../validation/schemas.js';
+import { LINKEDIN_STATUS, DATA_SOURCES, RELATIONSHIP_TYPES } from '../constants.js';
+import { enrichRelationshipsAfterApproval } from '../services/graph-pipeline.js';
+import { getDirectRelationships, getNetworkGraph, getNetworkStats } from '../services/graph-queries.js';
+import { hybridSearch, calculateSIS } from '../services/hybrid-search.js';
+import { executeStreamingSearch } from '../services/sse-stream.js';
+import { proxyToIntelligence } from '../services/intelligence-proxy.js';
+import { searchCompanySchema, detailsCompanySchema, sociosSchema, approveCompanySchema, recalculateSchema, listCompaniesSchema, networkQuerySchema, relationshipsQuerySchema, hybridSearchSchema, streamSearchSchema, validateBody, validateQuery } from '../validation/schemas.js';
 import logger from '../utils/logger.js';
-import { escapeLike } from '../utils/sanitize.js';
+// escapeLike moved to listCompanies() in supabase.js
 import { analyzeQuery, estimateCardinality, rankResults, buildRefinementResponse, logEvidence } from '../services/search-orchestrator.js';
 
 const router = Router();
@@ -36,7 +42,7 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
   try {
     const { nome, cidade, segmento, regime } = req.body;
     const page = parseInt(req.body.page) || 1;
-    const pageSize = Math.min(parseInt(req.body.pageSize) || 100, 100);
+    const pageSize = Math.min(parseInt(req.body.pageSize) || 25, 50);
 
     // ── 1. Query Analysis ──
     const analysis = analyzeQuery({
@@ -133,6 +139,7 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
     let searchSource = 'database';
 
     if (page === 1 || internalResults.length < 5) {
+      try {
       // Serper (Google search)
       sourcesTried.push('serper');
       let candidates = await serper.searchCompanyByName(searchName, searchCity);
@@ -204,6 +211,10 @@ router.post('/search', validateBody(searchCompanySchema), async (req, res) => {
           }
         })
       );
+      } catch (extErr) {
+        logger.warn('External search failed, using DB results only', { requestId, error: extErr.message });
+        searchSource = 'database_only';
+      }
     }
 
     // ── 6. Merge + Dedup + Rank ──
@@ -475,6 +486,10 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
     let website = apolloData?.website || null;
     if (!website) {
       website = await serper.findCompanyWebsite(searchName, brasilData.cidade);
+    }
+    if (!website) {
+      console.log(`[GEMINI] Buscando website: ${searchName}`);
+      website = await gemini.findCompanyWebsite(searchName, brasilData.cidade, brasilData.estado);
     }
 
     // ========================================
@@ -821,13 +836,37 @@ router.post('/approve', validateBody(approveCompanySchema), async (req, res) => 
       }
     }
 
+    // Detect graph relationships (non-blocking, log errors)
+    let graphResults = null;
+    try {
+      graphResults = await enrichRelationshipsAfterApproval({
+        empresa_id: insertedCompany.id,
+        socios: insertedSocios.map((s, i) => ({
+          id: s.id,
+          cargo: socios[i]?.cargo || socios[i]?.qualificacao,
+          qualificacao: socios[i]?.qualificacao,
+          data_entrada: socios[i]?.data_entrada
+        })),
+        cnae_principal: empresa.cnae_principal,
+        cidade: empresa.cidade,
+        estado: empresa.estado,
+        nome: empresa.nome_fantasia || empresa.razao_social
+      });
+    } catch (graphError) {
+      logger.warn('graph_enrichment_failed', { empresa_id: insertedCompany.id, error: graphError.message });
+    }
+
     console.log(`[APPROVED] Empresa ${cleanCnpj} aprovada por ${aprovado_por} com ${insertedSocios.length} socios`);
+
+    // Invalidate approved companies cache so new company appears in searches
+    invalidateApprovedCache();
 
     return res.json({
       success: true,
       message: 'Empresa aprovada e cadastrada com sucesso',
       empresa: insertedCompany,
-      socios: insertedSocios
+      socios: insertedSocios,
+      graph: graphResults
     });
 
   } catch (error) {
@@ -850,65 +889,10 @@ router.get('/list', validateQuery(listCompaniesSchema), async (req, res) => {
   try {
     const { nome, cidade, segmento, regime, limit, offset } = req.query;
 
-    const filters = { limit, offset };
-    if (nome) filters.nome = nome;
-    if (cidade) filters.cidade = cidade;
-
-    // Pre-filter empresa_ids from fato_regime_tributario for segmento/regime
-    if (segmento || regime) {
-      let preQuery = supabase
-        .from('fato_regime_tributario')
-        .select('empresa_id')
-        .eq('ativo', true)
-        .limit(1000);
-
-      if (segmento) preQuery = preQuery.ilike('cnae_descricao', `%${escapeLike(segmento)}%`);
-      if (regime) preQuery = preQuery.ilike('regime_tributario', `%${escapeLike(regime)}%`);
-
-      const { data: preRows } = await preQuery;
-
-      if (preRows && preRows.length > 0) {
-        filters.empresaIds = [...new Set(preRows.map(r => r.empresa_id))];
-      } else {
-        return res.json({
-          success: true,
-          count: 0,
-          total: 0,
-          empresas: [],
-          offset,
-          limit,
-          requestId,
-          source: 'db',
-          durationMs: Date.now() - startTime
-        });
-      }
-    }
-
-    const { data: companies, total } = await listCompanies(filters);
-
-    // Enrich with regime_tributario + cnae_descricao from fato_regime_tributario
-    let enriched = companies;
-    if (companies.length > 0) {
-      const ids = companies.map(c => c.id);
-      const { data: regimeData } = await supabase
-        .from('fato_regime_tributario')
-        .select('empresa_id, regime_tributario, cnae_descricao')
-        .in('empresa_id', ids)
-        .eq('ativo', true);
-
-      const regimeMap = new Map();
-      if (regimeData && regimeData.length > 0) {
-        for (const r of regimeData) {
-          if (!regimeMap.has(r.empresa_id)) regimeMap.set(r.empresa_id, r);
-        }
-      }
-      enriched = companies.map(c => ({
-        ...c,
-        regime_tributario: regimeMap.get(c.id)?.regime_tributario || null,
-        cnae_descricao: regimeMap.get(c.id)?.cnae_descricao || null,
-        linkedin: c.linkedin_url || null,
-      }));
-    }
+    // Single query with nested JOIN — regime_tributario + cnae_descricao included
+    const { data: companies, total } = await listCompanies({
+      nome, cidade, segmento, regime, limit, offset
+    });
 
     const durationMs = Date.now() - startTime;
     logger.info('DB search completed', {
@@ -919,15 +903,15 @@ router.get('/list', validateQuery(listCompaniesSchema), async (req, res) => {
       pageSize: limit,
       offset,
       durationMs,
-      returnedCount: enriched.length,
+      returnedCount: companies.length,
       totalEstimate: total
     });
 
     return res.json({
       success: true,
-      count: enriched.length,
+      count: companies.length,
       total,
-      empresas: enriched,
+      empresas: companies,
       offset,
       limit,
       requestId,
@@ -938,6 +922,7 @@ router.get('/list', validateQuery(listCompaniesSchema), async (req, res) => {
     logger.error('List search failed', {
       requestId,
       error: error.message,
+      code: error.code,
       durationMs: Date.now() - startTime
     });
     res.status(500).json({
@@ -1348,6 +1333,197 @@ router.get('/cnae', async (req, res) => {
       error: 'Erro ao listar CNAEs',
       details: error.message
     });
+  }
+});
+
+// ============================================
+// INTELLIGENCE PROXY ENDPOINTS
+// ============================================
+
+/**
+ * POST /api/companies/intelligence
+ * Proxy to Python intelligence API (full pipeline)
+ */
+router.post('/intelligence', async (req, res) => {
+  try {
+    const result = await proxyToIntelligence('/api/intelligence/query', req.body);
+    return res.json(result);
+  } catch (error) {
+    logger.error('intelligence_proxy_error', { error: error.message });
+    res.status(500).json({ error: 'Erro na inteligência', details: error.message });
+  }
+});
+
+/**
+ * POST /api/companies/intelligence/classify
+ * Proxy to Python intent classification
+ */
+router.post('/intelligence/classify', async (req, res) => {
+  try {
+    const result = await proxyToIntelligence('/api/intelligence/classify', req.body);
+    return res.json(result);
+  } catch (error) {
+    logger.error('intelligence_classify_error', { error: error.message });
+    res.status(500).json({ error: 'Erro na classificação', details: error.message });
+  }
+});
+
+// ============================================
+// HYBRID SEARCH ENDPOINTS
+// ============================================
+
+/**
+ * POST /api/companies/search/hybrid
+ * Hybrid search combining text, vector, and relational signals with RRF
+ */
+router.post('/search/hybrid', validateBody(hybridSearchSchema), async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { query, mode, filters, limit } = req.body;
+
+    const result = await hybridSearch({ query, filters, mode, limit });
+
+    return res.json({
+      success: true,
+      query,
+      mode,
+      total: result.results.length,
+      results: result.results,
+      signals: result.signals,
+      timing: result.timing,
+      durationMs: Date.now() - startTime
+    });
+  } catch (error) {
+    logger.error('hybrid_search_error', { error: error.message });
+    res.status(500).json({ error: 'Erro na busca híbrida', details: error.message });
+  }
+});
+
+/**
+ * GET /api/companies/search/stream
+ * SSE streaming search with progressive results
+ */
+router.get('/search/stream', validateQuery(streamSearchSchema), async (req, res) => {
+  try {
+    const { q, limit, cidade, estado } = req.query;
+
+    await executeStreamingSearch(res, {
+      query: q,
+      filters: { cidade, estado },
+      limit
+    });
+  } catch (error) {
+    logger.error('stream_search_error', { error: error.message });
+    // If headers already sent (SSE started), we can't send JSON error
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Erro no streaming de busca', details: error.message });
+    }
+  }
+});
+
+/**
+ * GET /api/companies/:id/sis
+ * Get Strategic Impact Score for a company
+ */
+router.get('/:id/sis', async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { id } = req.params;
+
+    const sis = await calculateSIS(id);
+
+    if (!sis) {
+      return res.status(404).json({ error: 'SIS score não encontrado' });
+    }
+
+    return res.json({
+      success: true,
+      empresa_id: id,
+      ...sis,
+      durationMs: Date.now() - startTime
+    });
+  } catch (error) {
+    logger.error('sis_error', { id: req.params.id, error: error.message });
+    res.status(500).json({ error: 'Erro ao calcular SIS', details: error.message });
+  }
+});
+
+// ============================================
+// GRAPH ENDPOINTS
+// ============================================
+
+/**
+ * GET /api/companies/:id/relationships
+ * Get direct (1-hop) relationships for a company
+ */
+router.get('/:id/relationships', validateQuery(relationshipsQuerySchema), async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { id } = req.params;
+    const { tipo_relacao, min_strength, limit } = req.query;
+
+    const result = await getDirectRelationships('empresa', id, {
+      tipo_relacao,
+      min_strength,
+      limit
+    });
+
+    return res.json({
+      success: true,
+      empresa_id: id,
+      ...result,
+      durationMs: Date.now() - startTime
+    });
+  } catch (error) {
+    logger.error('relationships_error', { id: req.params.id, error: error.message });
+    res.status(500).json({ error: 'Erro ao buscar relacionamentos', details: error.message });
+  }
+});
+
+/**
+ * GET /api/companies/:id/network
+ * Get multi-hop network graph for a company
+ */
+router.get('/:id/network', validateQuery(networkQuerySchema), async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { id } = req.params;
+    const { hops, limit } = req.query;
+
+    const result = await getNetworkGraph('empresa', id, hops, limit);
+
+    return res.json({
+      success: true,
+      empresa_id: id,
+      ...result,
+      durationMs: Date.now() - startTime
+    });
+  } catch (error) {
+    logger.error('network_error', { id: req.params.id, error: error.message });
+    res.status(500).json({ error: 'Erro ao buscar rede', details: error.message });
+  }
+});
+
+/**
+ * GET /api/companies/:id/network-stats
+ * Get aggregated network statistics for a company
+ */
+router.get('/:id/network-stats', async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { id } = req.params;
+
+    const stats = await getNetworkStats('empresa', id);
+
+    return res.json({
+      success: true,
+      empresa_id: id,
+      ...stats,
+      durationMs: Date.now() - startTime
+    });
+  } catch (error) {
+    logger.error('network_stats_error', { id: req.params.id, error: error.message });
+    res.status(500).json({ error: 'Erro ao buscar estatísticas da rede', details: error.message });
   }
 });
 

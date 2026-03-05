@@ -93,6 +93,7 @@ frontend/out/
 
 # Backend Node.js
 backend/node_modules/
+backend/.next/
 
 # Backups
 *.backup
@@ -130,6 +131,7 @@ apps/web/console_evidence.txt
 
 # Cache files
 backend/scripts/.cep_cache.json
+backend/scripts/.website_cache.json
 
 # Deploy versions (generated)
 .deploy_versions/

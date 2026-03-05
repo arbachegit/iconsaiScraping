@@ -186,6 +186,22 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ steps.vars.outputs.sha_full }}
 
+      # --- Pipeline Worker (Python) ---
+      - name: Build and Push — pipeline-worker
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/pipeline-worker
+          file: ./services/pipeline-worker/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-pipeline-worker:${{ steps.vars.outputs.image_tag }}
+          build-args: |
+            GIT_SHA=${{ steps.vars.outputs.sha_short }}
+            BUILD_DATE=${{ steps.vars.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.revision=${{ steps.vars.outputs.sha_full }}
+
       # --- Scheduler (Python) ---
       - name: Build and Push — scheduler
         uses: docker/build-push-action@v5
@@ -232,6 +248,7 @@ jobs:
           echo "  - ${{ env.IMAGE_PREFIX }}-web:${{ steps.vars.outputs.image_tag }}"
           echo "  - ${{ env.IMAGE_PREFIX }}-api:${{ steps.vars.outputs.image_tag }}"
           echo "  - ${{ env.IMAGE_PREFIX }}-backend:${{ steps.vars.outputs.image_tag }}"
+          echo "  - ${{ env.IMAGE_PREFIX }}-pipeline-worker:${{ steps.vars.outputs.image_tag }}"
           echo "  - ${{ env.IMAGE_PREFIX }}-scheduler:${{ steps.vars.outputs.image_tag }}"
           echo "============================================"
 
@@ -515,4 +532,5 @@ jobs:
           echo "- \`${{ env.IMAGE_PREFIX }}-web:${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.IMAGE_PREFIX }}-api:${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.IMAGE_PREFIX }}-backend:${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_PREFIX }}-pipeline-worker:${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.IMAGE_PREFIX }}-scheduler:${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY

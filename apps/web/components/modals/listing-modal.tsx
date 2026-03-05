@@ -11,12 +11,15 @@ import {
   listPoliticians,
   searchPoliticians,
   getPoliticianDetails,
+  listEmendas,
+  searchEmendas,
   formatRegime,
   type Company,
   type Person,
   type NewsItem,
   type Politician,
   type PoliticianMandate,
+  type Emenda,
 } from '@/lib/api';
 import { normalizePoliticianName, ibgeToUF } from '@/lib/politicians-utils';
 
@@ -954,6 +957,222 @@ function PoliticoRow({ politico }: { politico: Politician }) {
         </tr>
       )}
     </>
+  );
+}
+
+// ============================================
+// EMENDAS LISTING MODAL
+// ============================================
+
+interface EmendasListingModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function EmendasListingModal({ isOpen, onClose }: EmendasListingModalProps) {
+  const [search, setSearch] = useState('');
+  const [searchKey, setSearchKey] = useState('');
+  const [sortColumn, setSortColumn] = useState<string>('ano');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const query = useQuery({
+    queryKey: ['emendas', 'listing', searchKey],
+    queryFn: async () => {
+      if (searchKey && searchKey.length >= 2) {
+        return searchEmendas(searchKey, 200);
+      }
+      return listEmendas({ limit: 200 });
+    },
+    enabled: isOpen,
+    retry: 1,
+    staleTime: 30_000,
+  });
+
+  function handleSearch() {
+    setSearchKey(search.trim());
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  }
+
+  const sortedData = useMemo(() => {
+    const data = [...(query.data?.emendas || [])];
+
+    data.sort((a, b) => {
+      const col = sortColumn || 'ano';
+
+      // Numeric sort for valor and ano
+      if (col === 'valor' || col === 'ano') {
+        const valA = Number((a as unknown as Record<string, unknown>)[col]) || 0;
+        const valB = Number((b as unknown as Record<string, unknown>)[col]) || 0;
+        return sortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+
+      const valA = String(
+        (a as unknown as Record<string, unknown>)[col] ?? ''
+      ).toLowerCase();
+      const valB = String(
+        (b as unknown as Record<string, unknown>)[col] ?? ''
+      ).toLowerCase();
+      return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    });
+
+    return data;
+  }, [query.data?.emendas, sortColumn, sortDirection]);
+
+  function handleSort(column: string) {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection(column === 'valor' || column === 'ano' ? 'desc' : 'asc');
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/85">
+      <div className="w-[95%] max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl border border-cyan-500/15 bg-gradient-to-b from-[#0f1629] to-[#0a0e1a] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-3">
+            <span className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-cyan-600 rounded" />
+            Emendas Parlamentares
+            {!query.isLoading && (
+              <span className="bg-cyan-500/15 text-cyan-400 px-2.5 py-1 rounded text-sm">
+                {sortedData.length}
+              </span>
+            )}
+          </h2>
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Search Fields */}
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Buscar por autor, descricao ou localidade..."
+            className="max-w-md"
+          />
+          <button
+            onClick={handleSearch}
+            className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            Buscar
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {query.isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
+              <span>Buscando emendas...</span>
+            </div>
+          ) : query.isError ? (
+            <div className="text-center py-12 text-red-400">
+              Erro ao carregar emendas. Verifique se o Brasil Data Hub esta configurado.
+            </div>
+          ) : sortedData.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              Nenhuma emenda encontrada. Tente outro termo de busca.
+            </div>
+          ) : (
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-cyan-500/5">
+                  <SortableHeader
+                    label="Autor"
+                    column="autor"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="Descricao"
+                    column="descricao"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="Valor"
+                    column="valor"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="Tipo"
+                    column="tipo"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="UF"
+                    column="uf"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="Ano"
+                    column="ano"
+                    currentColumn={sortColumn}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                {sortedData.map((e) => (
+                  <EmendaRow key={e.id} emenda={e} />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmendaRow({ emenda }: { emenda: Emenda }) {
+  const valorFormatted = emenda.valor
+    ? emenda.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    : '-';
+
+  return (
+    <tr className="border-b border-white/5 hover:bg-cyan-500/5 transition-colors">
+      <td className="p-3 text-slate-300 max-w-[180px] truncate">{emenda.autor || '-'}</td>
+      <td className="p-3 text-slate-300 max-w-xs truncate">{emenda.descricao || '-'}</td>
+      <td className="p-3 text-emerald-400 font-variant-numeric tabular-nums whitespace-nowrap">
+        {valorFormatted}
+      </td>
+      <td className="p-3">
+        {emenda.tipo ? (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-cyan-500/15 text-cyan-400">
+            {emenda.tipo}
+          </span>
+        ) : (
+          <span className="text-slate-500">-</span>
+        )}
+      </td>
+      <td className="p-3 text-slate-300">{emenda.uf || '-'}</td>
+      <td className="p-3 text-slate-300 font-variant-numeric tabular-nums">{emenda.ano || '-'}</td>
+    </tr>
   );
 }
 

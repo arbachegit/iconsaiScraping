@@ -298,126 +298,153 @@ export async function findCompanyByCnpj(cnpj) {
   return data;
 }
 
+// -----------------------------------------------------------------------
+// Approved companies cache (in-memory)
+// dim_empresas has 64M+ rows from Receita Federal bulk import.
+// ILIKE on 64M rows without GIN indexes always times out.
+// We cache the ~5000 approved companies (those with fato_transacao_empresas)
+// and filter in JS. Cache TTL: 5 minutes.
+// -----------------------------------------------------------------------
+let _approvedCache = null;
+let _approvedCacheExpiry = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getApprovedCompanies() {
+  if (_approvedCache && Date.now() < _approvedCacheExpiry) {
+    return _approvedCache;
+  }
+
+  // Fetch all transacao rows with JOIN to dim_empresas (paginated, max 1000/page)
+  const seen = new Set();
+  const companies = [];
+  let page = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('fato_transacao_empresas')
+      .select('empresa_id, dim_empresas(id, razao_social, nome_fantasia, cnpj, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte)')
+      .range(from, to);
+
+    if (error || !data || data.length === 0) break;
+
+    for (const row of data) {
+      if (seen.has(row.empresa_id) || !row.dim_empresas) continue;
+      seen.add(row.empresa_id);
+      companies.push(row.dim_empresas);
+    }
+
+    if (data.length < pageSize) break;
+    page++;
+  }
+
+  // Fetch regime data - single query since fato_regime_tributario is small (~6 rows ativo)
+  const regimeMap = new Map();
+  const { data: regimeRows } = await supabase
+    .from('fato_regime_tributario')
+    .select('empresa_id, regime_tributario, cnae_descricao')
+    .eq('ativo', true)
+    .limit(10000);
+  for (const r of (regimeRows || [])) {
+    if (!regimeMap.has(r.empresa_id)) {
+      regimeMap.set(r.empresa_id, r);
+    }
+  }
+
+  // Merge regime data
+  const enriched = companies.map(c => {
+    const regime = regimeMap.get(c.id);
+    return {
+      ...c,
+      cidade: c.cidade ?? null,
+      estado: c.estado ?? null,
+      regime_tributario: regime?.regime_tributario || null,
+      cnae_descricao: regime?.cnae_descricao || null,
+      linkedin: c.linkedin_url || null,
+    };
+  });
+
+  _approvedCache = enriched;
+  _approvedCacheExpiry = Date.now() + CACHE_TTL_MS;
+  logger.info('approved_cache_refreshed', { companies: enriched.length });
+
+  return enriched;
+}
+
+/**
+ * Invalidate the approved companies cache (call after approving a new company)
+ */
+export function invalidateApprovedCache() {
+  _approvedCache = null;
+  _approvedCacheExpiry = 0;
+}
+
+/**
+ * Eagerly warm the approved companies cache at startup.
+ * Call this during server init so the first user request doesn't wait ~10s.
+ */
+export async function warmApprovedCache() {
+  try {
+    const companies = await getApprovedCompanies();
+    logger.info('approved_cache_warmed_at_startup', { companies: companies.length });
+  } catch (err) {
+    logger.warn('approved_cache_warmup_failed', { error: err.message });
+  }
+}
+
 /**
  * List all companies with optional filters
- * Includes regime_tributario + cnae_descricao via nested JOIN with fato_regime_tributario
+ * Searches only approved companies (those with fato_transacao_empresas records)
  * @param {Object} filters - Optional filters: nome, cidade, segmento, regime, empresaIds, limit, offset
  */
 export async function listCompanies(filters = {}) {
   const { nome, cidade, segmento, regime, empresaIds, limit = 100, offset = 0 } = filters;
 
-  const from = offset;
-  const to = offset + limit - 1;
-  const hasTextFilter = !!(nome || cidade);
+  let companies = await getApprovedCompanies();
 
-  // Base columns
-  const baseCols = 'id, cnpj, razao_social, nome_fantasia, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cidade, estado';
-
-  // For text searches (nome/cidade): split into 2 queries to avoid timeout
-  // Query 1: fast ID lookup with ILIKE only (no JOINs)
-  // Query 2: fetch full data + regime for matched IDs
-  if (hasTextFilter) {
-    let searchQuery = supabase
-      .from('dim_empresas')
-      .select('id')
-      .limit(limit);
-
-    if (nome) {
-      const words = nome.split(/\s+/).filter(w => w.length >= 2 && !SEARCH_STOP_WORDS.has(w.toLowerCase()));
-      const termsToSearch = words.length > 0 ? words : [nome];
-      for (const word of termsToSearch) {
-        const ew = escapeLike(word);
-        searchQuery = searchQuery.or(`razao_social.ilike.%${ew}%,nome_fantasia.ilike.%${ew}%`);
-      }
-    }
-
-    if (cidade) {
-      const ec = escapeLike(cidade);
-      searchQuery = searchQuery.ilike('cidade', `${ec}%`);
-    }
-
-    const { data: idRows, error: searchError } = await searchQuery;
-    if (searchError) throw searchError;
-
-    const matchedIds = (idRows || []).map(r => r.id);
-    if (matchedIds.length === 0) {
-      return { data: [], total: 0 };
-    }
-
-    // Query 2: fetch full data for matched IDs (fast - IN query on PKs)
-    const regimeJoin = (segmento || regime)
-      ? 'fato_regime_tributario!inner(regime_tributario, cnae_descricao)'
-      : 'fato_regime_tributario(regime_tributario, cnae_descricao)';
-
-    let dataQuery = supabase
-      .from('dim_empresas')
-      .select(`${baseCols}, ${regimeJoin}`)
-      .in('id', matchedIds)
-      .eq('fato_regime_tributario.ativo', true);
-
-    if (segmento) {
-      const es = escapeLike(segmento);
-      dataQuery = dataQuery.ilike('fato_regime_tributario.cnae_descricao', `%${es}%`);
-    }
-    if (regime) {
-      const er = escapeLike(regime);
-      dataQuery = dataQuery.ilike('fato_regime_tributario.regime_tributario', `%${er}%`);
-    }
-
-    const { data, error } = await dataQuery;
-    if (error) throw error;
-
-    const results = flattenRegimeData(data);
-    return { data: results, total: results.length };
+  // Apply text filters in JS
+  if (nome) {
+    const words = nome.split(/\s+/).filter(w => w.length >= 2 && !SEARCH_STOP_WORDS.has(w.toLowerCase()));
+    const termsToSearch = words.length > 0 ? words : [nome];
+    companies = companies.filter(c => {
+      const text = ((c.razao_social || '') + ' ' + (c.nome_fantasia || '')).toLowerCase();
+      return termsToSearch.every(t => text.includes(t.toLowerCase()));
+    });
   }
 
-  // Non-text filters: single query with JOINs (no ILIKE, so fast)
-  const regimeJoin = (segmento || regime)
-    ? 'fato_regime_tributario!inner(regime_tributario, cnae_descricao)'
-    : 'fato_regime_tributario(regime_tributario, cnae_descricao)';
-
-  let query = supabase
-    .from('dim_empresas')
-    .select(`${baseCols}, ${regimeJoin}`, { count: 'estimated' })
-    .range(from, to)
-    .eq('fato_regime_tributario.ativo', true)
-    .order('id', { ascending: false });
+  if (cidade) {
+    const cl = cidade.toLowerCase();
+    companies = companies.filter(c => (c.cidade || '').toLowerCase().includes(cl));
+  }
 
   if (segmento) {
-    const es = escapeLike(segmento);
-    query = query.ilike('fato_regime_tributario.cnae_descricao', `%${es}%`);
+    const sl = segmento.toLowerCase();
+    companies = companies.filter(c => (c.cnae_descricao || '').toLowerCase().includes(sl));
   }
+
   if (regime) {
-    const er = escapeLike(regime);
-    query = query.ilike('fato_regime_tributario.regime_tributario', `%${er}%`);
+    const rl = regime.toLowerCase();
+    companies = companies.filter(c => (c.regime_tributario || '').toLowerCase().includes(rl));
   }
+
   if (empresaIds && empresaIds.length > 0) {
-    query = query.in('id', empresaIds);
+    const idSet = new Set(empresaIds);
+    companies = companies.filter(c => idSet.has(c.id));
   }
 
-  const { data, error, count } = await query;
-  if (error) throw error;
-
-  const results = flattenRegimeData(data);
-  return { data: results, total: count ?? results.length };
-}
-
-/**
- * Flatten nested fato_regime_tributario array into top-level fields
- */
-function flattenRegimeData(data) {
-  return (data || []).map(row => {
-    const { fato_regime_tributario: regimeArr, ...rest } = row;
-    const regimeRecord = Array.isArray(regimeArr) ? regimeArr[0] : null;
-    return {
-      ...rest,
-      cidade: rest.cidade ?? null,
-      estado: rest.estado ?? null,
-      regime_tributario: regimeRecord?.regime_tributario || null,
-      cnae_descricao: regimeRecord?.cnae_descricao || null,
-      linkedin: rest.linkedin_url || null,
-    };
+  companies = [...companies].sort((a, b) => {
+    const aName = (a.nome_fantasia || a.razao_social || '').toLowerCase();
+    const bName = (b.nome_fantasia || b.razao_social || '').toLowerCase();
+    if (aName !== bName) return aName.localeCompare(bName);
+    return String(a.id).localeCompare(String(b.id));
   });
+
+  const total = companies.length;
+  const paginated = companies.slice(offset, offset + limit);
+
+  return { data: paginated, total };
 }
 
 /**

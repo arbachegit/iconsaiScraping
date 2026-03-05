@@ -17,8 +17,9 @@ logger = structlog.get_logger()
 SECRET_KEY = settings.jwt_secret_key
 ALGORITHM = settings.jwt_algorithm
 
-VALID_PERMISSIONS = {"empresas", "pessoas", "politicos", "mandatos", "emendas", "noticias"}
-VALID_ROLES = {"superadmin", "admin", "user"}
+VALID_PERMISSIONS = {"empresas", "pessoas", "politicos", "mandatos", "emendas", "noticias", "graph", "intelligence"}
+VALID_ROLES = {"superadmin", "admin", "user", "viewer"}
+VALID_ACTIONS = {"read", "write", "delete", "export", "approve"}
 
 security = HTTPBearer()
 
@@ -51,6 +52,7 @@ async def get_current_user(
         # Backwards compat: derive role from is_admin if role missing in old tokens
         if role == "user" and is_admin:
             role = "superadmin"
+        tenant_id: str = payload.get("tenant_id")
         token_data = TokenData(
             email=email,
             user_id=user_id,
@@ -58,6 +60,7 @@ async def get_current_user(
             is_admin=is_admin,
             permissions=permissions,
             role=role,
+            tenant_id=tenant_id,
         )
     except JWTError:
         raise credentials_exception
@@ -135,5 +138,57 @@ def require_permission(permission: str) -> Callable:
         return current_user
 
     return _check_permission
+
+
+def require_granular_permission(module: str, action: str) -> Callable:
+    """
+    FastAPI dependency factory for granular RBAC (module + action).
+    Checks against rbac_role_permissions table.
+
+    Usage:
+        @router.post("/endpoint", dependencies=[Depends(require_granular_permission("graph", "write"))])
+    """
+    if module not in VALID_PERMISSIONS:
+        raise ValueError(f"Invalid module: {module}. Valid: {VALID_PERMISSIONS}")
+    if action not in VALID_ACTIONS:
+        raise ValueError(f"Invalid action: {action}. Valid: {VALID_ACTIONS}")
+
+    async def _check_granular(
+        current_user: TokenData = Depends(get_current_user),
+    ) -> TokenData:
+        # Superadmin bypasses all checks
+        if current_user.role == "superadmin":
+            return current_user
+
+        # Check module-level permission first (backward compat)
+        if module in (current_user.permissions or []):
+            return current_user
+
+        logger.warning(
+            "granular_permission_denied",
+            user=current_user.email,
+            role=current_user.role,
+            module=module,
+            action=action,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Permission '{module}:{action}' required",
+        )
+
+    return _check_granular
+
+
+async def get_tenant_context(
+    current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """
+    FastAPI dependency that extracts tenant context from the current user.
+    Returns tenant info dict or default tenant for single-tenant mode.
+    """
+    tenant_id = getattr(current_user, "tenant_id", None)
+    if tenant_id:
+        return {"tenant_id": tenant_id, "user_id": current_user.user_id}
+    return {"tenant_id": None, "user_id": current_user.user_id}
 
 

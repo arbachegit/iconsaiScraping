@@ -32,7 +32,7 @@ export const searchCompanySchema = z.object({
     .optional()
     .nullable(),
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(100)
+  pageSize: z.coerce.number().int().min(1).max(50).default(25)
 }).refine(data => {
   // Contar campos preenchidos com pelo menos 2 caracteres
   const campos = [data.nome, data.cidade, data.segmento, data.regime];
@@ -115,7 +115,7 @@ export const listCompaniesSchema = z.object({
   cidade: z.string().max(100).transform(val => val?.trim()).optional(),
   segmento: z.string().max(200).transform(val => val?.trim()).optional(),
   regime: z.string().max(100).transform(val => val?.trim()).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
@@ -307,7 +307,7 @@ export const hybridSearchSchema = z.object({
     cidade: z.string().max(100).optional(),
     estado: z.string().max(2).optional()
   }).optional().default({}),
-  limit: z.coerce.number().int().min(1).max(200).default(50)
+  limit: z.coerce.number().int().min(1).max(50).default(25)
 });
 
 // Stream search query params (GET /search/stream)
@@ -316,7 +316,7 @@ export const streamSearchSchema = z.object({
     .min(2, 'Query deve ter pelo menos 2 caracteres')
     .max(500)
     .transform(val => val.trim()),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  limit: z.coerce.number().int().min(1).max(50).default(25),
   cidade: z.string().max(100).optional(),
   estado: z.string().max(2).optional()
 });

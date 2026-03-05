@@ -28,6 +28,7 @@ class TokenData(BaseModel):
     is_admin: bool = False
     permissions: Optional[list] = None
     role: str = "user"
+    tenant_id: Optional[str] = None
 
 
 class LoginRequest(BaseModel):

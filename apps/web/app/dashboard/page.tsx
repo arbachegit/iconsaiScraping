@@ -12,8 +12,18 @@ import {
   Shield,
   Vote,
   Receipt,
+  Network,
+  Database,
 } from 'lucide-react';
-import { getUser, getHealth, getStatsCurrent, getStatsHistory, createStatsSnapshot, type StatItem, type CategoryHistory } from '@/lib/api';
+import {
+  getUser,
+  getHealth,
+  getStatsCurrent,
+  getStatsHistory,
+  createStatsSnapshot,
+  type StatItem,
+  type CategoryHistory,
+} from '@/lib/api';
 import { isAuthenticated, clearTokens } from '@/lib/auth';
 import { hasModuleAccess, MODULE_PERMISSIONS, isAdminRole } from '@/lib/permissions';
 import { AtlasChat } from '@/components/atlas/atlas-chat';
@@ -27,6 +37,7 @@ import {
   PessoasListingModal,
   NoticiasListingModal,
   PoliticosListingModal,
+  EmendasListingModal,
 } from '@/components/modals/listing-modal';
 import { StatsBadgeCard, StatsCounterLine } from '@/components/stats/stats-badge-card';
 
@@ -63,6 +74,7 @@ export default function DashboardPage() {
   const [pessoasListingOpen, setPessoasListingOpen] = useState(false);
   const [noticiasListingOpen, setNoticiasListingOpen] = useState(false);
   const [politicosListingOpen, setPoliticosListingOpen] = useState(false);
+  const [emendasListingOpen, setEmendasListingOpen] = useState(false);
 
   // Selected values from picker modals
   const [selectedCnae, setSelectedCnae] = useState<string>('');
@@ -172,6 +184,10 @@ export default function DashboardPage() {
     setPoliticosListingOpen(true);
   }
 
+  function openEmendasFromCard() {
+    setEmendasListingOpen(true);
+  }
+
   // Build stats data
   const statsMap = new Map<string, StatItem>();
   for (const stat of statsQuery.data?.stats || []) {
@@ -217,6 +233,22 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <a
+              href="/graph"
+              className="inline-flex items-center gap-1.5 h-9 px-3 bg-purple-500/15 border border-purple-500/50 text-purple-400 rounded-lg text-xs font-semibold hover:bg-purple-500 hover:text-white transition-colors"
+            >
+              <Network className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Graph</span>
+            </a>
+            {isAdmin && (
+              <a
+                href="/db"
+                className="inline-flex items-center gap-1.5 h-9 px-3 bg-emerald-500/15 border border-emerald-500/50 text-emerald-300 rounded-lg text-xs font-semibold hover:bg-emerald-500 hover:text-white transition-colors"
+              >
+                <Database className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">DB</span>
+              </a>
+            )}
             {isAdmin && (
               <a
                 href="/admin"
@@ -293,13 +325,13 @@ export default function DashboardPage() {
                   onClick={openPoliticosFromCard}
                 />
               )}
-              {hasModuleAccess(userPermissions, 'politicos') && (
+              {hasModuleAccess(userPermissions, 'emendas') && (
                 <NeoGlowCompactCard
                   icon={Receipt}
                   iconColor="cyan"
                   title="Emendas"
                   description="Emendas parlamentares"
-                  onClick={openPoliticosFromCard}
+                  onClick={openEmendasFromCard}
                 />
               )}
               {hasModuleAccess(userPermissions, 'noticias') && (
@@ -316,7 +348,9 @@ export default function DashboardPage() {
 
           {/* Stats Badges */}
           <div className="mb-6">
-            <h2 className="text-[25px] font-semibold text-slate-400 mb-3">Estatísticas em Tempo Real</h2>
+            <h2 className="text-[25px] font-semibold text-slate-400 mb-3">
+              Estatísticas em Tempo Real
+            </h2>
 
             {/* Row 1: Empresas + Pessoas (large) */}
             <div className="grid grid-cols-2 gap-4 mb-4">
@@ -402,7 +436,6 @@ export default function DashboardPage() {
               })}
             </div>
           </div>
-
         </div>
       </main>
 
@@ -465,6 +498,11 @@ export default function DashboardPage() {
         isOpen={politicosListingOpen}
         onClose={() => setPoliticosListingOpen(false)}
       />
+
+      <EmendasListingModal
+        isOpen={emendasListingOpen}
+        onClose={() => setEmendasListingOpen(false)}
+      />
     </div>
   );
 }
@@ -485,12 +523,30 @@ function NeoGlowCompactCard({
   onClick: () => void;
 }) {
   const glowConfig = {
-    red: { gradient: 'from-red-500/40 via-red-500/10 to-red-500/40', icon: 'bg-red-500/10 text-red-400' },
-    orange: { gradient: 'from-orange-500/40 via-orange-500/10 to-orange-500/40', icon: 'bg-orange-500/10 text-orange-400' },
-    blue: { gradient: 'from-blue-500/40 via-blue-500/10 to-blue-500/40', icon: 'bg-blue-500/10 text-blue-400' },
-    green: { gradient: 'from-green-500/40 via-green-500/10 to-green-500/40', icon: 'bg-green-500/10 text-green-400' },
-    cyan: { gradient: 'from-cyan-500/40 via-cyan-500/10 to-cyan-500/40', icon: 'bg-cyan-500/10 text-cyan-400' },
-    purple: { gradient: 'from-purple-500/40 via-purple-500/10 to-purple-500/40', icon: 'bg-purple-500/10 text-purple-400' },
+    red: {
+      gradient: 'from-red-500/40 via-red-500/10 to-red-500/40',
+      icon: 'bg-red-500/10 text-red-400',
+    },
+    orange: {
+      gradient: 'from-orange-500/40 via-orange-500/10 to-orange-500/40',
+      icon: 'bg-orange-500/10 text-orange-400',
+    },
+    blue: {
+      gradient: 'from-blue-500/40 via-blue-500/10 to-blue-500/40',
+      icon: 'bg-blue-500/10 text-blue-400',
+    },
+    green: {
+      gradient: 'from-green-500/40 via-green-500/10 to-green-500/40',
+      icon: 'bg-green-500/10 text-green-400',
+    },
+    cyan: {
+      gradient: 'from-cyan-500/40 via-cyan-500/10 to-cyan-500/40',
+      icon: 'bg-cyan-500/10 text-cyan-400',
+    },
+    purple: {
+      gradient: 'from-purple-500/40 via-purple-500/10 to-purple-500/40',
+      icon: 'bg-purple-500/10 text-purple-400',
+    },
   };
 
   const glow = glowConfig[iconColor];
@@ -498,11 +554,15 @@ function NeoGlowCompactCard({
   return (
     <div onClick={onClick} className="relative group cursor-pointer w-[160px] h-[80px]">
       {/* Neo Glow Layer */}
-      <div className={`absolute -inset-[2px] rounded-lg bg-gradient-to-r ${glow.gradient} blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500 animate-pulse`} />
+      <div
+        className={`absolute -inset-[2px] rounded-lg bg-gradient-to-r ${glow.gradient} blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500 animate-pulse`}
+      />
       {/* Card */}
       <div className="relative bg-[#0f1629]/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 h-full flex flex-col justify-center transition-all duration-300 group-hover:border-white/20 group-hover:-translate-y-0.5">
         <div className="flex items-center gap-2.5">
-          <div className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${glow.icon}`}>
+          <div
+            className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${glow.icon}`}
+          >
             <Icon className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
@@ -514,7 +574,9 @@ function NeoGlowCompactCard({
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-slate-500 truncate group-hover:opacity-0 transition-opacity">{description}</p>
+            <p className="text-[10px] text-slate-500 truncate group-hover:opacity-0 transition-opacity">
+              {description}
+            </p>
           </div>
         </div>
       </div>

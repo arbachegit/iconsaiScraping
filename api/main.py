@@ -105,6 +105,14 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(user_router, prefix="/admin", tags=["Admin"])
 
+# Intelligence module (LLM-powered)
+try:
+    from api.intelligence.router import router as intelligence_router
+    app.include_router(intelligence_router)
+    logger.info("intelligence_router_registered")
+except ImportError as e:
+    logger.warning("intelligence_router_not_available", error=str(e))
+
 
 # ===========================================
 # HEALTH

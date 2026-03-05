@@ -68,7 +68,9 @@ export interface ProfileCompleteRequest {
   uf: string;
 }
 
-export async function completeProfile(data: ProfileCompleteRequest): Promise<{ success: boolean; message: string; profile_complete: boolean }> {
+export async function completeProfile(
+  data: ProfileCompleteRequest
+): Promise<{ success: boolean; message: string; profile_complete: boolean }> {
   const res = await fetchWithAuth(`${API_BASE}/auth/profile/complete`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -114,10 +116,11 @@ export interface SetPasswordData {
   uf?: string;
 }
 
-export async function setPassword(tokenOrData: string | SetPasswordData, password?: string): Promise<{ success: boolean; message: string; email?: string }> {
-  const body = typeof tokenOrData === 'string'
-    ? { token: tokenOrData, password }
-    : tokenOrData;
+export async function setPassword(
+  tokenOrData: string | SetPasswordData,
+  password?: string
+): Promise<{ success: boolean; message: string; email?: string }> {
+  const body = typeof tokenOrData === 'string' ? { token: tokenOrData, password } : tokenOrData;
 
   const res = await fetch(`${API_BASE}/auth/set-password`, {
     method: 'POST',
@@ -128,14 +131,19 @@ export async function setPassword(tokenOrData: string | SetPasswordData, passwor
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Erro ao definir senha' }));
     const detail = error.detail;
-    const message = Array.isArray(detail) ? detail.map((e: { msg?: string }) => e.msg).join('; ') : detail || 'Erro ao definir senha';
+    const message = Array.isArray(detail)
+      ? detail.map((e: { msg?: string }) => e.msg).join('; ')
+      : detail || 'Erro ao definir senha';
     throw new Error(message);
   }
 
   return res.json();
 }
 
-export async function verifyCode(email: string, code: string): Promise<{ success: boolean; message: string }> {
+export async function verifyCode(
+  email: string,
+  code: string
+): Promise<{ success: boolean; message: string }> {
   const res = await fetch(`${API_BASE}/auth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -150,7 +158,10 @@ export async function verifyCode(email: string, code: string): Promise<{ success
   return res.json();
 }
 
-export async function resendCode(email: string, codeType: string = 'activation'): Promise<{ success: boolean; message: string }> {
+export async function resendCode(
+  email: string,
+  codeType: string = 'activation'
+): Promise<{ success: boolean; message: string }> {
   const res = await fetch(`${API_BASE}/auth/resend-code`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -165,7 +176,9 @@ export async function resendCode(email: string, codeType: string = 'activation')
   return res.json();
 }
 
-export async function recoverPassword(email: string): Promise<{ success: boolean; message: string }> {
+export async function recoverPassword(
+  email: string
+): Promise<{ success: boolean; message: string }> {
   const res = await fetch(`${API_BASE}/auth/recover-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -180,7 +193,11 @@ export async function recoverPassword(email: string): Promise<{ success: boolean
   return res.json();
 }
 
-export async function resetPassword(token: string, new_password: string, code: string): Promise<{ success: boolean; message: string }> {
+export async function resetPassword(
+  token: string,
+  new_password: string,
+  code: string
+): Promise<{ success: boolean; message: string }> {
   const res = await fetch(`${API_BASE}/auth/reset-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -253,6 +270,7 @@ export interface StatsResponse {
     pessoas: number;
     politicos: number;
     mandatos: number;
+    emendas: number;
     noticias: number;
   };
 }
@@ -303,7 +321,7 @@ export async function getStats(): Promise<StatsResponse> {
   if (!res.ok) {
     return {
       success: false,
-      stats: { empresas: 0, pessoas: 0, politicos: 0, mandatos: 0, noticias: 0 },
+      stats: { empresas: 0, pessoas: 0, politicos: 0, mandatos: 0, emendas: 0, noticias: 0 },
     };
   }
 
@@ -321,6 +339,7 @@ export async function getStats(): Promise<StatsResponse> {
       pessoas: statsObj.pessoas || 0,
       politicos: statsObj.politicos || 0,
       mandatos: statsObj.mandatos || 0,
+      emendas: statsObj.emendas || 0,
       noticias: statsObj.noticias || 0,
     },
   };
@@ -425,7 +444,9 @@ export interface PeopleAgentChatResponse {
   suggestions?: string[];
 }
 
-export async function peopleAgentChat(data: PeopleAgentChatRequest): Promise<PeopleAgentChatResponse> {
+export async function peopleAgentChat(
+  data: PeopleAgentChatRequest
+): Promise<PeopleAgentChatResponse> {
   const res = await fetchWithAuth(`${API_BASE}/people-agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -657,7 +678,7 @@ export async function listCompanies(params?: {
   if (params?.cidade) searchParams.append('cidade', params.cidade);
   if (params?.segmento) searchParams.append('segmento', params.segmento);
   if (params?.regime) searchParams.append('regime', params.regime);
-  searchParams.append('limit', String(params?.limit || 100));
+  searchParams.append('limit', String(params?.limit || 50));
   searchParams.append('offset', String(params?.offset || 0));
 
   const res = await fetchWithAuth(`${API_BASE}/companies/list?${searchParams.toString()}`);
@@ -714,6 +735,408 @@ export async function listCnaes(limit = 2000): Promise<CnaeListResponse> {
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'CNAE list failed' }));
     throw new Error(error.detail || 'CNAE list failed');
+  }
+
+  return res.json();
+}
+
+// ============================================
+// INTELLIGENCE API
+// ============================================
+
+export interface IntelligenceQueryRequest {
+  query: string;
+  context?: {
+    company_data?: Record<string, unknown>;
+    relationships?: Record<string, unknown>[];
+    search_results?: Record<string, unknown>[];
+  };
+  include_hypotheses?: boolean;
+  include_summary?: boolean;
+  max_results?: number;
+}
+
+export interface IntelligenceHypothesis {
+  title: string;
+  description: string;
+  confidence: number;
+  evidence: string[];
+  risk_level: string;
+  category: string;
+  actionable: boolean;
+}
+
+export interface IntelligenceResponse {
+  success: boolean;
+  query: string;
+  intent: {
+    intent: string;
+    confidence: number;
+    entities: string[];
+    filters: Record<string, string>;
+    method: string;
+  };
+  decomposition: {
+    original_query: string;
+    sub_queries: { query: string; source: string; priority: number }[];
+    strategy: string;
+    estimated_steps: number;
+  };
+  hypotheses?: {
+    hypotheses: IntelligenceHypothesis[];
+    context_summary: string;
+    total_data_points: number;
+  };
+  summary?: {
+    title: string;
+    sections: { title: string; content: string; citations: { source: string; claim: string }[] }[];
+    key_findings: string[];
+    risks: string[];
+    opportunities: string[];
+    recommendations: string[];
+  };
+  latency_ms: number;
+}
+
+export async function intelligenceQuery(
+  data: IntelligenceQueryRequest
+): Promise<IntelligenceResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/companies/intelligence`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Intelligence query failed' }));
+    throw new Error(error.detail || error.error || 'Intelligence query failed');
+  }
+
+  return res.json();
+}
+
+export async function classifyIntent(query: string): Promise<{
+  success: boolean;
+  intent: string;
+  confidence: number;
+  entities: string[];
+  method: string;
+}> {
+  const res = await fetchWithAuth(`${API_BASE}/companies/intelligence/classify`, {
+    method: 'POST',
+    body: JSON.stringify({ query }),
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Classification failed' }));
+    throw new Error(error.detail || error.error || 'Classification failed');
+  }
+
+  return res.json();
+}
+
+export function streamIntelligence(
+  query: string,
+  onEvent: (event: { stage: string; [key: string]: unknown }) => void,
+  onError?: (error: Event) => void
+): EventSource {
+  const url = `${API_BASE}/../api/intelligence/stream?q=${encodeURIComponent(query)}`;
+  const eventSource = new EventSource(url);
+
+  const stages = ['intent', 'decomposition', 'hypotheses', 'summary', 'complete', 'error'];
+
+  for (const stage of stages) {
+    eventSource.addEventListener(stage, (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        onEvent(data);
+        if (stage === 'complete' || stage === 'error') {
+          eventSource.close();
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    });
+  }
+
+  eventSource.onerror = (error) => {
+    eventSource.close();
+    onError?.(error);
+  };
+
+  return eventSource;
+}
+
+// ============================================
+// HYBRID SEARCH API
+// ============================================
+
+export interface HybridSearchRequest {
+  query: string;
+  mode?: 'text' | 'vector' | 'relational' | 'hybrid';
+  filters?: { cidade?: string; estado?: string };
+  limit?: number;
+}
+
+export interface HybridSearchResult {
+  id: number;
+  cnpj: string;
+  razao_social: string;
+  nome_fantasia: string | null;
+  cidade: string | null;
+  estado: string | null;
+  rrf_score: number;
+  text_score?: number;
+  vector_score?: number;
+  relational_score?: number;
+  sources: string[];
+  final_rank: number;
+  sis_score?: number;
+}
+
+export interface HybridSearchResponse {
+  success: boolean;
+  query: string;
+  mode: string;
+  total: number;
+  results: HybridSearchResult[];
+  signals: { text: number; vector: number; relational: number };
+  timing: Record<string, number>;
+  durationMs: number;
+}
+
+export interface SISResponse {
+  success: boolean;
+  empresa_id: string;
+  text_similarity: number;
+  geo_proximity: number;
+  cnae_similarity: number;
+  political_connections: number;
+  news_volume: number;
+  relationship_density: number;
+  sis_score: number;
+  durationMs: number;
+}
+
+export async function hybridSearchCompanies(
+  data: HybridSearchRequest
+): Promise<HybridSearchResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/companies/search/hybrid`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Hybrid search failed' }));
+    throw new Error(error.detail || error.error || 'Hybrid search failed');
+  }
+
+  return res.json();
+}
+
+export interface StreamSearchEvent {
+  stage: string;
+  timestamp: string;
+  count?: number;
+  results?: HybridSearchResult[];
+  durationMs?: number;
+  total?: number;
+  timing?: Record<string, number>;
+}
+
+/**
+ * Stream search via SSE. Returns an EventSource that emits progressive results.
+ * Call .close() on the returned EventSource to cancel.
+ */
+export function streamSearch(
+  query: string,
+  onEvent: (event: StreamSearchEvent) => void,
+  onError?: (error: Event) => void,
+  params?: { limit?: number; cidade?: string; estado?: string }
+): EventSource {
+  const searchParams = new URLSearchParams({ q: query });
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.cidade) searchParams.set('cidade', params.cidade);
+  if (params?.estado) searchParams.set('estado', params.estado);
+
+  const url = `${API_BASE}/companies/search/stream?${searchParams.toString()}`;
+  const eventSource = new EventSource(url);
+
+  const stages = [
+    'connected',
+    'db_results',
+    'vector_results',
+    'graph_results',
+    'external_search',
+    'enrichment',
+    'sis_scores',
+    'complete',
+    'error',
+  ];
+
+  for (const stage of stages) {
+    eventSource.addEventListener(stage, (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        onEvent(data);
+        if (stage === 'complete' || stage === 'error') {
+          eventSource.close();
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    });
+  }
+
+  eventSource.onerror = (error) => {
+    eventSource.close();
+    onError?.(error);
+  };
+
+  return eventSource;
+}
+
+export async function getCompanySIS(companyId: string | number): Promise<SISResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/companies/${companyId}/sis`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch SIS' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch SIS');
+  }
+
+  return res.json();
+}
+
+// ============================================
+// GRAPH / NETWORK API
+// ============================================
+
+export interface GraphRelationship {
+  id: string;
+  source_type: string;
+  source_id: string;
+  target_type: string;
+  target_id: string;
+  tipo_relacao: string;
+  strength: number;
+  confidence: number;
+  bidirecional: boolean;
+  descricao: string | null;
+  direction: 'outgoing' | 'incoming';
+  neighbor_type: string;
+  neighbor_id: string;
+}
+
+export interface GraphNode {
+  id: string;
+  type: string;
+  hop: number;
+  label: string;
+  cnpj?: string;
+  cidade?: string;
+  estado?: string;
+  cargo?: string;
+  empresa?: string;
+  partido?: string;
+  fonte?: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  source_type: string;
+  source_id: string;
+  target_type: string;
+  target_id: string;
+  tipo_relacao: string;
+  strength: number;
+  confidence: number;
+  effective_strength: number;
+  effective_confidence: number;
+  hop: number;
+}
+
+export interface RelationshipsResponse {
+  success: boolean;
+  empresa_id: string;
+  relationships: GraphRelationship[];
+  total: number;
+  durationMs: number;
+}
+
+export interface NetworkResponse {
+  success: boolean;
+  empresa_id: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  stats: {
+    total_nodes: number;
+    total_edges: number;
+    max_hop_reached: number;
+    by_type: Record<string, number>;
+    by_relationship: Record<string, number>;
+  };
+  durationMs: number;
+}
+
+export interface NetworkStatsResponse {
+  success: boolean;
+  empresa_id: string;
+  total_relationships: number;
+  by_type: Record<string, number>;
+  by_entity_type: Record<string, number>;
+  avg_strength: number;
+  avg_confidence: number;
+  durationMs: number;
+}
+
+export async function getCompanyRelationships(
+  companyId: string | number,
+  params?: { tipo_relacao?: string; min_strength?: number; limit?: number }
+): Promise<RelationshipsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.tipo_relacao) searchParams.set('tipo_relacao', params.tipo_relacao);
+  if (params?.min_strength) searchParams.set('min_strength', String(params.min_strength));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+
+  const qs = searchParams.toString();
+  const url = `${API_BASE}/companies/${companyId}/relationships${qs ? `?${qs}` : ''}`;
+  const res = await fetchWithAuth(url);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch relationships' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch relationships');
+  }
+
+  return res.json();
+}
+
+export async function getCompanyNetwork(
+  companyId: string | number,
+  params?: { hops?: number; limit?: number }
+): Promise<NetworkResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.hops) searchParams.set('hops', String(params.hops));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+
+  const qs = searchParams.toString();
+  const url = `${API_BASE}/companies/${companyId}/network${qs ? `?${qs}` : ''}`;
+  const res = await fetchWithAuth(url);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch network' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch network');
+  }
+
+  return res.json();
+}
+
+export async function getCompanyNetworkStats(
+  companyId: string | number
+): Promise<NetworkStatsResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/companies/${companyId}/network-stats`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch network stats' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch network stats');
   }
 
   return res.json();
@@ -1108,7 +1531,9 @@ export interface PeopleSaveBatchResponse {
   durationMs: number;
 }
 
-export async function savePeopleBatch(data: PeopleSaveBatchRequest): Promise<PeopleSaveBatchResponse> {
+export async function savePeopleBatch(
+  data: PeopleSaveBatchRequest
+): Promise<PeopleSaveBatchResponse> {
   const res = await fetchWithAuth(`${API_BASE}/people/save-batch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1306,7 +1731,9 @@ export async function listPoliticians(params?: {
 }
 
 export async function searchPoliticians(nome: string): Promise<PoliticianListResponse> {
-  const res = await fetchWithAuth(`${API_BASE}/politicians/search?nome=${encodeURIComponent(nome)}`);
+  const res = await fetchWithAuth(
+    `${API_BASE}/politicians/search?nome=${encodeURIComponent(nome)}`
+  );
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Search politicians failed' }));
@@ -1346,6 +1773,93 @@ export async function getPoliticianDetails(id: number): Promise<PoliticianDetail
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Politician details failed' }));
     throw new Error(error.error || 'Politician details failed');
+  }
+
+  return res.json();
+}
+
+// ============================================
+// EMENDAS (PARLIAMENTARY AMENDMENTS)
+// ============================================
+
+export interface Emenda {
+  id: number;
+  autor: string;
+  descricao?: string;
+  valor?: number;
+  tipo?: string;
+  uf?: string;
+  ano?: number;
+  localidade?: string;
+  partido?: string;
+  numero_emenda?: string;
+  codigo_emenda?: string;
+  area_governo?: string;
+  subfuncao?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EmendaListResponse {
+  success: boolean;
+  count: number;
+  emendas: Emenda[];
+  error?: string;
+}
+
+export interface EmendaDetailResponse {
+  success: boolean;
+  emenda: Emenda;
+  error?: string;
+}
+
+export async function listEmendas(params?: {
+  autor?: string;
+  uf?: string;
+  ano?: number;
+  tipo?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<EmendaListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.autor) searchParams.append('autor', params.autor);
+  if (params?.uf) searchParams.append('uf', params.uf);
+  if (params?.ano) searchParams.append('ano', String(params.ano));
+  if (params?.tipo) searchParams.append('tipo', params.tipo);
+  searchParams.append('limit', String(params?.limit || 50));
+  searchParams.append('offset', String(params?.offset || 0));
+
+  const res = await fetchWithAuth(`${API_BASE}/emendas/list?${searchParams.toString()}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'List emendas failed' }));
+    throw new Error(error.error || 'List emendas failed');
+  }
+
+  return res.json();
+}
+
+export async function searchEmendas(q: string, limit?: number): Promise<EmendaListResponse> {
+  const searchParams = new URLSearchParams();
+  searchParams.append('q', q);
+  searchParams.append('limit', String(limit || 50));
+
+  const res = await fetchWithAuth(`${API_BASE}/emendas/search?${searchParams.toString()}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Search emendas failed' }));
+    throw new Error(error.error || 'Search emendas failed');
+  }
+
+  return res.json();
+}
+
+export async function getEmendaDetails(id: number): Promise<EmendaDetailResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/emendas/${id}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Emenda details failed' }));
+    throw new Error(error.error || 'Emenda details failed');
   }
 
   return res.json();
@@ -1441,7 +1955,9 @@ export async function adminListUsers(): Promise<AdminListUsersResponse> {
   return res.json();
 }
 
-export async function adminCreateUser(data: AdminCreateUserRequest): Promise<AdminCreateUserResponse> {
+export async function adminCreateUser(
+  data: AdminCreateUserRequest
+): Promise<AdminCreateUserResponse> {
   const res = await fetchWithAuth(`${API_BASE}/admin/users`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -1455,7 +1971,9 @@ export async function adminCreateUser(data: AdminCreateUserRequest): Promise<Adm
   return res.json();
 }
 
-export async function adminCreateUserFlow(data: AdminCreateUserFlowRequest): Promise<AdminCreateUserFlowResponse> {
+export async function adminCreateUserFlow(
+  data: AdminCreateUserFlowRequest
+): Promise<AdminCreateUserFlowResponse> {
   const res = await fetchWithAuth(`${API_BASE}/admin/users/invite`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -1469,7 +1987,10 @@ export async function adminCreateUserFlow(data: AdminCreateUserFlowRequest): Pro
   return res.json();
 }
 
-export async function adminUpdateUser(userId: number, data: AdminUpdateUserRequest): Promise<AdminUpdateUserResponse> {
+export async function adminUpdateUser(
+  userId: number,
+  data: AdminUpdateUserRequest
+): Promise<AdminUpdateUserResponse> {
   const res = await fetchWithAuth(`${API_BASE}/admin/users/${userId}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -1483,7 +2004,9 @@ export async function adminUpdateUser(userId: number, data: AdminUpdateUserReque
   return res.json();
 }
 
-export async function adminDeleteUser(userId: number): Promise<{ success: boolean; message: string }> {
+export async function adminDeleteUser(
+  userId: number
+): Promise<{ success: boolean; message: string }> {
   const res = await fetchWithAuth(`${API_BASE}/admin/users/${userId}`, {
     method: 'DELETE',
   });
@@ -1496,7 +2019,9 @@ export async function adminDeleteUser(userId: number): Promise<{ success: boolea
   return res.json();
 }
 
-export async function adminResendInvite(userId: number): Promise<{ success: boolean; message: string }> {
+export async function adminResendInvite(
+  userId: number
+): Promise<{ success: boolean; message: string }> {
   const res = await fetchWithAuth(`${API_BASE}/admin/users/${userId}/resend-invite`, {
     method: 'POST',
   });
@@ -1509,7 +2034,9 @@ export async function adminResendInvite(userId: number): Promise<{ success: bool
   return res.json();
 }
 
-export async function adminPermanentDeleteUser(userId: number): Promise<{ success: boolean; message: string }> {
+export async function adminPermanentDeleteUser(
+  userId: number
+): Promise<{ success: boolean; message: string }> {
   const res = await fetchWithAuth(`${API_BASE}/admin/users/${userId}/permanent`, {
     method: 'DELETE',
   });
@@ -1542,4 +2069,254 @@ export function formatRegime(regime: string | null | undefined): string {
     DESCONHECIDO: '?',
   };
   return map[regime] || regime;
+}
+
+// ============================================
+// GRAPH VISUALIZATION API
+// ============================================
+
+export interface GraphNodeData {
+  id: string;
+  type: string;
+  label: string;
+  data?: Record<string, unknown>;
+}
+
+export interface GraphEdgeData {
+  id: string;
+  source: string;
+  target: string;
+  tipo_relacao: string;
+  strength: number;
+}
+
+export interface GraphDataResponse {
+  success: boolean;
+  nodes: GraphNodeData[];
+  edges: GraphEdgeData[];
+  total_nodes: number;
+  total_edges: number;
+}
+
+export interface GraphSearchResult {
+  id: string;
+  type: string;
+  label: string;
+  subtitle?: string;
+}
+
+export async function getGraphData(params?: {
+  limit?: number;
+  entity_type?: string;
+}): Promise<GraphDataResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.entity_type) searchParams.set('entity_type', params.entity_type);
+  const qs = searchParams.toString();
+
+  const res = await fetchWithAuth(`${API_BASE}/graph/data${qs ? `?${qs}` : ''}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch graph data' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch graph data');
+  }
+
+  return res.json();
+}
+
+export async function expandGraphNode(
+  entityType: string,
+  entityId: string
+): Promise<GraphDataResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/graph/expand/${entityType}/${entityId}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to expand node' }));
+    throw new Error(error.detail || error.error || 'Failed to expand node');
+  }
+
+  return res.json();
+}
+
+export async function searchGraphEntities(
+  query: string,
+  limit = 10
+): Promise<{ success: boolean; results: GraphSearchResult[] }> {
+  const res = await fetchWithAuth(
+    `${API_BASE}/graph/search?q=${encodeURIComponent(query)}&limit=${limit}`
+  );
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Graph search failed' }));
+    throw new Error(error.detail || error.error || 'Graph search failed');
+  }
+
+  return res.json();
+}
+
+export async function getGraphPath(
+  sourceType: string,
+  sourceId: string,
+  targetType: string,
+  targetId: string
+): Promise<GraphDataResponse> {
+  const res = await fetchWithAuth(
+    `${API_BASE}/graph/path/${sourceType}/${sourceId}/${targetType}/${targetId}`
+  );
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to find path' }));
+    throw new Error(error.detail || error.error || 'Failed to find path');
+  }
+
+  return res.json();
+}
+
+export interface GraphExploreResponse {
+  success: boolean;
+  nodes: GraphNodeData[];
+  edges: GraphEdgeData[];
+  center: { id: string; type: string; label: string } | null;
+  stats: {
+    total_nodes: number;
+    total_edges: number;
+    empresas: number;
+    socios: number;
+    noticias: number;
+  };
+  message?: string;
+}
+
+export async function exploreGraph(query: string): Promise<GraphExploreResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/graph/explore?q=${encodeURIComponent(query)}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Graph explore failed' }));
+    throw new Error(error.detail || error.error || 'Graph explore failed');
+  }
+
+  return res.json();
+}
+
+export interface GraphStatsResponse {
+  success: boolean;
+  total_nodes: number;
+  total_edges: number;
+  nodes_by_type: Record<string, number>;
+  edges_by_type: Record<string, number>;
+}
+
+export async function getGraphStats(): Promise<GraphStatsResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/graph/stats`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch graph stats' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch graph stats');
+  }
+
+  return res.json();
+}
+
+// ============================================
+// DATABASE MODEL API
+// ============================================
+
+export interface DbModelDomainSummary {
+  domain: string;
+  label: string;
+  color: string;
+  tableCount: number;
+  visibleCount: number;
+}
+
+export interface DbModelTableSummary {
+  id: string;
+  schema: string;
+  name: string;
+  friendlyName: string;
+  description: string;
+  domain: string;
+  domainLabel: string;
+  domainColor: string;
+  isHiddenByDefault: boolean;
+  columnCount: number;
+  foreignKeyCount: number;
+  requiredColumnCount: number;
+  primaryKey: string | null;
+  estimatedRowCount: number;
+  countMode: 'estimated';
+}
+
+export interface DbModelRelationship {
+  id: string;
+  sourceTable: string;
+  sourceColumn: string;
+  targetTable: string;
+  targetColumn: string;
+}
+
+export interface DbModelOverviewResponse {
+  success: boolean;
+  generatedAt: string;
+  countMode: 'estimated';
+  tables: DbModelTableSummary[];
+  relationships: DbModelRelationship[];
+  domains: DbModelDomainSummary[];
+  stats: {
+    totalTables: number;
+    defaultVisibleTables: number;
+    hiddenTables: number;
+    totalRelationships: number;
+  };
+}
+
+export interface DbModelColumnDetail {
+  tableName: string;
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue: unknown;
+  description: string | null;
+  isPrimaryKey: boolean;
+  isForeignKey: boolean;
+  references: {
+    table: string;
+    column: string;
+  } | null;
+  nonNullCount: number;
+  coverageRatio: number | null;
+}
+
+export interface DbModelTableDetailResponse {
+  success: boolean;
+  countMode: 'estimated';
+  table: DbModelTableSummary & {
+    columns: DbModelColumnDetail[];
+    outgoingRelationships: DbModelRelationship[];
+    incomingRelationships: DbModelRelationship[];
+  };
+}
+
+export async function getDbModelOverview(): Promise<DbModelOverviewResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/db-model/overview`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch DB model overview' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch DB model overview');
+  }
+
+  return res.json();
+}
+
+export async function getDbModelTableDetails(
+  tableName: string
+): Promise<DbModelTableDetailResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/db-model/table/${encodeURIComponent(tableName)}`);
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch table details' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch table details');
+  }
+
+  return res.json();
 }

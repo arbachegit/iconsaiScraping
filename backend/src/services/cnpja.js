@@ -224,6 +224,84 @@ function inferirLimites(data, historico) {
 }
 
 /**
+ * Fetch full company data from CNPJá including QSA members
+ * @param {string} cnpj - CNPJ (14 digits)
+ * @returns {Promise<Object|null>} Company data with members, or null on failure
+ */
+export async function getCompanyFull(cnpj) {
+  if (!getApiKey()) {
+    console.warn('[CNPJA] API Key not configured');
+    return null;
+  }
+
+  const cleanCnpj = cnpj.replace(/[^\d]/g, '');
+
+  try {
+    const response = await fetch(
+      `${CNPJA_BASE_URL}/office/${cleanCnpj}?simples=true&members=true`,
+      {
+        headers: {
+          'Authorization': getApiKey()
+        }
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        console.error('[CNPJA] Invalid API Key');
+        return null;
+      }
+      if (response.status === 404) {
+        console.warn(`[CNPJA] CNPJ not found: ${cleanCnpj}`);
+        return null;
+      }
+      throw new Error(`CNPJá API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return transformFullCompanyData(data);
+
+  } catch (error) {
+    console.error('[CNPJA] Error:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Transform CNPJá full company response for graph exploration
+ */
+function transformFullCompanyData(data) {
+  const company = data.company || {};
+  const address = data.address || {};
+  const mainActivity = data.mainActivity || {};
+  const members = company.members || [];
+
+  return {
+    cnpj: data.taxId,
+    razao_social: company.name || null,
+    nome_fantasia: data.alias || null,
+    cidade: address.city || null,
+    estado: address.state || null,
+    cnae_principal: mainActivity.id || null,
+    cnae_descricao: mainActivity.text || null,
+    capital_social: company.capital || null,
+    porte: company.size?.text || null,
+    natureza_juridica: company.nature?.text || null,
+    data_abertura: data.founded || null,
+    situacao_cadastral: data.status?.text || null,
+    socios: members.map(m => ({
+      nome: m.person?.name || null,
+      cpf_cnpj: m.person?.taxId || null,
+      tipo: m.person?.type || null,
+      cargo: m.role?.text || null,
+      cargo_id: m.role?.id || null,
+      desde: m.since || null,
+    })).filter(s => s.nome),
+    raw: data
+  };
+}
+
+/**
  * Get MEI limit status
  */
 export function getLimitesMei() {
