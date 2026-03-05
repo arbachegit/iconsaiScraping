@@ -374,6 +374,36 @@ jobs:
           ssh -i ~/.ssh/deploy_key $USER@$HOST \
             "cd /opt/iconsai-scraping && chmod +x deploy_compose.sh && ./deploy_compose.sh ${SHA}"
 
+      - name: Dump backend diagnostics on failure
+        if: failure()
+        env:
+          HOST: ${{ secrets.DO_HOST }}
+          USER: ${{ secrets.DO_USERNAME }}
+        run: |
+          ssh -i ~/.ssh/deploy_key $USER@$HOST 'bash -s' << 'DIAG_SCRIPT'
+          set +e
+          cd /opt/iconsai-scraping
+          echo "============================================"
+          echo "DOCKER COMPOSE PS"
+          echo "============================================"
+          docker compose -f docker-compose.prod.yml ps || true
+          echo
+          echo "============================================"
+          echo "BACKEND LOGS (tail 200)"
+          echo "============================================"
+          docker logs iconsai-backend --tail 200 || true
+          echo
+          echo "============================================"
+          echo "API LOGS (tail 120)"
+          echo "============================================"
+          docker logs iconsai-api --tail 120 || true
+          echo
+          echo "============================================"
+          echo "BACKEND HEALTH"
+          echo "============================================"
+          docker inspect --format '{{json .State.Health}}' iconsai-backend || true
+          DIAG_SCRIPT
+
       - name: Verify deployment
         env:
           HOST: ${{ secrets.DO_HOST }}
