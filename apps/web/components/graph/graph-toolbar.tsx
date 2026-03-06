@@ -59,8 +59,8 @@ export function GraphToolbar({ cy, currentLayout, onLayoutChange, onFitView }: G
   }, [isFullscreen]);
 
   return (
-    <div className="flex items-center gap-1 border-b border-gray-800 bg-gray-900 px-3 py-2">
-      <div className="flex items-center gap-1 rounded-md border border-gray-700 bg-gray-800 p-0.5">
+    <div className="flex items-center gap-1 border-b border-cyan-500/10 bg-[#0f1629] px-3 py-2">
+      <div className="flex items-center gap-1 rounded-md border border-cyan-500/20 bg-[#1a2332] p-0.5">
         {layoutButtons.map(({ type, icon: Icon, label }) => (
           <button
             key={type}
@@ -68,8 +68,8 @@ export function GraphToolbar({ cy, currentLayout, onLayoutChange, onFitView }: G
             title={label}
             className={`rounded px-2 py-1.5 transition-colors ${
               currentLayout === type
-                ? 'bg-gray-600 text-white'
-                : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                ? 'bg-cyan-500/20 text-cyan-400'
+                : 'text-slate-400 hover:bg-slate-700 hover:text-white'
             }`}
           >
             <Icon size={16} />
@@ -77,43 +77,43 @@ export function GraphToolbar({ cy, currentLayout, onLayoutChange, onFitView }: G
         ))}
       </div>
 
-      <div className="mx-2 h-5 w-px bg-gray-700" />
+      <div className="mx-2 h-5 w-px bg-cyan-500/10" />
 
       <button
         onClick={handleZoomIn}
         title="Zoom in"
-        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
       >
         <ZoomIn size={16} />
       </button>
       <button
         onClick={handleZoomOut}
         title="Zoom out"
-        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
       >
         <ZoomOut size={16} />
       </button>
       <button
         onClick={onFitView}
         title="Fit view"
-        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
       >
         <Maximize2 size={16} />
       </button>
 
-      <div className="mx-2 h-5 w-px bg-gray-700" />
+      <div className="mx-2 h-5 w-px bg-cyan-500/10" />
 
       <button
         onClick={handleExport}
         title="Export PNG"
-        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
       >
         <Download size={16} />
       </button>
       <button
         onClick={handleFullscreen}
         title="Fullscreen"
-        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
       >
         <Expand size={16} />
       </button>

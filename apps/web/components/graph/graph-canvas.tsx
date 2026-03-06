@@ -45,7 +45,7 @@ export function GraphCanvas({ initialData, className = '' }: GraphCanvasProps) {
   }, [handleResize]);
 
   return (
-    <div className={`relative flex h-full w-full bg-gray-950 ${className}`}>
+    <div className={`relative flex h-full w-full bg-[#0a0e1a] ${className}`}>
       <div className="flex flex-1 flex-col">
         <GraphToolbar
           cy={cy}

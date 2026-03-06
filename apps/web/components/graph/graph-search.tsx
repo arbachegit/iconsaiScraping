@@ -101,8 +101,8 @@ export function GraphSearch({ cy, onSelectResult }: GraphSearchProps) {
 
   return (
     <div className="relative w-64">
-      <div className="flex items-center rounded border border-gray-700 bg-gray-800 px-2">
-        <Search size={14} className="flex-shrink-0 text-gray-500" />
+      <div className="flex items-center rounded border border-cyan-500/20 bg-[#1a2332] px-2">
+        <Search size={14} className="flex-shrink-0 text-slate-500" />
         <input
           ref={inputRef}
           type="text"
@@ -110,29 +110,29 @@ export function GraphSearch({ cy, onSelectResult }: GraphSearchProps) {
           onChange={handleInputChange}
           onFocus={() => results.length > 0 && setIsOpen(true)}
           placeholder="Search nodes..."
-          className="w-full bg-transparent px-2 py-1.5 text-xs text-gray-200 placeholder-gray-500 outline-none"
+          className="w-full bg-transparent px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none"
         />
         {query && (
-          <button onClick={handleClear} className="flex-shrink-0 text-gray-500 hover:text-gray-300">
+          <button onClick={handleClear} className="flex-shrink-0 text-slate-500 hover:text-slate-300">
             <X size={14} />
           </button>
         )}
       </div>
 
       {isOpen && results.length > 0 && (
-        <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded border border-gray-700 bg-gray-800 shadow-xl">
+        <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded border border-cyan-500/20 bg-[#0f1629] shadow-xl">
           {results.map((result) => (
             <li key={result.id}>
               <button
                 onClick={() => handleSelectResult(result)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-gray-700"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-cyan-500/5"
               >
                 <div
                   className="h-2 w-2 flex-shrink-0 rounded-full"
                   style={{ backgroundColor: ENTITY_COLORS[result.type] || '#6b7280' }}
                 />
-                <span className="min-w-0 flex-1 truncate text-gray-200">{result.label}</span>
-                <span className="flex-shrink-0 text-gray-500">{result.type}</span>
+                <span className="min-w-0 flex-1 truncate text-slate-200">{result.label}</span>
+                <span className="flex-shrink-0 text-slate-500">{result.type}</span>
               </button>
             </li>
           ))}
@@ -140,7 +140,7 @@ export function GraphSearch({ cy, onSelectResult }: GraphSearchProps) {
       )}
 
       {isOpen && isLoading && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-500">
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded border border-cyan-500/20 bg-[#0f1629] px-3 py-2 text-xs text-slate-500">
           Searching...
         </div>
       )}

@@ -35,15 +35,15 @@ export function GraphLegend() {
     <div className="absolute bottom-3 left-3">
       <button
         onClick={() => setIsVisible((prev) => !prev)}
-        className="rounded bg-gray-900/90 p-1.5 text-gray-400 shadow-lg transition-colors hover:text-gray-200"
+        className="rounded bg-[#0f1629]/90 p-1.5 text-slate-400 shadow-lg transition-colors hover:text-white"
         title="Toggle legend"
       >
         <Info size={16} />
       </button>
 
       {isVisible && (
-        <div className="mt-1 rounded border border-gray-700 bg-gray-900/95 px-3 py-2.5 shadow-xl">
-          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+        <div className="mt-1 rounded border border-cyan-500/20 bg-[#0f1629]/95 px-3 py-2.5 shadow-xl">
+          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
             Entities
           </h4>
           <div className="mb-3 space-y-1">
@@ -53,13 +53,13 @@ export function GraphLegend() {
                   className="h-3 w-3 flex-shrink-0 rounded-sm"
                   style={{ backgroundColor: color }}
                 />
-                <span className="text-gray-300">{ENTITY_LABELS[type]}</span>
-                <span className="text-gray-600">({ENTITY_SHAPE_LABELS[type]})</span>
+                <span className="text-slate-300">{ENTITY_LABELS[type]}</span>
+                <span className="text-slate-600">({ENTITY_SHAPE_LABELS[type]})</span>
               </div>
             ))}
           </div>
 
-          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
             Edges
           </h4>
           <div className="space-y-1">
@@ -71,14 +71,14 @@ export function GraphLegend() {
                     y1="4"
                     x2="24"
                     y2="4"
-                    stroke="#9ca3af"
+                    stroke="#94a3b8"
                     strokeWidth="2"
                     strokeDasharray={
                       style === 'dashed' ? '4,3' : style === 'dotted' ? '1,3' : undefined
                     }
                   />
                 </svg>
-                <span className="text-gray-300">{labels.join(', ')}</span>
+                <span className="text-slate-300">{labels.join(', ')}</span>
               </div>
             ))}
           </div>

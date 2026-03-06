@@ -104,7 +104,7 @@ export function GraphMinimap({ cy }: GraphMinimapProps) {
   };
 
   return (
-    <div className="absolute bottom-3 right-3 overflow-hidden rounded border border-gray-700 bg-gray-900/90 shadow-lg">
+    <div className="absolute bottom-3 right-3 overflow-hidden rounded border border-cyan-500/20 bg-[#0f1629]/90 shadow-lg">
       <canvas
         ref={canvasRef}
         width={160}
