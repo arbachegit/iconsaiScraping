@@ -195,8 +195,8 @@ function mergePersonProfile(dbResult, apolloResult, perplexityResult, serperResu
 
     // Location
     localizacao: null,
-    cidade: null,
-    estado: null,
+    codigo_ibge: null,
+    codigo_ibge_uf: null,
 
     // Connections
     empresas: [],
