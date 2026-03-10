@@ -562,6 +562,75 @@ async function countRows(tableName, selectColumn, options = {}) {
   return 0;
 }
 
+/**
+ * Fetch a sample row from a table, returning one non-null example per column.
+ * Uses a single SELECT with LIMIT 1 for speed, then fills gaps column-by-column.
+ */
+export async function getDbModelTableSamples(tableName) {
+  const tables = await getTableDefinitions();
+  const table = tables.find((item) => item.name === tableName);
+  if (!table) return null;
+
+  const columnNames = table.columns.map((c) => c.name);
+
+  // Grab one row to get most values at once
+  const { data: rows, error } = await supabaseRead
+    .from(tableName)
+    .select(columnNames.join(","))
+    .limit(1);
+
+  if (error) {
+    logger.warn("db_model_sample_error", { table: tableName, error: error.message });
+    return { tableName, samples: {} };
+  }
+
+  const firstRow = rows?.[0] || {};
+  const samples = {};
+
+  for (const col of columnNames) {
+    const val = firstRow[col];
+    if (val != null && val !== "") {
+      samples[col] = truncateSample(val);
+    }
+  }
+
+  // For columns still null, try fetching one non-null value individually
+  const missing = columnNames.filter((c) => !(c in samples));
+
+  const fillPromises = missing.map(async (col) => {
+    try {
+      const { data: fillRows } = await supabaseRead
+        .from(tableName)
+        .select(col)
+        .not(col, "is", null)
+        .limit(1);
+
+      const fillVal = fillRows?.[0]?.[col];
+      if (fillVal != null && fillVal !== "") {
+        samples[col] = truncateSample(fillVal);
+      }
+    } catch {
+      // skip silently
+    }
+  });
+
+  await Promise.all(fillPromises);
+
+  return { tableName, samples };
+}
+
+function truncateSample(value) {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === "object") {
+    const json = JSON.stringify(value);
+    return json.length > 200 ? json.slice(0, 200) + "…" : json;
+  }
+
+  const str = String(value);
+  return str.length > 200 ? str.slice(0, 200) + "…" : str;
+}
+
 export async function getDbModelOverview() {
   if (isCacheValid(overviewCache)) {
     return overviewCache.value;

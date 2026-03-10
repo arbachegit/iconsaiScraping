@@ -1268,6 +1268,13 @@ export interface CpfSearchPessoa {
   localizacao?: string;
   resumo_profissional?: string;
   foto_url?: string;
+  telefone?: string;
+  headline?: string;
+  senioridade?: string;
+  departamento?: string;
+  twitter_url?: string;
+  raw_apollo_data?: Record<string, unknown>;
+  _provider?: string;
 }
 
 export interface CpfSearchExperiencia {
@@ -1400,6 +1407,12 @@ export interface PeopleSearchResult {
   localizacao?: string;
   resumo_profissional?: string;
   foto_url?: string;
+  telefone?: string;
+  headline?: string;
+  senioridade?: string;
+  departamento?: string;
+  twitter_url?: string;
+  raw_apollo_data?: Record<string, unknown>;
   _source?: 'db' | 'external';
   _provider?: string;
   qualityScore?: number;
@@ -2146,6 +2159,7 @@ export interface GraphEdgeData {
   target: string;
   tipo_relacao: string;
   strength: number;
+  label?: string;
 }
 
 export interface GraphDataResponse {
@@ -2448,6 +2462,27 @@ export async function getDbModelTableDetails(
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Failed to fetch table details' }));
     throw new Error(error.detail || error.error || 'Failed to fetch table details');
+  }
+
+  return res.json();
+}
+
+export interface DbModelTableSamplesResponse {
+  success: boolean;
+  tableName: string;
+  samples: Record<string, string | null>;
+}
+
+export async function getDbModelTableSamples(
+  tableName: string
+): Promise<DbModelTableSamplesResponse> {
+  const res = await fetchWithAuth(
+    `${API_BASE}/db-model/table/${encodeURIComponent(tableName)}/samples`
+  );
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch table samples' }));
+    throw new Error(error.detail || error.error || 'Failed to fetch table samples');
   }
 
   return res.json();

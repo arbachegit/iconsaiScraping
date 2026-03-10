@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Eye,
   GripHorizontal,
   KeyRound,
   Link2,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import {
   getDbModelTableDetails,
+  getDbModelTableSamples,
   type DbModelColumnDetail,
   type DbModelTableSummary,
 } from '@/lib/api';
@@ -78,6 +80,12 @@ export function TableColumnModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  /* ---- samples state ---- */
+  const [samples, setSamples] = useState<Record<string, string | null>>({});
+  const [samplesLoading, setSamplesLoading] = useState(false);
+  const [samplesLoaded, setSamplesLoaded] = useState(false);
+  const [expandedSamples, setExpandedSamples] = useState<Record<string, boolean>>({});
+
   /* ---- refs for drag / resize ---- */
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
     null
@@ -118,6 +126,32 @@ export function TableColumnModal({
       cancelled = true;
     };
   }, [table.name]);
+
+  /* ---- fetch samples on demand ---- */
+  const loadSamples = useCallback(() => {
+    if (samplesLoaded || samplesLoading) return;
+    setSamplesLoading(true);
+
+    getDbModelTableSamples(table.name)
+      .then((res) => {
+        setSamples(res.samples);
+        setSamplesLoaded(true);
+      })
+      .catch(() => {
+        setSamplesLoaded(true);
+      })
+      .finally(() => {
+        setSamplesLoading(false);
+      });
+  }, [samplesLoaded, samplesLoading, table.name]);
+
+  function toggleSample(colName: string) {
+    // Lazy-load samples on first click
+    if (!samplesLoaded && !samplesLoading) {
+      loadSamples();
+    }
+    setExpandedSamples((current) => ({ ...current, [colName]: !current[colName] }));
+  }
 
   /* ---- drag handlers ---- */
   const onDragStart = useCallback(
@@ -299,70 +333,116 @@ export function TableColumnModal({
                   <span className="text-right">Cobert.</span>
                 </div>
 
-                {columns.map((col) => (
-                  <div
-                    key={col.name}
-                    className="rounded-xl border border-slate-800/60 bg-slate-950/50 hover:border-cyan-500/20 transition-colors"
-                  >
-                    {/* Top row: name + badges + stats */}
-                    <div className="grid grid-cols-[minmax(0,1fr)_80px_60px] gap-2 items-center px-3 py-2.5">
-                      {/* Column info */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-xs font-medium text-white truncate">
-                            {col.name}
-                          </span>
-                          {col.isPrimaryKey && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-200 flex-shrink-0">
-                              <KeyRound className="h-2.5 w-2.5" />
-                              PK
+                {columns.map((col) => {
+                  const hasData = col.nonNullCount > 0;
+                  const isExpanded = Boolean(expandedSamples[col.name]);
+                  const sampleValue = samples[col.name];
+                  const hasSample = samplesLoaded && sampleValue != null;
+
+                  return (
+                    <div
+                      key={col.name}
+                      className="rounded-xl border border-slate-800/60 bg-slate-950/50 hover:border-cyan-500/20 transition-colors"
+                    >
+                      {/* Top row: name + badges + stats */}
+                      <div className="grid grid-cols-[minmax(0,1fr)_80px_60px] gap-2 items-center px-3 py-2.5">
+                        {/* Column info */}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-medium text-white truncate">
+                              {col.name}
                             </span>
-                          )}
-                          {col.isForeignKey && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] text-cyan-200 flex-shrink-0">
-                              <Link2 className="h-2.5 w-2.5" />
-                              FK
+                            {col.isPrimaryKey && (
+                              <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-200 flex-shrink-0">
+                                <KeyRound className="h-2.5 w-2.5" />
+                                PK
+                              </span>
+                            )}
+                            {col.isForeignKey && (
+                              <span className="inline-flex items-center gap-0.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] text-cyan-200 flex-shrink-0">
+                                <Link2 className="h-2.5 w-2.5" />
+                                FK
+                              </span>
+                            )}
+                            {hasData && (
+                              <button
+                                type="button"
+                                onClick={() => toggleSample(col.name)}
+                                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] flex-shrink-0 transition-colors ${
+                                  isExpanded
+                                    ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-200'
+                                    : 'border-emerald-400/25 bg-emerald-500/8 text-emerald-300/70 hover:border-emerald-400/40 hover:bg-emerald-500/15 hover:text-emerald-200'
+                                }`}
+                              >
+                                <Eye className="h-2.5 w-2.5" />
+                                ex
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-slate-500 truncate">{col.type}</span>
+                            <span
+                              className={`text-[9px] ${col.nullable ? 'text-slate-600' : 'text-orange-400/70'}`}
+                            >
+                              {col.nullable ? 'null' : 'req'}
                             </span>
-                          )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] text-slate-500 truncate">{col.type}</span>
-                          <span
-                            className={`text-[9px] ${col.nullable ? 'text-slate-600' : 'text-orange-400/70'}`}
-                          >
-                            {col.nullable ? 'null' : 'req'}
+
+                        {/* Non-null count */}
+                        <div className="text-right">
+                          <span className="text-xs font-semibold text-cyan-200" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {formatCompactNumber(col.nonNullCount)}
+                          </span>
+                        </div>
+
+                        {/* Coverage */}
+                        <div className="text-right">
+                          <span className="text-[11px] text-slate-400" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {formatPercent(col.coverageRatio)}
                           </span>
                         </div>
                       </div>
 
-                      {/* Non-null count */}
-                      <div className="text-right">
-                        <span className="text-xs font-semibold text-cyan-200" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {formatCompactNumber(col.nonNullCount)}
-                        </span>
-                      </div>
-
-                      {/* Coverage */}
-                      <div className="text-right">
-                        <span className="text-[11px] text-slate-400" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {formatPercent(col.coverageRatio)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Full-width description line */}
-                    <div className="border-t border-slate-800/40 px-3 py-1.5">
-                      {col.references && (
-                        <p className="text-[10px] text-cyan-400/70">
-                          FK → {col.references.table}.{col.references.column}
+                      {/* Full-width description line */}
+                      <div className="border-t border-slate-800/40 px-3 py-1.5">
+                        {col.references && (
+                          <p className="text-[10px] text-cyan-400/70">
+                            FK → {col.references.table}.{col.references.column}
+                          </p>
+                        )}
+                        <p className="text-[10px] leading-4 text-slate-500">
+                          {col.description || `${col.type}${col.nullable ? ', nullable' : ', required'}${col.isPrimaryKey ? ', primary key' : ''}${col.isForeignKey ? ', foreign key' : ''}`}
                         </p>
+                      </div>
+
+                      {/* Sample value (expanded) */}
+                      {isExpanded && (
+                        <div className="border-t border-emerald-500/15 bg-emerald-500/5 px-3 py-2">
+                          {samplesLoading ? (
+                            <div className="flex items-center gap-1.5">
+                              <Loader2 className="h-3 w-3 text-emerald-400 animate-spin" />
+                              <span className="text-[10px] text-emerald-300/70">Buscando exemplo...</span>
+                            </div>
+                          ) : hasSample ? (
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-emerald-400/60 mb-1">
+                                Exemplo real
+                              </p>
+                              <p className="text-[11px] leading-5 text-emerald-200 font-mono break-all whitespace-pre-wrap">
+                                {sampleValue}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-slate-500 italic">
+                              Sem exemplo disponivel para esta coluna
+                            </p>
+                          )}
+                        </div>
                       )}
-                      <p className="text-[10px] leading-4 text-slate-500">
-                        {col.description || `${col.type}${col.nullable ? ', nullable' : ', required'}${col.isPrimaryKey ? ', primary key' : ''}${col.isForeignKey ? ', foreign key' : ''}`}
-                      </p>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </ScrollArea>
           ) : null}

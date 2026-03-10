@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getDbModelOverview,
   getDbModelTableDetails,
+  getDbModelTableSamples,
 } from "../services/db-model.js";
 import logger from "../utils/logger.js";
 
@@ -64,6 +65,37 @@ router.get("/table/:tableName", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to load table details",
+    });
+  }
+});
+
+router.get("/table/:tableName/samples", async (req, res) => {
+  try {
+    const tableName = String(req.params.tableName || "").trim();
+    if (!tableName) {
+      return res.status(400).json({
+        success: false,
+        error: "Table name is required",
+      });
+    }
+
+    const data = await getDbModelTableSamples(tableName);
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        error: "Table not found",
+      });
+    }
+
+    return res.json({ success: true, ...data });
+  } catch (error) {
+    logger.error("db_model_samples_error", {
+      table: req.params.tableName,
+      error,
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to load table samples",
     });
   }
 });
