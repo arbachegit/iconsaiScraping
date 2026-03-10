@@ -153,15 +153,11 @@ router.get('/list-enriched', async (req, res) => {
           cidade,
           estado,
           situacao_cadastral,
-          linkedin_url,
           cep,
           codigo_ibge,
           fonte,
-          cnae_principal,
           cnae_id,
-          telefone_1,
-          telefone_2,
-          email
+          telefone_1
         )
       `)
       .in('pessoa_id', personIds)
@@ -173,11 +169,11 @@ router.get('/list-enriched', async (req, res) => {
       const [byRazaoSocial, byNomeFantasia] = await Promise.all([
         supabase
           .from('dim_empresas')
-          .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cnae_principal, cnae_id, telefone_1, telefone_2, email')
+          .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, cep, codigo_ibge, fonte, cnae_id, telefone_1')
           .in('razao_social', fallbackCompanyNames),
         supabase
           .from('dim_empresas')
-          .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cnae_principal, cnae_id, telefone_1, telefone_2, email')
+          .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, cep, codigo_ibge, fonte, cnae_id, telefone_1')
           .in('nome_fantasia', fallbackCompanyNames),
       ]);
 
@@ -226,14 +222,14 @@ router.get('/list-enriched', async (req, res) => {
         empresa: p.empresa_atual_nome || emp.nome_fantasia || emp.razao_social || fallbackCompanyName || '',
         codigo_ibge: p.codigo_ibge || emp.codigo_ibge || '',
         codigo_ibge_uf: p.codigo_ibge_uf || emp.codigo_ibge_uf || '',
-        cidade: emp.cidade || rawApollo.city || '',
-        estado: emp.estado || rawApollo.state || '',
-        cnae: emp.cnae_principal || '',
+        cidade: p.cidade || emp.cidade || rawApollo.city || '',
+        estado: p.estado || emp.estado || rawApollo.state || '',
+        cnae: emp.cnae_principal || emp.cnae_id || '',
         descricao: emp.cnae_descricao || '',
         cnae_descricao: emp.cnae_descricao || '',
-        email: p.email || rawApollo.email || emp.email || '',
-        phone: p.telefone || apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
-        telefone: p.telefone || apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
+        email: p.email || rawApollo.email || '',
+        phone: p.telefone || apolloPhone || emp.telefone_1 || '',
+        telefone: p.telefone || apolloPhone || emp.telefone_1 || '',
       };
     });
 
