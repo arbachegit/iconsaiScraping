@@ -309,7 +309,7 @@ let _approvedCache = null;
 let _approvedCacheExpiry = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-const COMPANY_BASE_SELECT = 'id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cnae_principal, cnae_id, telefone_1, telefone_2, email';
+const COMPANY_BASE_SELECT = 'id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, cep, codigo_ibge, fonte, cnae_id, telefone_1, telefone';
 
 function normalizeCompanyText(value) {
   return String(value || '')
@@ -468,14 +468,11 @@ export async function enrichCompanyRows(baseCompanies = []) {
       ...company,
       cidade: company.cidade ?? null,
       estado: company.estado ?? null,
-      telefone_1: company.telefone_1 ?? null,
-      telefone_2: company.telefone_2 ?? null,
-      email: company.email ?? null,
+      telefone_1: company.telefone_1 ?? company.telefone ?? null,
       regime_tributario: regime?.regime_tributario || null,
-      cnae_principal: regime?.cnae_principal || company.cnae_principal || null,
+      cnae_principal: regime?.cnae_principal || company.cnae_id || null,
       cnae_descricao: cnae?.descricao || regime?.cnae_descricao || null,
       descricao_classe: cnae?.descricao_classe || null,
-      linkedin: company.linkedin_url || null,
     };
   });
 }
