@@ -72,6 +72,16 @@
   white-space: nowrap;
 }
 
+/* Graph Legend - Red beacon pulse */
+@keyframes beacon-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4), 0 0 24px rgba(239, 68, 68, 0.2), 0 0 0 0 rgba(239, 68, 68, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.6), 0 0 36px rgba(239, 68, 68, 0.3), 0 0 0 14px rgba(239, 68, 68, 0);
+  }
+}
+
 /* Atlas Chat - Radar pulse */
 @keyframes atlas-radar {
   0% {

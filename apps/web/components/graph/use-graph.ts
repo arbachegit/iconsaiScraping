@@ -36,7 +36,7 @@ export function useGraph() {
   const d3Ref = useRef<D3GraphRef>({ svg: null, simulation: null, zoom: null, g: null });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] });
-  const [radialDistance, setRadialDistance] = useState(3);
+  const [radialDistance, setRadialDistance] = useState(1.5);
 
   // Build/rebuild D3 ForceGraph when graphData changes
   useEffect(() => {

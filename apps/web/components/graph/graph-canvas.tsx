@@ -11,9 +11,10 @@ import { GraphLegend } from './graph-legend';
 interface GraphCanvasProps {
   initialData?: GraphData;
   className?: string;
+  onInfoClick?: () => void;
 }
 
-export function GraphCanvas({ initialData, className = '' }: GraphCanvasProps) {
+export function GraphCanvas({ initialData, className = '', onInfoClick }: GraphCanvasProps) {
   const {
     containerRef,
     fitView,
@@ -68,7 +69,7 @@ export function GraphCanvas({ initialData, className = '' }: GraphCanvasProps) {
           </div>
         </div>
 
-        <GraphLegend />
+        <GraphLegend onInfoClick={onInfoClick} />
       </div>
 
       {selectedNode && (
