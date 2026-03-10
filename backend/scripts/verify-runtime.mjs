@@ -8,8 +8,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backendDir = path.resolve(__dirname, "..");
 const srcDir = path.join(backendDir, "src");
-const candidatePorts = [3006, 3001];
-
 async function listJsFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = await Promise.all(
@@ -36,21 +34,25 @@ async function isPortFree(port) {
 }
 
 async function pickPort() {
-  for (const port of candidatePorts) {
-    if (await isPortFree(port)) {
-      return { port, mode: "spawn" };
-    }
+  const server = net.createServer();
 
-    try {
-      const health = await fetchHealth(port);
-      if (health?.status === "healthy" && health?.service === "iconsai-scraping-backend") {
-        return { port, mode: "reuse" };
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to determine free port")));
+        return;
       }
-    } catch {
-      // Port is occupied by something else or not reachable; keep checking.
-    }
-  }
-  throw new Error(`No allowed backend port is free. Checked: ${candidatePorts.join(", ")}`);
+      server.close((closeError) => {
+        if (closeError) {
+          reject(closeError);
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+  });
 }
 
 async function syntaxCheck() {
@@ -126,20 +128,12 @@ async function stopChild(child) {
 async function verifyRuntime() {
   await syntaxCheck();
 
-  const { port, mode } = await pickPort();
-
-  if (mode === "reuse") {
-    const health = await waitForHealthy(port);
-    console.log(`health-ok port=${port} mode=reuse`);
-    if (health?.status !== "healthy" || health?.service !== "iconsai-scraping-backend") {
-      throw new Error(`Unexpected health payload: ${JSON.stringify(health)}`);
-    }
-    return;
-  }
+  const port = await pickPort();
 
   const env = {
     ...process.env,
     BACKEND_PORT: String(port),
+    BACKEND_ALLOW_NONSTANDARD_PORTS: "true",
   };
 
   const child = spawn(process.execPath, ["src/index.js"], {

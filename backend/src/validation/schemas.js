@@ -215,7 +215,14 @@ export const politicosByPartidoQuerySchema = z.object({
 export function validateQuery(schema) {
   return (req, res, next) => {
     try {
-      req.query = schema.parse(req.query);
+      const validated = schema.parse(req.query);
+      // Express v5: req.query is a read-only getter — use defineProperty to override
+      Object.defineProperty(req, 'query', {
+        value: validated,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -246,6 +253,7 @@ export function validateBody(schema) {
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
+          success: false,
           error: 'Dados inválidos',
           details: error.errors.map(e => ({
             field: e.path.join('.'),
