@@ -278,7 +278,12 @@ router.get('/expand/:entityType/:entityId', async (req, res) => {
 
     let materialization = null;
     if (entityType === 'empresa') {
-      materialization = await ensureCompanyGraphMaterialized(entityId, { force: forceRefresh });
+      try {
+        materialization = await ensureCompanyGraphMaterialized(entityId, { force: forceRefresh });
+      } catch (matErr) {
+        logger.warn('graph_expand_materialization_failed', { entityId, error: matErr.message });
+        materialization = { skipped: true, reason: 'materialization_error', error: matErr.message };
+      }
     }
 
     const result = await getNetworkGraph(entityType, entityId, 1, 50);
