@@ -8,11 +8,10 @@ files in a temporary directory before applying them globally.
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import shutil
 import sys
 from datetime import datetime
-
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = PROJECT_ROOT / "scripts" / "codex_skill_fixes"
