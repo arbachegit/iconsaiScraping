@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { getNetworkGraph, getNetworkStats } from '../services/graph-queries.js';
+import {
+  ensureCompanyGraphMaterialized,
+  getCompanyGraphContext,
+  getCompanyGraphCoverage,
+  evaluateCompanyGraphCoverage,
+} from '../services/graph-materialization.js';
 import { supabase } from '../database/supabase.js';
 import {
   getEstimatedCompanyCount,
@@ -101,6 +107,31 @@ async function resolveNodeLabels(nodes) {
     }
   }
 
+  if (grouped.mandato?.length > 0) {
+    const ids = grouped.mandato.map(n => n.id);
+    const { data } = brasilDataHub
+      ? await brasilDataHub
+        .from('fato_politicos_mandatos')
+        .select('id, cargo, municipio, ano_eleicao, partido_sigla, eleito')
+        .in('id', ids)
+      : { data: [] };
+    const lookup = new Map((data || []).map(d => [String(d.id), d]));
+    for (const node of grouped.mandato) {
+      const info = lookup.get(String(node.id)) || {};
+      resolved.push({
+        ...node,
+        label: `${info.cargo || 'Mandato'} ${info.municipio || ''} ${info.ano_eleicao || ''}`.trim() || `Mandato #${node.id}`,
+        data: {
+          cargo: info.cargo,
+          municipio: info.municipio,
+          ano: info.ano_eleicao,
+          partido: info.partido_sigla,
+          eleito: info.eleito
+        }
+      });
+    }
+  }
+
   return resolved;
 }
 
@@ -160,6 +191,29 @@ router.get('/data', async (req, res) => {
       );
     }
 
+    if ((!entityType || entityType === 'mandato') && brasilDataHub) {
+      nodePromises.push(
+        brasilDataHub
+          .from('fato_politicos_mandatos')
+          .select('id, cargo, municipio, ano_eleicao, partido_sigla, eleito')
+          .order('ano_eleicao', { ascending: false })
+          .limit(limit)
+          .then(({ data }) => (data || []).map(d => ({
+            id: String(d.id),
+            type: 'mandato',
+            label: `${d.cargo || 'Mandato'} ${d.municipio || ''} ${d.ano_eleicao || ''}`.trim() || `Mandato #${d.id}`,
+            data: {
+              cargo: d.cargo,
+              municipio: d.municipio,
+              ano: d.ano_eleicao,
+              partido: d.partido_sigla,
+              eleito: d.eleito,
+              entityId: String(d.id)
+            }
+          })))
+      );
+    }
+
     // ------ Fetch edges ------
     const edgesPromise = supabase
       .from('fato_relacoes_entidades')
@@ -211,14 +265,20 @@ router.get('/data', async (req, res) => {
 router.get('/expand/:entityType/:entityId', async (req, res) => {
   try {
     const { entityType, entityId } = req.params;
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
 
-    const validTypes = ['empresa', 'pessoa', 'politico', 'emenda', 'noticia'];
+    const validTypes = ['empresa', 'pessoa', 'politico', 'mandato', 'emenda', 'noticia'];
     if (!validTypes.includes(entityType)) {
       return res.status(400).json({ success: false, error: `Invalid entity type. Must be one of: ${validTypes.join(', ')}` });
     }
 
     if (!entityId) {
       return res.status(400).json({ success: false, error: 'Entity ID is required' });
+    }
+
+    let materialization = null;
+    if (entityType === 'empresa') {
+      materialization = await ensureCompanyGraphMaterialized(entityId, { force: forceRefresh });
     }
 
     const result = await getNetworkGraph(entityType, entityId, 1, 50);
@@ -247,11 +307,67 @@ router.get('/expand/:entityType/:entityId', async (req, res) => {
       success: true,
       nodes,
       edges,
-      center: { id: makeGraphNodeId(centerNode.type, centerNode.id), type: centerNode.type, label: centerNode.label }
+      center: { id: makeGraphNodeId(centerNode.type, centerNode.id), type: centerNode.type, label: centerNode.label },
+      materialization: entityType === 'empresa' ? materialization : null,
     });
   } catch (err) {
     logger.error('graph_expand_error', { entityType: req.params.entityType, entityId: req.params.entityId, error: err.message });
     return res.status(500).json({ success: false, error: 'Failed to expand node' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /materialization/empresa/:empresaId - Coverage diagnosis for central graph
+// ---------------------------------------------------------------------------
+router.get('/materialization/empresa/:empresaId', async (req, res) => {
+  try {
+    const { empresaId } = req.params;
+    const context = await getCompanyGraphContext(empresaId);
+
+    if (!context) {
+      return res.status(404).json({ success: false, error: 'Company not found' });
+    }
+
+    const coverage = await getCompanyGraphCoverage(empresaId);
+    const evaluation = evaluateCompanyGraphCoverage(context, coverage);
+
+    return res.json({
+      success: true,
+      empresa: {
+        id: String(context.empresa.id),
+        nome: context.nome,
+        cnpj: context.empresa.cnpj,
+        cidade: context.cidade,
+        estado: context.estado,
+        cnae_principal: context.cnae_principal,
+      },
+      source_context: {
+        socios: context.socios.length,
+      },
+      coverage,
+      evaluation,
+    });
+  } catch (err) {
+    logger.error('graph_materialization_diagnosis_error', { empresaId: req.params.empresaId, error: err.message });
+    return res.status(500).json({ success: false, error: 'Failed to load graph materialization diagnosis' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /materialize/empresa/:empresaId - Force central graph materialization
+// ---------------------------------------------------------------------------
+router.post('/materialize/empresa/:empresaId', async (req, res) => {
+  try {
+    const { empresaId } = req.params;
+    const result = await ensureCompanyGraphMaterialized(empresaId, { force: true });
+
+    return res.json({
+      success: true,
+      result,
+    });
+  } catch (err) {
+    logger.error('graph_materialize_company_error', { empresaId: req.params.empresaId, error: err.message });
+    return res.status(500).json({ success: false, error: 'Failed to materialize company graph' });
   }
 });
 
@@ -313,6 +429,11 @@ router.get('/search', async (req, res) => {
           .or(`nome_completo.ilike.${startPattern},nome_completo.ilike.${wordPattern},nome_urna.ilike.${startPattern},nome_urna.ilike.${wordPattern}`)
           .limit(limit),
         brasilDataHub
+          .from('fato_politicos_mandatos')
+          .select('id, cargo, municipio, ano_eleicao, partido_sigla, eleito')
+          .or(`cargo.ilike.${startPattern},cargo.ilike.${wordPattern},municipio.ilike.${startPattern},municipio.ilike.${wordPattern}`)
+          .limit(limit),
+        brasilDataHub
           .from('fato_emendas_parlamentares')
           .select('id, autor, tipo, valor_empenhado, ano, uf')
           .or(`autor.ilike.${startPattern},autor.ilike.${wordPattern}`)
@@ -322,7 +443,8 @@ router.get('/search', async (req, res) => {
 
     const [empresasRes, pessoasRes, noticiasRes, ...optionalRes] = await Promise.all(searchPromises);
     const politicosRes = optionalRes[0] || { data: [] };
-    const emendasRes = optionalRes[1] || { data: [] };
+    const mandatosRes = optionalRes[1] || { data: [] };
+    const emendasRes = optionalRes[2] || { data: [] };
 
     const results = [];
 
@@ -350,6 +472,15 @@ router.get('/search', async (req, res) => {
         type: 'politico',
         label: pol.nome_urna || pol.nome_completo,
         subtitle: [pol.partido_sigla, pol.cargo_atual].filter(Boolean).join(' - ')
+      });
+    }
+
+    for (const mandato of (mandatosRes.data || [])) {
+      results.push({
+        id: String(mandato.id),
+        type: 'mandato',
+        label: `${mandato.cargo || 'Mandato'} ${mandato.municipio || ''} ${mandato.ano_eleicao || ''}`.trim(),
+        subtitle: [mandato.partido_sigla, mandato.eleito ? 'Eleito' : 'Nao eleito'].filter(Boolean).join(' - ')
       });
     }
 
@@ -389,7 +520,7 @@ router.get('/path/:sourceType/:sourceId/:targetType/:targetId', async (req, res)
     const { sourceType, sourceId, targetType, targetId } = req.params;
     const MAX_HOPS = 5;
 
-    const validTypes = ['empresa', 'pessoa', 'politico', 'emenda', 'noticia'];
+    const validTypes = ['empresa', 'pessoa', 'politico', 'mandato', 'emenda', 'noticia'];
     if (!validTypes.includes(sourceType) || !validTypes.includes(targetType)) {
       return res.status(400).json({ success: false, error: `Invalid entity type. Must be one of: ${validTypes.join(', ')}` });
     }
@@ -549,7 +680,10 @@ router.get('/stats', async (req, res) => {
 router.get('/explore', async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
-    if (!q || q.length < 2) {
+    const entityType = req.query.entity_type ? String(req.query.entity_type) : null;
+    const entityId = req.query.entity_id ? String(req.query.entity_id) : null;
+
+    if (!entityId && (!q || q.length < 2)) {
       return res.status(400).json({ success: false, error: 'Query "q" must be at least 2 characters' });
     }
 
@@ -559,7 +693,15 @@ router.get('/explore', async (req, res) => {
 
     let localEmpresa = null;
 
-    if (isCnpjQuery) {
+    if (entityType === 'empresa' && entityId) {
+      const { data } = await supabase
+        .from('dim_empresas')
+        .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, cnae_descricao, porte, capital_social')
+        .eq('id', entityId)
+        .limit(1)
+        .maybeSingle();
+      localEmpresa = data;
+    } else if (isCnpjQuery) {
       const cnpj = cleanDigits.padStart(14, '0');
       const { data } = await supabase
         .from('dim_empresas')
@@ -615,6 +757,7 @@ router.get('/explore', async (req, res) => {
     const { data: transacoes, error: txError } = await supabase
       .from('fato_transacao_empresas')
       .select(`
+        pessoa_id,
         cargo,
         qualificacao,
         dim_pessoas (
@@ -630,7 +773,30 @@ router.get('/explore', async (req, res) => {
       logger.warn('explore_socios_error', { error: txError.message });
     }
 
-    for (const tx of (transacoes || [])) {
+    let transacoesNormalizadas = transacoes || [];
+
+    // Fallback: when embedded dim_pessoas fails or comes sparse, resolve via pessoa_id directly.
+    const missingPessoaRows = transacoesNormalizadas.filter((tx) => !tx.dim_pessoas?.id && tx.pessoa_id);
+    if (missingPessoaRows.length > 0) {
+      const pessoaIds = [...new Set(missingPessoaRows.map((tx) => String(tx.pessoa_id)).filter(Boolean))];
+      const { data: pessoasFallback, error: pessoasFallbackError } = await supabase
+        .from('dim_pessoas')
+        .select('id, nome_completo, cargo_atual, empresa_atual')
+        .in('id', pessoaIds);
+
+      if (pessoasFallbackError) {
+        logger.warn('explore_socios_fallback_error', { empresaId, error: pessoasFallbackError.message });
+      } else {
+        const pessoaLookup = new Map((pessoasFallback || []).map((p) => [String(p.id), p]));
+        transacoesNormalizadas = transacoesNormalizadas.map((tx) => {
+          if (tx.dim_pessoas?.id || !tx.pessoa_id) return tx;
+          const fallbackPessoa = pessoaLookup.get(String(tx.pessoa_id));
+          return fallbackPessoa ? { ...tx, dim_pessoas: fallbackPessoa } : tx;
+        });
+      }
+    }
+
+    for (const tx of transacoesNormalizadas) {
       const pessoa = tx.dim_pessoas;
       if (!pessoa || !pessoa.id) continue;
       const pessoaId = String(pessoa.id);
@@ -1089,11 +1255,30 @@ router.get('/explore', async (req, res) => {
 
     logger.info('graph_explore', { query: q, ...stats });
 
+    const nodeTypeById = new Map(nodes.map((node) => [String(node.id), node.type]));
+
+    const responseNodes = nodes.map((node) => ({
+      id: makeGraphNodeId(node.type, node.id),
+      type: node.type,
+      label: node.label,
+      data: {
+        ...(node.data || {}),
+        hop: node.hop,
+        entityId: String(node.id),
+      }
+    }));
+
+    const responseEdges = edges.map((edge) => ({
+      ...edge,
+      source: makeGraphNodeId(nodeTypeById.get(String(edge.source)) || 'unknown', edge.source),
+      target: makeGraphNodeId(nodeTypeById.get(String(edge.target)) || 'unknown', edge.target),
+    }));
+
     return res.json({
       success: true,
-      nodes,
-      edges,
-      center: { id: empresaId, type: 'empresa', label: empresaLabel },
+      nodes: responseNodes,
+      edges: responseEdges,
+      center: { id: makeGraphNodeId('empresa', empresaId), type: 'empresa', label: empresaLabel },
       stats
     });
   } catch (err) {

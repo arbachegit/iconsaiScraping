@@ -12,9 +12,7 @@
  */
 
 import { supabase } from '../database/supabase.js';
-import {
-  enrichRelationshipsAfterApproval,
-} from './graph-pipeline.js';
+import { ensureCompanyGraphMaterialized } from './graph-materialization.js';
 import logger from '../utils/logger.js';
 
 const BATCH_SIZE = 10; // Max empresas to process per sync cycle
@@ -96,25 +94,6 @@ async function findUnlinkedEmpresas(since, limit) {
 }
 
 /**
- * Find sócios for an empresa from fato_transacao_empresas.
- */
-async function getSociosForEmpresa(empresaId) {
-  const { data, error } = await supabase
-    .from('fato_transacao_empresas')
-    .select('cargo, qualificacao, dim_pessoas(id, nome_completo, cargo_atual)')
-    .eq('empresa_id', empresaId);
-
-  if (error || !data) return [];
-
-  return data
-    .filter(tx => tx.dim_pessoas?.id)
-    .map(tx => ({
-      id: tx.dim_pessoas.id,
-      cargo: tx.cargo || tx.qualificacao || tx.dim_pessoas.cargo_atual,
-    }));
-}
-
-/**
  * Run graph sync: find unlinked empresas and enrich their relationships.
  *
  * @returns {Object} Summary { processed, total_relationships, skipped, errors }
@@ -139,31 +118,22 @@ export async function syncGraphRelationships() {
 
   for (const empresa of unlinked) {
     try {
-      const socios = await getSociosForEmpresa(empresa.id);
+      const result = await ensureCompanyGraphMaterialized(empresa.id, { force: true });
 
-      const result = await enrichRelationshipsAfterApproval({
-        empresa_id: empresa.id,
-        socios,
-        cnae_principal: empresa.cnae_descricao || null,
-        cidade: empresa.cidade || null,
-        estado: empresa.estado || null,
-        nome: empresa.nome_fantasia || empresa.razao_social || null,
-      });
-
-      totalRels += result.total;
+      totalRels += result.materialized.total;
       processed++;
 
       logger.info('graph_sync_empresa', {
         empresa_id: empresa.id,
         nome: empresa.nome_fantasia || empresa.razao_social,
-        relationships: result.total,
-        societaria: result.societaria,
-        cnae_similar: result.cnae_similar,
-        geografico: result.geografico,
-        mencionado_em: result.mencionado_em,
-        emenda_beneficiario: result.emenda_beneficiario,
-        politico_empresarial: result.politico_empresarial,
-        mandatos: result.mandatos,
+        relationships: result.materialized.total,
+        societaria: result.materialized.societaria,
+        cnae_similar: result.materialized.cnae_similar,
+        geografico: result.materialized.geografico,
+        mencionado_em: result.materialized.mencionado_em,
+        emenda_beneficiario: result.materialized.emenda_beneficiario,
+        politico_empresarial: result.materialized.politico_empresarial,
+        mandatos: result.materialized.mandatos,
       });
     } catch (err) {
       errors++;

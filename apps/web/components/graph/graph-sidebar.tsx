@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useEffect, useState, type ReactNode } from 'react';
+import Image from 'next/image';
 import {
   X, Building2, MapPin, Briefcase, Users,
   Phone, Mail, Globe, Linkedin, Loader2, Receipt, BadgeCheck, CalendarDays,
@@ -19,6 +20,8 @@ interface Connection {
   label: string;
   type: string;
   relationship: string;
+  strength?: number | null;
+  evidence?: string | null;
 }
 
 interface GraphSidebarProps {
@@ -43,6 +46,16 @@ function has(v: unknown): boolean {
   if (v === null || v === undefined) return false;
   if (typeof v === 'string' && v.trim() === '') return false;
   return true;
+}
+
+function formatRelationshipName(value: string): string {
+  return value.replace(/_/g, ' ');
+}
+
+function formatStrength(value?: number | null): string | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  if (value <= 1) return `${Math.round(value * 100)}%`;
+  return `${Math.round(value)}%`;
 }
 
 type TabKey = 'empresa' | 'fiscal';
@@ -233,7 +246,14 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
                     <li key={`${socio.nome}-${i}`} className="rounded bg-slate-800/40 px-2 py-1.5">
                       <div className="flex items-center gap-1.5">
                         {socio.foto_url ? (
-                          <img src={socio.foto_url} alt={socio.nome} className="h-5 w-5 flex-shrink-0 rounded-full object-cover" />
+                          <Image
+                            src={socio.foto_url}
+                            alt={socio.nome}
+                            width={20}
+                            height={20}
+                            className="h-5 w-5 flex-shrink-0 rounded-full object-cover"
+                            unoptimized
+                          />
                         ) : (
                           <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-[9px] font-bold text-orange-400">
                             {socio.nome.charAt(0)}
@@ -407,11 +427,25 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
               {connections.map((conn) => (
                 <li
                   key={conn.id}
-                  className="flex items-center gap-1.5 rounded px-1.5 py-1 text-[10px] transition-colors hover:bg-cyan-500/5"
+                  className="rounded px-1.5 py-1.5 text-[10px] transition-colors hover:bg-cyan-500/5"
                 >
-                  <div className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: ENTITY_COLORS[conn.type] || '#6b7280' }} />
-                  <span className="min-w-0 flex-1 truncate text-slate-300">{conn.label}</span>
-                  <span className="flex-shrink-0 text-slate-600">{conn.relationship}</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: ENTITY_COLORS[conn.type] || '#6b7280' }} />
+                    <span className="min-w-0 flex-1 truncate text-slate-300">{conn.label}</span>
+                    <span className="flex-shrink-0 text-slate-600">{formatRelationshipName(conn.relationship)}</span>
+                  </div>
+                  {(conn.strength != null || conn.evidence) && (
+                    <div className="mt-1 flex items-center justify-between gap-2 pl-3">
+                      <span className="truncate text-[9px] text-slate-500">
+                        {conn.evidence || 'Relação do ecossistema'}
+                      </span>
+                      {formatStrength(conn.strength) && (
+                        <span className="flex-shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-medium text-cyan-300">
+                          {formatStrength(conn.strength)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

@@ -10,7 +10,12 @@
  */
 
 import { supabase } from '../database/supabase.js';
+import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger.js';
+
+const brasilDataHub = process.env.BRASIL_DATA_HUB_URL && process.env.BRASIL_DATA_HUB_KEY
+  ? createClient(process.env.BRASIL_DATA_HUB_URL, process.env.BRASIL_DATA_HUB_KEY)
+  : null;
 
 /**
  * Get direct (1-hop) relationships for an entity.
@@ -159,6 +164,47 @@ export async function getNetworkGraph(entityType, entityId, hops = 2, limit = 20
       }
     }
 
+    const idsByType = {};
+    for (const node of nodeMap.values()) {
+      if (!idsByType[node.type]) idsByType[node.type] = [];
+      idsByType[node.type].push(node.id);
+    }
+
+    const interNodeOrClauses = [];
+    for (const [type, ids] of Object.entries(idsByType)) {
+      if (ids.length === 0) continue;
+      interNodeOrClauses.push(`and(source_type.eq.${type},source_id.in.(${ids.join(',')}))`);
+      interNodeOrClauses.push(`and(target_type.eq.${type},target_id.in.(${ids.join(',')}))`);
+    }
+
+    if (interNodeOrClauses.length > 0) {
+      const { data: extraEdges, error: extraEdgesError } = await supabase
+        .from('fato_relacoes_entidades')
+        .select('*')
+        .eq('ativo', true)
+        .or(interNodeOrClauses.join(','))
+        .limit(Math.min(maxLimit * 3, 1500));
+
+      if (extraEdgesError) {
+        logger.warn('network_graph_inter_edges_error', {
+          entityType,
+          entityId,
+          error: extraEdgesError.message,
+        });
+      } else {
+        for (const edge of (extraEdges || [])) {
+          const srcKey = `${edge.source_type}:${edge.source_id}`;
+          const tgtKey = `${edge.target_type}:${edge.target_id}`;
+          if (!nodeMap.has(srcKey) || !nodeMap.has(tgtKey)) continue;
+          allEdges.push({
+            ...edge,
+            hop: Math.max(nodeMap.get(srcKey)?.hop || 0, nodeMap.get(tgtKey)?.hop || 0)
+          });
+          if (allEdges.length >= maxLimit * 3) break;
+        }
+      }
+    }
+
     // Resolve entity names for nodes
     const nodes = await resolveEntityNames([...nodeMap.values()]);
 
@@ -250,7 +296,7 @@ export async function getNetworkStats(entityType, entityId) {
 
 /**
  * Resolve entity names from their IDs.
- * Batch-fetches names from dim_empresas, dim_pessoas, dim_politicos, dim_noticias.
+ * Batch-fetches names from dim_empresas, dim_pessoas, dim_politicos, dim_noticias and mandatos.
  *
  * @param {Array<{id: string, type: string, hop: number}>} nodes
  * @returns {Promise<Array>} Nodes with resolved names
@@ -351,6 +397,30 @@ async function resolveEntityNames(nodes) {
       resolved.push({
         ...node,
         label: `Emenda #${node.id}`
+      });
+    }
+  }
+
+  if (grouped.mandato?.length > 0) {
+    const ids = grouped.mandato.map(n => n.id);
+    const { data } = brasilDataHub
+      ? await brasilDataHub
+        .from('fato_politicos_mandatos')
+        .select('id, cargo, municipio, ano_eleicao, partido_sigla, eleito')
+        .in('id', ids)
+      : { data: [] };
+
+    const lookup = new Map((data || []).map(d => [String(d.id), d]));
+    for (const node of grouped.mandato) {
+      const info = lookup.get(node.id) || {};
+      resolved.push({
+        ...node,
+        label: `${info.cargo || 'Mandato'} ${info.municipio || ''} ${info.ano_eleicao || ''}`.trim() || `Mandato #${node.id}`,
+        cargo: info.cargo,
+        municipio: info.municipio,
+        ano_eleicao: info.ano_eleicao,
+        partido: info.partido_sigla,
+        eleito: info.eleito,
       });
     }
   }

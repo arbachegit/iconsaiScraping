@@ -384,6 +384,8 @@ export function useGraph() {
           label: connectedNode?.label || `#${connectedId}`,
           type: connectedNode?.type || 'unknown',
           relationship: e.tipo_relacao,
+          strength: typeof e.strength === 'number' ? e.strength : null,
+          evidence: typeof e.label === 'string' && e.label.trim() !== '' ? e.label : null,
         };
       });
   }, [graphData]);

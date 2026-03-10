@@ -24,6 +24,7 @@ export interface GraphEdge {
   tipo_relacao: RelationshipType;
   strength: number;
   confidence?: number;
+  label?: string;
 }
 
 export interface GraphData {

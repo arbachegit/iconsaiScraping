@@ -2269,8 +2269,17 @@ export interface GraphExploreResponse {
   message?: string;
 }
 
-export async function exploreGraph(query: string): Promise<GraphExploreResponse> {
-  const res = await fetchWithAuth(`${API_BASE}/graph/explore?q=${encodeURIComponent(query)}`);
+export async function exploreGraph(
+  query: string,
+  params?: { entityType?: string; entityId?: string }
+): Promise<GraphExploreResponse> {
+  const searchParams = new URLSearchParams();
+  if (query.trim() !== '') searchParams.set('q', query.trim());
+  if (params?.entityType) searchParams.set('entity_type', params.entityType);
+  if (params?.entityId) searchParams.set('entity_id', params.entityId);
+
+  const qs = searchParams.toString();
+  const res = await fetchWithAuth(`${API_BASE}/graph/explore${qs ? `?${qs}` : ''}`);
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Graph explore failed' }));
