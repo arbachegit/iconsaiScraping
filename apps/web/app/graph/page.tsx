@@ -16,6 +16,7 @@ import {
   type DeepSearchNode,
 } from '@/lib/api';
 import { GraphCanvas } from '@/components/graph/graph-canvas';
+import { DraggableModal } from '@/components/graph/draggable-modal';
 import type { GraphData } from '@/components/graph/types';
 import {
   LayoutDashboard,
@@ -731,26 +732,18 @@ export default function GraphPage() {
           );
         }
 
-        // Info modal (legend + toggles + eye icons)
+        // Info modal (legend + toggles + eye icons) — DRAGGABLE
         if (modal.type === 'info') {
           return (
-            <div
-              key={`modal-${idx}`}
-              className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-              style={{ zIndex }}
-              onClick={popModal}
-            >
-              <div
-                className="relative w-full max-w-lg max-h-[85vh] bg-[#0f1629] border border-red-500/20 rounded-xl shadow-2xl flex flex-col overflow-hidden mx-4"
-                style={{ transform: `translate(${offset}px, ${offset}px)` }}
-                onClick={e => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-700/50 flex-shrink-0">
+            <DraggableModal key={`modal-${idx}`} zIndex={zIndex} onClose={popModal} className="w-full max-w-lg mx-4">
+              <div className="relative max-h-[85vh] bg-[#0f1629] border border-red-500/20 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+                {/* Drag handle = header */}
+                <div data-drag-handle className="flex items-center justify-between px-5 py-3.5 border-b border-slate-700/50 flex-shrink-0 cursor-grab active:cursor-grabbing select-none">
                   <div className="flex items-center gap-2">
                     <Info size={18} className="text-red-400" />
                     <h2 className="text-sm font-semibold text-slate-200">Legenda do Grafo</h2>
                   </div>
-                  <button type="button" onClick={popModal} className="p-1 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors">
+                  <button type="button" onClick={popModal} className="p-1 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors cursor-pointer">
                     <X size={16} />
                   </button>
                 </div>
@@ -771,10 +764,10 @@ export default function GraphPage() {
                                 if (next.has(type)) next.delete(type); else next.add(type);
                                 return next;
                               })}
-                              className="flex-shrink-0"
+                              className={`relative flex-shrink-0 w-8 h-4 rounded-full transition-colors ${isHidden ? 'bg-slate-700' : 'bg-slate-600'}`}
                             >
                               <div
-                                className={`h-3 w-3 rounded-full transition-all ${isHidden ? 'opacity-20 scale-75' : 'opacity-100'}`}
+                                className={`absolute top-0.5 h-3 w-3 rounded-full transition-all ${isHidden ? 'left-0.5 opacity-40' : 'left-[18px]'}`}
                                 style={{ backgroundColor: color }}
                               />
                             </button>
@@ -849,7 +842,7 @@ export default function GraphPage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </DraggableModal>
           );
         }
 
