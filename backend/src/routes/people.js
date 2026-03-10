@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabase } from '../database/supabase.js';
+import { supabase, enrichCompanyRows } from '../database/supabase.js';
 import logger from '../utils/logger.js';
 import { searchPerson as searchPersonApollo } from '../services/apollo.js';
 import { searchPerson as searchPersonPerplexity } from '../services/perplexity.js';
@@ -54,7 +54,15 @@ router.get('/list-enriched', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 200, 500);
     const offset = parseInt(req.query.offset) || 0;
     const search = (req.query.search || '').trim();
-    const normalizeNameKey = (value) => String(value || '').trim().toLowerCase();
+    const normalizeCompanyNameKey = (value) =>
+      String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\b(ltda|limitada|s a|sa|me|epp|eireli|holding|participacoes)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     const getApolloCompanyName = (rawApollo) =>
       rawApollo?.organization_name ||
       rawApollo?.organization?.name ||
@@ -76,9 +84,7 @@ router.get('/list-enriched', async (req, res) => {
 
     if (search.length >= 2) {
       const escaped = escapeLike(search);
-      pessoasQuery = pessoasQuery.or(
-        `nome_completo.ilike.%${escaped}%,primeiro_nome.ilike.%${escaped}%`
-      );
+      pessoasQuery = pessoasQuery.ilike('nome_completo', `%${escaped}%`);
     }
 
     const { data: pessoas, error: pessoasError } = await pessoasQuery
@@ -108,43 +114,66 @@ router.get('/list-enriched', async (req, res) => {
     const { data: transactions } = await supabase
       .from('fato_transacao_empresas')
       .select(`
+        empresa_id,
         pessoa_id,
         cargo,
         qualificacao,
         dim_empresas (
+          id,
+          cnpj,
           razao_social,
           nome_fantasia,
           cidade,
           estado,
+          situacao_cadastral,
+          linkedin_url,
+          cep,
+          codigo_ibge,
+          fonte,
           cnae_principal,
-          cnae_descricao,
+          cnae_id,
           telefone_1,
-          telefone_2
+          telefone_2,
+          email
         )
       `)
       .in('pessoa_id', personIds)
       .order('data_transacao', { ascending: false });
 
     // 2b. Fallback company lookup by exact company name from raw_apollo_data
-    const companyLookup = new Map();
+    const fallbackBaseCompanies = [];
     if (fallbackCompanyNames.length > 0) {
       const [byRazaoSocial, byNomeFantasia] = await Promise.all([
         supabase
           .from('dim_empresas')
-          .select('razao_social, nome_fantasia, cidade, estado, cnae_principal, cnae_descricao, telefone_1, telefone_2')
+          .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cnae_principal, cnae_id, telefone_1, telefone_2, email')
           .in('razao_social', fallbackCompanyNames),
         supabase
           .from('dim_empresas')
-          .select('razao_social, nome_fantasia, cidade, estado, cnae_principal, cnae_descricao, telefone_1, telefone_2')
+          .select('id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cnae_principal, cnae_id, telefone_1, telefone_2, email')
           .in('nome_fantasia', fallbackCompanyNames),
       ]);
 
-      for (const company of [...(byRazaoSocial.data || []), ...(byNomeFantasia.data || [])]) {
-        const fantasiaKey = normalizeNameKey(company.nome_fantasia);
-        const razaoKey = normalizeNameKey(company.razao_social);
-        if (fantasiaKey) companyLookup.set(fantasiaKey, company);
-        if (razaoKey) companyLookup.set(razaoKey, company);
-      }
+      fallbackBaseCompanies.push(...(byRazaoSocial.data || []), ...(byNomeFantasia.data || []));
+    }
+
+    const transactionCompanies = (transactions || [])
+      .map((tx) => tx.dim_empresas)
+      .filter(Boolean);
+    const enrichedCompanies = await enrichCompanyRows([
+      ...transactionCompanies,
+      ...fallbackBaseCompanies,
+    ]);
+
+    const companyLookupById = new Map();
+    const companyLookupByName = new Map();
+    for (const company of enrichedCompanies) {
+      if (company.id) companyLookupById.set(company.id, company);
+
+      const fantasiaKey = normalizeCompanyNameKey(company.nome_fantasia);
+      const razaoKey = normalizeCompanyNameKey(company.razao_social);
+      if (fantasiaKey) companyLookupByName.set(fantasiaKey, company);
+      if (razaoKey) companyLookupByName.set(razaoKey, company);
     }
 
     // Build latest transaction map (one empresa per pessoa)
@@ -160,8 +189,9 @@ router.get('/list-enriched', async (req, res) => {
       const tx = latestTx[p.id];
       const rawApollo = p.raw_apollo_data || {};
       const fallbackCompanyName = getApolloCompanyName(rawApollo);
-      const fallbackCompany = companyLookup.get(normalizeNameKey(fallbackCompanyName)) || {};
-      const emp = tx?.dim_empresas || fallbackCompany || {};
+      const txCompanyId = tx?.dim_empresas?.id || tx?.empresa_id || null;
+      const fallbackCompany = companyLookupByName.get(normalizeCompanyNameKey(fallbackCompanyName)) || {};
+      const emp = companyLookupById.get(txCompanyId) || fallbackCompany || {};
       const apolloPhone = getApolloPhone(rawApollo);
       return {
         id: p.id,
@@ -172,7 +202,7 @@ router.get('/list-enriched', async (req, res) => {
         cnae: emp.cnae_principal || '',
         descricao: emp.cnae_descricao || '',
         cnae_descricao: emp.cnae_descricao || '',
-        email: p.email || rawApollo.email || '',
+        email: p.email || rawApollo.email || emp.email || '',
         phone: apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
         telefone: apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
       };
@@ -365,11 +395,7 @@ router.post('/search', async (req, res) => {
     const upperNome = nome.trim().toUpperCase();
     const escapedNome = escapeLike(upperNome);
     let pessoaQuery = supabase.from('dim_pessoas').select('*');
-    if (upperNome.split(/\s+/).length === 1) {
-      pessoaQuery = pessoaQuery.or(`primeiro_nome.eq.${escapedNome},nome_completo.ilike.${escapedNome}%`);
-    } else {
-      pessoaQuery = pessoaQuery.ilike('nome_completo', `%${escapedNome}%`);
-    }
+    pessoaQuery = pessoaQuery.ilike('nome_completo', `%${escapedNome}%`);
     const { data, error } = await pessoaQuery.limit(20);
 
     if (error) {
@@ -417,11 +443,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
       const upperName = nameTrimmed.toUpperCase();
       const escapedName = escapeLike(upperName);
       let cpfNameQuery = supabase.from('dim_pessoas').select('*');
-      if (upperName.split(/\s+/).length === 1) {
-        cpfNameQuery = cpfNameQuery.or(`primeiro_nome.eq.${escapedName},nome_completo.ilike.${escapedName}%`);
-      } else {
-        cpfNameQuery = cpfNameQuery.ilike('nome_completo', `%${escapedName}%`);
-      }
+      cpfNameQuery = cpfNameQuery.ilike('nome_completo', `%${escapedName}%`);
       const { data: dbMatches, error: dbError } = await cpfNameQuery.limit(10);
 
       if (!dbError && dbMatches && dbMatches.length > 0) {
@@ -499,11 +521,7 @@ router.post('/search-cpf', validateBody(searchPersonByCpfSchema), async (req, re
       const upperNomeCpf = nome.trim().toUpperCase();
       const escapedNomeCpf = escapeLike(upperNomeCpf);
       let fallbackQuery = supabase.from('dim_pessoas').select('*');
-      if (upperNomeCpf.split(/\s+/).length === 1) {
-        fallbackQuery = fallbackQuery.or(`primeiro_nome.eq.${escapedNomeCpf},nome_completo.ilike.${escapedNomeCpf}%`);
-      } else {
-        fallbackQuery = fallbackQuery.ilike('nome_completo', `%${escapedNomeCpf}%`);
-      }
+      fallbackQuery = fallbackQuery.ilike('nome_completo', `%${escapedNomeCpf}%`);
       const { data, error } = await fallbackQuery.limit(1).single();
       if (data && !error) existingPerson = data;
     }
@@ -870,20 +888,10 @@ router.post('/search-v2', validateBody(searchPersonV2Schema), async (req, res) =
       const escapedSearchName = escapeLike(searchName);
       plog.info('DB query debug', { searchName, escapedSearchName });
 
-      let query;
-      if (searchName.split(/\s+/).length === 1) {
-        // Single word: exact match on primeiro_nome OR starts-with on nome_completo
-        query = supabase
-          .from('dim_pessoas')
-          .select('*')
-          .or(`primeiro_nome.eq.${escapedSearchName},nome_completo.ilike.${escapedSearchName}%`);
-      } else {
-        // Multiple words: contains match on nome_completo
-        query = supabase
-          .from('dim_pessoas')
-          .select('*')
-          .ilike('nome_completo', `%${escapedSearchName}%`);
-      }
+      const query = supabase
+        .from('dim_pessoas')
+        .select('*')
+        .ilike('nome_completo', `%${escapedSearchName}%`);
 
       const { data, error } = await query
         .limit(pageSize)

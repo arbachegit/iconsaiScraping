@@ -183,6 +183,32 @@ export function useGraph() {
       .attr('stroke-width', 3)
       .attr('stroke-linejoin', 'round');
 
+    // Relevance labels (shown beside the dot when data.relevance exists)
+    const relevanceLabels = g.append('g')
+      .attr('class', 'relevance-labels')
+      .selectAll<SVGTextElement, GraphNode>('text')
+      .data(nodes.filter(d => d.data?.relevance != null))
+      .join('text')
+      .text(d => {
+        const rel = (d.data?.relevance as number) || 0;
+        return `${rel}%`;
+      })
+      .attr('font-size', 8)
+      .attr('font-weight', 600)
+      .attr('fill', d => {
+        const rel = (d.data?.relevance as number) || 0;
+        if (rel >= 80) return '#4ade80'; // green
+        if (rel >= 50) return '#facc15'; // yellow
+        return '#f87171'; // red
+      })
+      .attr('text-anchor', 'start')
+      .attr('dx', d => getNodeRadius(d) + 3)
+      .attr('dy', -2)
+      .attr('paint-order', 'stroke')
+      .attr('stroke', '#0a0e1a')
+      .attr('stroke-width', 2)
+      .attr('stroke-linejoin', 'round');
+
     // Click handler
     node.on('click', (_event, d) => {
       setSelectedNode({
@@ -225,6 +251,7 @@ export function useGraph() {
 
         node.attr('fill-opacity', n => connectedIds.has(n.id) ? 0.85 : 0.2);
         labels.attr('fill-opacity', n => connectedIds.has(n.id) ? 1 : 0.2);
+        relevanceLabels.attr('fill-opacity', n => connectedIds.has(n.id) ? 1 : 0.2);
       })
       .on('mouseleave', function () {
         node
@@ -235,6 +262,7 @@ export function useGraph() {
           .attr('fill-opacity', 0.85);
 
         labels.attr('fill-opacity', 1);
+        relevanceLabels.attr('fill-opacity', 1);
 
         link.attr('stroke-opacity', d => 0.2 + (d.strength || 0.3) * 0.5)
           .attr('stroke-width', d => Math.max(0.6, (d.strength || 0.3) * 3));
@@ -260,6 +288,10 @@ export function useGraph() {
         .attr('cy', d => d.y!);
 
       labels
+        .attr('x', d => d.x!)
+        .attr('y', d => d.y!);
+
+      relevanceLabels
         .attr('x', d => d.x!)
         .attr('y', d => d.y!);
     });

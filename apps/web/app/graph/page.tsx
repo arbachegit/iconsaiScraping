@@ -4,7 +4,14 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { isAuthenticated } from '@/lib/auth';
-import { expandGraphNode, searchGraphEntities, type GraphExploreResponse, type GraphSearchResult } from '@/lib/api';
+import {
+  expandGraphNode,
+  searchGraphEntities,
+  deepSearchGraph,
+  type GraphExploreResponse,
+  type GraphSearchResult,
+  type DeepSearchResponse,
+} from '@/lib/api';
 import { GraphCanvas } from '@/components/graph/graph-canvas';
 import {
   LayoutDashboard,
@@ -14,6 +21,7 @@ import {
   AlertCircle,
   Search,
   X,
+  Radar,
 } from 'lucide-react';
 
 const ENTITY_COLORS: Record<string, string> = {
@@ -43,6 +51,11 @@ export default function GraphPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Deep search mode
+  const [isDeepSearch, setIsDeepSearch] = useState(false);
+  const [deepSearchData, setDeepSearchData] = useState<DeepSearchResponse | null>(null);
+  const [categoryModal, setCategoryModal] = useState<string | null>(null);
+
   // Autocomplete state
   const [suggestions, setSuggestions] = useState<GraphSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -52,9 +65,26 @@ export default function GraphPage() {
 
   // Stabilize canvas data to avoid infinite re-renders
   const canvasData = useMemo(() => {
-    if (!graphData || graphData.nodes.length === 0) return null;
-    return { nodes: graphData.nodes as any, edges: graphData.edges as any };
-  }, [graphData]);
+    if (isDeepSearch && deepSearchData && deepSearchData.nodes.length > 0) {
+      return { nodes: deepSearchData.nodes as any, edges: deepSearchData.edges as any };
+    }
+    if (!isDeepSearch && graphData && graphData.nodes.length > 0) {
+      return { nodes: graphData.nodes as any, edges: graphData.edges as any };
+    }
+    return null;
+  }, [graphData, deepSearchData, isDeepSearch]);
+
+  const activeStats = useMemo(() => {
+    if (isDeepSearch && deepSearchData) return deepSearchData.stats;
+    if (!isDeepSearch && graphData) return graphData.stats;
+    return null;
+  }, [graphData, deepSearchData, isDeepSearch]);
+
+  // Nodes grouped by category for modal
+  const categoryNodes = useMemo(() => {
+    if (!categoryModal || !deepSearchData) return [];
+    return deepSearchData.nodes.filter(n => n.type === categoryModal);
+  }, [categoryModal, deepSearchData]);
 
   // Auth check
   useEffect(() => {
@@ -74,12 +104,19 @@ export default function GraphPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Live search after 2 characters
+  // Live search after 2 characters (only in normal mode)
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchQuery(value);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // In deep search mode, don't show autocomplete dropdown
+    if (isDeepSearch) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
 
     if (value.trim().length < 2) {
       setSuggestions([]);
@@ -99,9 +136,42 @@ export default function GraphPage() {
         setIsSearching(false);
       }
     }, 300);
-  }, []);
+  }, [isDeepSearch]);
 
-  // Select a suggestion from the dropdown — uses expand endpoint directly
+  // Deep search: triggered by Enter key or button
+  const handleDeepSearch = useCallback(async () => {
+    const term = searchQuery.trim();
+    if (term.length < 2) return;
+
+    setShowDropdown(false);
+    setSuggestions([]);
+    setIsLoading(true);
+    setError(null);
+    setGraphData(null);
+    setDeepSearchData(null);
+
+    try {
+      const data = await deepSearchGraph(term);
+      setDeepSearchData(data);
+      if (data.nodes.length === 0) {
+        setError(`Nenhum resultado encontrado para "${term}" em nenhuma tabela`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro na busca profunda');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery]);
+
+  // Handle Enter key
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && isDeepSearch) {
+      e.preventDefault();
+      handleDeepSearch();
+    }
+  }, [isDeepSearch, handleDeepSearch]);
+
+  // Select a suggestion from the dropdown (normal mode)
   const handleSelectSuggestion = useCallback(async (result: GraphSearchResult) => {
     setSearchQuery(result.label);
     setShowDropdown(false);
@@ -109,10 +179,10 @@ export default function GraphPage() {
     setIsLoading(true);
     setError(null);
     setGraphData(null);
+    setDeepSearchData(null);
 
     try {
       const data = await expandGraphNode(result.type, result.id);
-      // Normalize nodes: ensure hop is always inside data (backend may put it at top level or inside data)
       const nodes = (data.nodes || []).map((n: any) => ({
         ...n,
         data: {
@@ -157,6 +227,15 @@ export default function GraphPage() {
     setSearchQuery('');
     setSuggestions([]);
     setShowDropdown(false);
+    setGraphData(null);
+    setDeepSearchData(null);
+    setError(null);
+  }, []);
+
+  const toggleDeepSearch = useCallback(() => {
+    setIsDeepSearch(prev => !prev);
+    setSuggestions([]);
+    setShowDropdown(false);
   }, []);
 
   // Cleanup debounce on unmount
@@ -185,16 +264,38 @@ export default function GraphPage() {
             </h1>
           </div>
 
-          {/* Search Bar with Autocomplete */}
+          {/* Search Bar with Autocomplete + Deep Search Toggle */}
           <div ref={dropdownRef} className="relative flex-1 max-w-lg mx-4">
-            <div className="flex items-center flex-1 bg-slate-800/60 border border-cyan-500/20 rounded-lg px-3 py-1.5 focus-within:border-cyan-500/50 transition-colors">
+            <div className={`flex items-center flex-1 bg-slate-800/60 border rounded-lg px-3 py-1.5 transition-colors ${
+              isDeepSearch
+                ? 'border-amber-500/50 focus-within:border-amber-500/80'
+                : 'border-cyan-500/20 focus-within:border-cyan-500/50'
+            }`}>
+              {/* Deep Search Toggle */}
+              <button
+                type="button"
+                onClick={toggleDeepSearch}
+                title={isDeepSearch ? 'Deep Search ativo (busca em TODAS as tabelas)' : 'Ativar Deep Search'}
+                className={`flex-shrink-0 p-0.5 rounded transition-colors mr-1 ${
+                  isDeepSearch
+                    ? 'text-amber-400 bg-amber-500/20'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                <Radar className="h-4 w-4" />
+              </button>
+
               <Search className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={handleInputChange}
-                onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
-                placeholder="Buscar empresas, pessoas, politicos, noticias..."
+                onKeyDown={handleKeyDown}
+                onFocus={() => !isDeepSearch && suggestions.length > 0 && setShowDropdown(true)}
+                placeholder={isDeepSearch
+                  ? 'Deep Search: busca em TODAS as tabelas (Enter para buscar)...'
+                  : 'Buscar empresas, pessoas, politicos, noticias...'
+                }
                 className="flex-1 bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none px-2"
               />
               {isSearching && (
@@ -209,11 +310,30 @@ export default function GraphPage() {
                   <X size={14} />
                 </button>
               )}
+
+              {/* Deep search submit button */}
+              {isDeepSearch && searchQuery.trim().length >= 2 && !isLoading && (
+                <button
+                  type="button"
+                  onClick={handleDeepSearch}
+                  className="flex-shrink-0 ml-1 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-semibold rounded hover:bg-amber-500/30 transition-colors"
+                >
+                  GO
+                </button>
+              )}
             </div>
 
-            {/* Autocomplete Dropdown — grouped by type with section headers */}
-            {showDropdown && suggestions.length > 0 && (() => {
-              // Group suggestions by type, preserving order
+            {/* Deep search mode indicator */}
+            {isDeepSearch && (
+              <div className="absolute -bottom-5 left-0 right-0 flex justify-center">
+                <span className="text-[9px] text-amber-400/70 font-medium tracking-wider uppercase">
+                  Deep Search — Bayesian Evidence Model
+                </span>
+              </div>
+            )}
+
+            {/* Autocomplete Dropdown — only in normal mode */}
+            {!isDeepSearch && showDropdown && suggestions.length > 0 && (() => {
               const grouped: Record<string, typeof suggestions> = {};
               const typeOrder: string[] = [];
               for (const r of suggestions) {
@@ -262,7 +382,7 @@ export default function GraphPage() {
             })()}
 
             {/* No results message */}
-            {showDropdown && suggestions.length === 0 && !isSearching && searchQuery.trim().length >= 2 && (
+            {!isDeepSearch && showDropdown && suggestions.length === 0 && !isSearching && searchQuery.trim().length >= 2 && (
               <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-cyan-500/20 bg-[#0f1629] px-3 py-3 text-xs text-slate-500 text-center">
                 Nenhum resultado para &quot;{searchQuery.trim()}&quot;
               </div>
@@ -294,16 +414,98 @@ export default function GraphPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Left Legend Panel (deep search mode only) */}
+        {isDeepSearch && deepSearchData && deepSearchData.nodes.length > 0 && (
+          <div className="flex-shrink-0 w-48 bg-[#0f1629]/90 border-r border-cyan-500/10 overflow-y-auto p-3">
+            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80 mb-3">
+              Categorias
+            </h3>
+            <div className="space-y-2">
+              {Object.entries(ENTITY_COLORS).map(([type, color]) => {
+                const statsKey = type === 'pessoa' ? 'socios' : (type + 's');
+                const count = (deepSearchData.stats as any)[statsKey] || 0;
+                if (count === 0) return null;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setCategoryModal(type)}
+                    className="flex items-center gap-2 w-full text-left rounded-md px-1.5 py-1 hover:bg-slate-700/40 transition-colors cursor-pointer group"
+                  >
+                    <div
+                      className="h-3 w-3 flex-shrink-0 rounded-full group-hover:scale-125 transition-transform"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="text-xs text-slate-300 min-w-0 truncate group-hover:text-white transition-colors">{ENTITY_LABELS[type]}</span>
+                    <span className="text-[10px] text-slate-500 flex-shrink-0 tabular-nums">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-700/50">
+              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80 mb-2">
+                Modelo
+              </h3>
+              <div className="space-y-1.5 text-[10px] text-slate-400 leading-tight">
+                <div className="flex items-start gap-1.5">
+                  <div className="h-2 w-2 mt-0.5 rounded-full bg-green-400 flex-shrink-0" />
+                  <span>&gt;80% Forte</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <div className="h-2 w-2 mt-0.5 rounded-full bg-yellow-400 flex-shrink-0" />
+                  <span>50-80% Possivel</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <div className="h-2 w-2 mt-0.5 rounded-full bg-red-400 flex-shrink-0" />
+                  <span>&lt;50% Fraco</span>
+                </div>
+              </div>
+              <p className="mt-2 text-[9px] text-slate-500 leading-tight">
+                Bayesian: C = 1 - ∏(1 - p_i)
+              </p>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-700/50">
+              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80 mb-2">
+                Fontes
+              </h3>
+              <div className="space-y-1 text-[10px] text-slate-400">
+                <div>Contrato Social: 1.00</div>
+                <div>Cadastro Gov: 0.95</div>
+                <div>Politicos: 0.90</div>
+                <div>Emendas: 0.85</div>
+                <div>Bens/Receitas: 0.80</div>
+                <div>Noticias: 0.50</div>
+                <div>Topicos: 0.40</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 relative">
           {/* Empty State */}
-          {!graphData && !isLoading && !error && (
+          {!canvasData && !isLoading && !error && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-4 text-center max-w-sm">
                 <Network className="h-16 w-16 text-cyan-500/30" />
                 <h2 className="text-lg font-semibold text-slate-300">Graph Explorer</h2>
                 <p className="text-sm text-slate-500">
-                  Digite o nome de uma empresa, pessoa, politico ou noticia para visualizar conexoes.
+                  {isDeepSearch
+                    ? 'Deep Search: digite um termo e pressione Enter para buscar em TODAS as tabelas do banco de dados.'
+                    : 'Digite o nome de uma empresa, pessoa, politico ou noticia para visualizar conexoes.'
+                  }
                 </p>
+                {!isDeepSearch && (
+                  <button
+                    type="button"
+                    onClick={toggleDeepSearch}
+                    className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-medium hover:bg-amber-500/20 transition-colors"
+                  >
+                    <Radar className="h-4 w-4" />
+                    Ativar Deep Search
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -314,7 +516,7 @@ export default function GraphPage() {
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="h-8 w-8 text-cyan-400 animate-spin" />
                 <span className="text-sm text-slate-400">
-                  Explorando conexoes...
+                  {isDeepSearch ? 'Buscando em todas as tabelas...' : 'Explorando conexoes...'}
                 </span>
               </div>
             </div>
@@ -339,22 +541,133 @@ export default function GraphPage() {
           )}
 
           {/* Stats Badge */}
-          {graphData && graphData.stats && !isLoading && !error && (
+          {activeStats && !isLoading && !error && canvasData && (
             <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
-              <div className="bg-[#0f1629]/90 border border-cyan-500/20 rounded-lg px-3 py-1.5 flex items-center gap-2 flex-wrap text-xs">
-                <span className="text-slate-400">Centro: <span className="text-cyan-400 font-medium">{graphData.center?.label}</span></span>
+              <div className={`border rounded-lg px-3 py-1.5 flex items-center gap-2 flex-wrap text-xs ${
+                isDeepSearch
+                  ? 'bg-[#0f1629]/90 border-amber-500/30'
+                  : 'bg-[#0f1629]/90 border-cyan-500/20'
+              }`}>
+                {isDeepSearch ? (
+                  <span className="text-amber-400 font-medium">Deep Search: &quot;{deepSearchData?.query}&quot;</span>
+                ) : (
+                  <span className="text-slate-400">Centro: <span className="text-cyan-400 font-medium">{graphData?.center?.label}</span></span>
+                )}
                 <span className="text-slate-600">|</span>
-                {graphData.stats.empresas > 0 && <span className="text-red-400">{graphData.stats.empresas} empresa</span>}
-                {graphData.stats.socios > 0 && <span className="text-orange-400">{graphData.stats.socios} socios</span>}
-                {graphData.stats.politicos > 0 && <span className="text-blue-400">{graphData.stats.politicos} politicos</span>}
-                {graphData.stats.mandatos > 0 && <span className="text-purple-400">{graphData.stats.mandatos} mandatos</span>}
-                {graphData.stats.emendas > 0 && <span className="text-cyan-400">{graphData.stats.emendas} emendas</span>}
-                {graphData.stats.noticias > 0 && <span className="text-green-400">{graphData.stats.noticias} noticias</span>}
+                {activeStats.empresas > 0 && <span className="text-red-400">{activeStats.empresas} empresa</span>}
+                {activeStats.socios > 0 && <span className="text-orange-400">{activeStats.socios} socios</span>}
+                {activeStats.politicos > 0 && <span className="text-blue-400">{activeStats.politicos} politicos</span>}
+                {activeStats.mandatos > 0 && <span className="text-purple-400">{activeStats.mandatos} mandatos</span>}
+                {activeStats.emendas > 0 && <span className="text-cyan-400">{activeStats.emendas} emendas</span>}
+                {activeStats.noticias > 0 && <span className="text-green-400">{activeStats.noticias} noticias</span>}
+                <span className="text-slate-600">|</span>
+                <span className="text-slate-400">{activeStats.total_nodes} nos, {activeStats.total_edges} conexoes</span>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Category Detail Modal */}
+      {categoryModal && deepSearchData && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setCategoryModal(null)}
+        >
+          <div
+            className="relative w-full max-w-2xl max-h-[80vh] bg-[#0f1629] border border-cyan-500/20 rounded-xl shadow-2xl flex flex-col overflow-hidden mx-4"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-700/50 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div
+                  className="h-4 w-4 rounded-full"
+                  style={{ backgroundColor: ENTITY_COLORS[categoryModal] || '#6b7280' }}
+                />
+                <h2 className="text-sm font-semibold text-slate-200">
+                  {ENTITY_LABELS[categoryModal] || categoryModal}
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    ({categoryNodes.length} resultado{categoryNodes.length !== 1 ? 's' : ''})
+                  </span>
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryModal(null)}
+                className="p-1 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="overflow-y-auto flex-1 p-2">
+              {categoryNodes.length === 0 ? (
+                <p className="text-sm text-slate-500 text-center py-8">Nenhum resultado nesta categoria</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-[#0f1629]">
+                    <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
+                      <th className="px-3 py-2 font-semibold">Nome</th>
+                      <th className="px-3 py-2 font-semibold">Detalhe</th>
+                      <th className="px-3 py-2 font-semibold text-right">Relevancia</th>
+                      <th className="px-3 py-2 font-semibold text-right">Fontes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categoryNodes
+                      .sort((a, b) => ((b as any).data?.relevance || 0) - ((a as any).data?.relevance || 0))
+                      .map((node, idx) => {
+                        const rel = typeof node.data?.relevance === 'number' ? node.data.relevance : null;
+                        const srcCount = typeof node.data?.sourceCount === 'number' ? node.data.sourceCount : 0;
+                        const sources = Array.isArray(node.data?.sources) ? (node.data.sources as string[]) : [];
+                        const subtitle = typeof node.data?.subtitle === 'string' ? node.data.subtitle : '';
+                        return (
+                          <tr
+                            key={node.id || idx}
+                            className="border-b border-slate-800/30 hover:bg-slate-700/20 transition-colors"
+                          >
+                            <td className="px-3 py-2.5">
+                              <div className="text-slate-200 font-medium truncate max-w-[240px]">{node.label}</div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="text-slate-400 truncate max-w-[200px]">{subtitle || '—'}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              {rel !== null ? (
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums ${
+                                  rel >= 80
+                                    ? 'bg-green-500/15 text-green-400'
+                                    : rel >= 50
+                                      ? 'bg-yellow-500/15 text-yellow-400'
+                                      : 'bg-red-500/15 text-red-400'
+                                }`}>
+                                  {rel}%
+                                </span>
+                              ) : (
+                                <span className="text-slate-600">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              {srcCount > 0 ? (
+                                <span className="text-slate-400 tabular-nums" title={sources.join(', ')}>
+                                  {srcCount}
+                                </span>
+                              ) : (
+                                <span className="text-slate-600">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

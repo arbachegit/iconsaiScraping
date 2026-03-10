@@ -309,6 +309,177 @@ let _approvedCache = null;
 let _approvedCacheExpiry = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+const COMPANY_BASE_SELECT = 'id, cnpj, razao_social, nome_fantasia, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cnae_principal, cnae_id, telefone_1, telefone_2, email';
+
+function normalizeCompanyText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function scoreCompanyMatch(company, term) {
+  const normalizedTerm = normalizeCompanyText(term);
+  if (!normalizedTerm) return 0;
+
+  const fantasia = normalizeCompanyText(company.nome_fantasia);
+  const razao = normalizeCompanyText(company.razao_social);
+  const fields = [fantasia, razao].filter(Boolean);
+
+  if (fields.some((value) => value === normalizedTerm)) return 100;
+  if (fields.some((value) => value.startsWith(normalizedTerm))) return 70;
+  if (fields.some((value) => value.includes(normalizedTerm))) return 40;
+  return 0;
+}
+
+function parseCityState(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return { city: null, state: null };
+
+  const match = raw.match(/^(.*?)(?:\s*[-/]\s*|\s+)([A-Za-z]{2})$/);
+  if (!match) {
+    return { city: raw, state: null };
+  }
+
+  return {
+    city: match[1].trim() || null,
+    state: match[2].trim().toUpperCase(),
+  };
+}
+
+function dedupeCompanies(rows = []) {
+  const deduped = new Map();
+
+  for (const row of rows) {
+    const key = row.cnpj || row.id;
+    if (!key || deduped.has(key)) continue;
+    deduped.set(key, row);
+  }
+
+  return [...deduped.values()];
+}
+
+async function searchCompaniesInDimEmpresas({ nome, cidade = null, limit = 100 }) {
+  const searchTerm = String(nome || '').trim();
+  if (searchTerm.length < 2) return [];
+
+  const fetchLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 50), 500);
+  const escapedTerm = escapeLike(searchTerm);
+  const { city, state } = parseCityState(cidade);
+  const escapedCity = city ? escapeLike(city) : null;
+
+  const buildQuery = (column) => {
+    let query = supabaseRead
+      .from('dim_empresas')
+      .select(COMPANY_BASE_SELECT)
+      .ilike(column, `%${escapedTerm}%`)
+      .limit(fetchLimit);
+
+    if (state) {
+      query = query.eq('estado', state);
+    }
+
+    if (escapedCity) {
+      query = query.ilike('cidade', `%${escapedCity}%`);
+    }
+
+    return query;
+  };
+
+  const [razaoResult, fantasiaResult] = await Promise.all([
+    buildQuery('razao_social'),
+    buildQuery('nome_fantasia'),
+  ]);
+
+  if (razaoResult.error) throw razaoResult.error;
+  if (fantasiaResult.error) throw fantasiaResult.error;
+
+  return dedupeCompanies([...(razaoResult.data || []), ...(fantasiaResult.data || [])])
+    .sort((a, b) => {
+      const scoreDiff = scoreCompanyMatch(b, searchTerm) - scoreCompanyMatch(a, searchTerm);
+      if (scoreDiff !== 0) return scoreDiff;
+
+      const aName = normalizeCompanyText(a.nome_fantasia || a.razao_social);
+      const bName = normalizeCompanyText(b.nome_fantasia || b.razao_social);
+      if (aName !== bName) return aName.localeCompare(bName);
+
+      return String(a.id).localeCompare(String(b.id));
+    })
+    .slice(0, fetchLimit);
+}
+
+export async function enrichCompanyRows(baseCompanies = []) {
+  const companies = dedupeCompanies(baseCompanies);
+  if (companies.length === 0) return [];
+
+  const companyIds = companies.map((company) => company.id).filter(Boolean);
+  const regimeMap = new Map();
+
+  if (companyIds.length > 0) {
+    const { data: regimeRows, error: regimeError } = await supabaseRead
+      .from('fato_regime_tributario')
+      .select('empresa_id, ativo, data_registro, data_inicio, regime_tributario, cnae_descricao, cnae_principal')
+      .in('empresa_id', companyIds)
+      .order('data_registro', { ascending: false });
+
+    if (regimeError) throw regimeError;
+
+    for (const row of regimeRows || []) {
+      if (!regimeMap.has(row.empresa_id) || row.ativo) {
+        regimeMap.set(row.empresa_id, row);
+      }
+    }
+  }
+
+  const cnaeCodeSet = new Set();
+  for (const company of companies) {
+    const regime = regimeMap.get(company.id);
+    const rawCode = regime?.cnae_principal || company.cnae_principal;
+    if (!rawCode) continue;
+    cnaeCodeSet.add(String(rawCode).replace(/[.\-/]/g, ''));
+  }
+
+  const cnaeMap = new Map();
+  const cnaeCodes = [...cnaeCodeSet];
+  for (let i = 0; i < cnaeCodes.length; i += 500) {
+    const batch = cnaeCodes.slice(i, i + 500);
+    if (batch.length === 0) continue;
+
+    const { data: cnaeRows, error: cnaeError } = await supabaseRead
+      .from('raw_cnae')
+      .select('codigo, codigo_numerico, descricao, descricao_classe')
+      .in('codigo_numerico', batch);
+
+    if (cnaeError) throw cnaeError;
+
+    for (const row of cnaeRows || []) {
+      if (row.codigo_numerico) cnaeMap.set(row.codigo_numerico, row);
+      if (row.codigo) cnaeMap.set(String(row.codigo).replace(/[.\-/]/g, ''), row);
+    }
+  }
+
+  return companies.map((company) => {
+    const regime = regimeMap.get(company.id);
+    const cnaeCode = String(regime?.cnae_principal || company.cnae_principal || '').replace(/[.\-/]/g, '');
+    const cnae = cnaeMap.get(cnaeCode) || null;
+
+    return {
+      ...company,
+      cidade: company.cidade ?? null,
+      estado: company.estado ?? null,
+      telefone_1: company.telefone_1 ?? null,
+      telefone_2: company.telefone_2 ?? null,
+      email: company.email ?? null,
+      regime_tributario: regime?.regime_tributario || null,
+      cnae_principal: regime?.cnae_principal || company.cnae_principal || null,
+      cnae_descricao: cnae?.descricao || regime?.cnae_descricao || null,
+      descricao_classe: cnae?.descricao_classe || null,
+      linkedin: company.linkedin_url || null,
+    };
+  });
+}
+
 async function getApprovedCompanies() {
   if (_approvedCache && Date.now() < _approvedCacheExpiry) {
     return _approvedCache;
@@ -325,7 +496,7 @@ async function getApprovedCompanies() {
     const to = from + pageSize - 1;
     const { data, error } = await supabase
       .from('fato_transacao_empresas')
-      .select('empresa_id, dim_empresas(id, razao_social, nome_fantasia, cnpj, cidade, estado, situacao_cadastral, linkedin_url, cep, codigo_ibge, fonte, cnae_principal, cnae_id)')
+      .select(`empresa_id, dim_empresas(${COMPANY_BASE_SELECT})`)
       .range(from, to);
 
     if (error || !data || data.length === 0) break;
@@ -340,63 +511,7 @@ async function getApprovedCompanies() {
     page++;
   }
 
-  // Fetch regime data - single query since fato_regime_tributario is small (~6 rows ativo)
-  const regimeMap = new Map();
-  const { data: regimeRows } = await supabase
-    .from('fato_regime_tributario')
-    .select('empresa_id, regime_tributario, cnae_descricao, cnae_principal')
-    .eq('ativo', true)
-    .limit(10000);
-  for (const r of (regimeRows || [])) {
-    if (!regimeMap.has(r.empresa_id)) {
-      regimeMap.set(r.empresa_id, r);
-    }
-  }
-
-  // Collect all CNAE codes for batch lookup in raw_cnae
-  const cnaeCodeSet = new Set();
-  const cnaeIdSet = new Set();
-  for (const c of companies) {
-    const regime = regimeMap.get(c.id);
-    const code = regime?.cnae_principal || c.cnae_principal;
-    if (code) cnaeCodeSet.add(code.replace(/[.\-/]/g, ''));
-    if (c.cnae_id) cnaeIdSet.add(c.cnae_id);
-  }
-
-  // Batch fetch raw_cnae details
-  const cnaeMap = new Map();
-  if (cnaeCodeSet.size > 0 || cnaeIdSet.size > 0) {
-    const cnaeCodes = [...cnaeCodeSet];
-    // Fetch in batches of 500 to avoid URL length limits
-    for (let i = 0; i < cnaeCodes.length; i += 500) {
-      const batch = cnaeCodes.slice(i, i + 500);
-      const { data: cnaeRows } = await supabase
-        .from('raw_cnae')
-        .select('codigo, codigo_numerico, descricao, descricao_classe')
-        .in('codigo_numerico', batch);
-      for (const row of (cnaeRows || [])) {
-        cnaeMap.set(row.codigo_numerico, row);
-        if (row.codigo) cnaeMap.set(row.codigo.replace(/[.\-/]/g, ''), row);
-      }
-    }
-  }
-
-  // Merge regime + cnae data
-  const enriched = companies.map(c => {
-    const regime = regimeMap.get(c.id);
-    const cnaeCode = (regime?.cnae_principal || c.cnae_principal || '').replace(/[.\-/]/g, '');
-    const cnae = cnaeMap.get(cnaeCode) || null;
-    return {
-      ...c,
-      cidade: c.cidade ?? null,
-      estado: c.estado ?? null,
-      regime_tributario: regime?.regime_tributario || null,
-      cnae_principal: regime?.cnae_principal || c.cnae_principal || null,
-      cnae_descricao: cnae?.descricao || regime?.cnae_descricao || null,
-      descricao_classe: cnae?.descricao_classe || null,
-      linkedin: c.linkedin_url || null,
-    };
-  });
+  const enriched = await enrichCompanyRows(companies);
 
   _approvedCache = enriched;
   _approvedCacheExpiry = Date.now() + CACHE_TTL_MS;
@@ -436,12 +551,23 @@ export async function listCompanies(filters = {}) {
 
   let companies = await getApprovedCompanies();
 
-  // Apply text filters in JS — search by razao_social (substring match)
+  if (nome) {
+    const searchedCompanies = await searchCompaniesInDimEmpresas({
+      nome,
+      cidade,
+      limit: Math.min(offset + limit + 100, 500),
+    });
+    const enrichedSearchResults = await enrichCompanyRows(searchedCompanies);
+    companies = dedupeCompanies([...companies, ...enrichedSearchResults]);
+  }
+
+  // Apply text filters in JS — search by razao_social and nome_fantasia (substring match)
   if (nome) {
     const searchTerm = nome.toLowerCase();
     companies = companies.filter(c => {
       const razao = (c.razao_social || '').toLowerCase();
-      return razao.includes(searchTerm);
+      const fantasia = (c.nome_fantasia || '').toLowerCase();
+      return razao.includes(searchTerm) || fantasia.includes(searchTerm);
     });
   }
 

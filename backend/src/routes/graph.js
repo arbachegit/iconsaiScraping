@@ -1201,4 +1201,632 @@ router.get('/node-details/empresa/:empresaId', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// SOURCE RELIABILITY WEIGHTS — Bayesian evidence model
+// ---------------------------------------------------------------------------
+const SOURCE_WEIGHTS = {
+  fato_transacao_empresas: 1.0,
+  dim_empresas: 0.95,
+  dim_pessoas: 0.9,
+  dim_politicos: 0.9,
+  fato_politicos_mandatos: 0.85,
+  fato_emendas: 0.85,
+  fato_bens_candidato: 0.8,
+  fato_receitas_campanha: 0.8,
+  fato_votos_legislativos: 0.8,
+  dim_noticias: 0.5,
+  fato_noticias_topicos: 0.4,
+  vw_noticias_completas: 0.5,
+};
+
+const SOURCE_CATEGORY = {
+  dim_empresas: 'empresa',
+  dim_pessoas: 'pessoa',
+  dim_politicos: 'politico',
+  fato_politicos_mandatos: 'mandato',
+  fato_emendas: 'emenda',
+  dim_noticias: 'noticia',
+  fato_noticias_topicos: 'noticia',
+  vw_noticias_completas: 'noticia',
+  fato_transacao_empresas: 'pessoa',
+  fato_bens_candidato: 'politico',
+  fato_receitas_campanha: 'politico',
+  fato_votos_legislativos: 'politico',
+};
+
+function bayesianConfidence(weights) {
+  if (!weights || weights.length === 0) return 0;
+  let product = 1;
+  for (const w of weights) product *= 1 - w;
+  return Math.round((1 - product) * 10000) / 10000;
+}
+
+// ---------------------------------------------------------------------------
+// GET /deep-search?q=<term>  — Cross-table deep search with relevance scoring
+// ---------------------------------------------------------------------------
+router.get('/deep-search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q || q.length < 2) {
+      return res.status(400).json({ success: false, error: 'Query "q" must be at least 2 characters' });
+    }
+
+    const escaped = escapeLike(q);
+    const pattern = `%${escaped}%`;
+    const resultMap = new Map();
+    const linkMap = new Map();
+
+    function addResult(key, { id, type, label, subtitle, source, weight, data }) {
+      if (resultMap.has(key)) {
+        const existing = resultMap.get(key);
+        existing.sources.push({ table: source, weight });
+        if (data) Object.assign(existing.data, data);
+      } else {
+        resultMap.set(key, {
+          id: String(id), type,
+          label: label || `${type} #${id}`,
+          subtitle: subtitle || '',
+          sources: [{ table: source, weight }],
+          data: data || {},
+        });
+      }
+    }
+
+    function addLink(srcKey, tgtKey, tipo_relacao, evidence) {
+      const k = `${srcKey}::${tgtKey}`;
+      const r = `${tgtKey}::${srcKey}`;
+      if (!linkMap.has(k) && !linkMap.has(r)) {
+        linkMap.set(k, { source: srcKey, target: tgtKey, tipo_relacao, evidence });
+      }
+    }
+
+    const searchPromises = [];
+
+    // 1. dim_empresas
+    searchPromises.push(
+      supabase.from('dim_empresas')
+        .select('id, razao_social, nome_fantasia, cnpj, cidade, estado, situacao_cadastral, email, website')
+        .or(`razao_social.ilike.${pattern},nome_fantasia.ilike.${pattern},cnpj.ilike.${pattern},email.ilike.${pattern},website.ilike.${pattern}`)
+        .limit(50)
+        .then(({ data }) => {
+          for (const e of (data || [])) {
+            addResult(`empresa:${e.id}`, {
+              id: e.id, type: 'empresa',
+              label: e.nome_fantasia || e.razao_social,
+              subtitle: [e.cnpj, e.cidade, e.estado].filter(Boolean).join(' - '),
+              source: 'dim_empresas', weight: SOURCE_WEIGHTS.dim_empresas,
+              data: { cnpj: e.cnpj, cidade: e.cidade, estado: e.estado, situacao: e.situacao_cadastral },
+            });
+          }
+        })
+    );
+
+    // 2. dim_pessoas
+    searchPromises.push(
+      supabase.from('dim_pessoas')
+        .select('id, nome_completo, email, linkedin_url, cargo_atual, empresa_atual')
+        .or(`nome_completo.ilike.${pattern},email.ilike.${pattern}`)
+        .limit(50)
+        .then(({ data }) => {
+          for (const p of (data || [])) {
+            addResult(`pessoa:${p.id}`, {
+              id: p.id, type: 'pessoa',
+              label: p.nome_completo,
+              subtitle: [p.cargo_atual, p.empresa_atual].filter(Boolean).join(' @ '),
+              source: 'dim_pessoas', weight: SOURCE_WEIGHTS.dim_pessoas,
+              data: { email: p.email, linkedin: p.linkedin_url, cargo: p.cargo_atual },
+            });
+          }
+        })
+    );
+
+    // 3. fato_transacao_empresas (join dim_pessoas)
+    searchPromises.push(
+      supabase.from('fato_transacao_empresas')
+        .select('id, cargo, qualificacao, empresa_id, dim_pessoas!inner ( id, nome_completo, email, linkedin_url )')
+        .ilike('dim_pessoas.nome_completo', pattern)
+        .limit(50)
+        .then(({ data }) => {
+          for (const tx of (data || [])) {
+            const p = tx.dim_pessoas;
+            if (!p || !p.id) continue;
+            const pk = `pessoa:${p.id}`;
+            addResult(pk, {
+              id: p.id, type: 'pessoa', label: p.nome_completo,
+              subtitle: tx.cargo || tx.qualificacao || '',
+              source: 'fato_transacao_empresas', weight: SOURCE_WEIGHTS.fato_transacao_empresas,
+              data: { email: p.email, linkedin: p.linkedin_url, cargo: tx.cargo || tx.qualificacao },
+            });
+            if (tx.empresa_id) addLink(pk, `empresa:${tx.empresa_id}`, 'societaria', 'contrato_social');
+          }
+        })
+    );
+
+    // 4. dim_noticias
+    searchPromises.push(
+      supabase.from('dim_noticias')
+        .select('id, titulo, resumo, fonte_nome, data_publicacao')
+        .or(`titulo.ilike.${pattern},resumo.ilike.${pattern}`)
+        .limit(30)
+        .then(({ data }) => {
+          for (const n of (data || [])) {
+            addResult(`noticia:${n.id}`, {
+              id: n.id, type: 'noticia',
+              label: (n.titulo || '').substring(0, 80),
+              subtitle: [n.fonte_nome, n.data_publicacao].filter(Boolean).join(' - '),
+              source: 'dim_noticias', weight: SOURCE_WEIGHTS.dim_noticias,
+              data: { fonte: n.fonte_nome, data: n.data_publicacao },
+            });
+          }
+        })
+    );
+
+    // 5. fato_noticias_topicos
+    searchPromises.push(
+      supabase.from('fato_noticias_topicos')
+        .select('id, noticia_id, topico, relevancia, sentimento')
+        .ilike('topico', pattern)
+        .limit(30)
+        .then(({ data }) => {
+          for (const t of (data || [])) {
+            if (t.noticia_id) {
+              addResult(`noticia:${t.noticia_id}`, {
+                id: t.noticia_id, type: 'noticia', label: t.topico,
+                subtitle: `Topico: ${t.sentimento || ''} (rel: ${t.relevancia || 0})`,
+                source: 'fato_noticias_topicos', weight: SOURCE_WEIGHTS.fato_noticias_topicos,
+                data: { topico: t.topico, sentimento: t.sentimento },
+              });
+            }
+          }
+        })
+    );
+
+    // 6. fato_bens_candidato
+    searchPromises.push(
+      supabase.from('fato_bens_candidato').select('*')
+        .or(`descricao.ilike.${pattern},tipo_bem.ilike.${pattern},candidato_nome.ilike.${pattern}`)
+        .limit(30)
+        .then(({ data }) => {
+          for (const b of (data || [])) {
+            addResult(`bens:${b.id}`, {
+              id: b.id, type: 'politico',
+              label: (b.candidato_nome || b.descricao || `Bem #${b.id}`).substring(0, 80),
+              subtitle: [b.tipo_bem, b.valor ? `R$ ${Number(b.valor).toLocaleString('pt-BR')}` : null, b.ano_eleicao].filter(Boolean).join(' - '),
+              source: 'fato_bens_candidato', weight: SOURCE_WEIGHTS.fato_bens_candidato,
+              data: b,
+            });
+          }
+        }).catch(err => logger.warn('deep_search_bens_error', { error: err.message }))
+    );
+
+    // 7. fato_receitas_campanha
+    searchPromises.push(
+      supabase.from('fato_receitas_campanha').select('*')
+        .or(`doador_nome.ilike.${pattern},candidato_nome.ilike.${pattern},descricao.ilike.${pattern}`)
+        .limit(30)
+        .then(({ data }) => {
+          for (const r of (data || [])) {
+            addResult(`receita:${r.id}`, {
+              id: r.id, type: 'politico',
+              label: (r.candidato_nome || r.doador_nome || `Receita #${r.id}`).substring(0, 80),
+              subtitle: [r.doador_nome, r.valor ? `R$ ${Number(r.valor).toLocaleString('pt-BR')}` : null, r.ano_eleicao].filter(Boolean).join(' - '),
+              source: 'fato_receitas_campanha', weight: SOURCE_WEIGHTS.fato_receitas_campanha,
+              data: r,
+            });
+          }
+        }).catch(err => logger.warn('deep_search_receitas_error', { error: err.message }))
+    );
+
+    // 8. fato_votos_legislativos
+    searchPromises.push(
+      supabase.from('fato_votos_legislativos').select('*')
+        .or(`parlamentar_nome.ilike.${pattern},materia.ilike.${pattern},descricao.ilike.${pattern}`)
+        .limit(30)
+        .then(({ data }) => {
+          for (const v of (data || [])) {
+            addResult(`voto:${v.id}`, {
+              id: v.id, type: 'politico',
+              label: (v.parlamentar_nome || v.materia || `Voto #${v.id}`).substring(0, 80),
+              subtitle: [v.voto, v.sessao, v.data_sessao].filter(Boolean).join(' - '),
+              source: 'fato_votos_legislativos', weight: SOURCE_WEIGHTS.fato_votos_legislativos,
+              data: v,
+            });
+          }
+        }).catch(err => logger.warn('deep_search_votos_error', { error: err.message }))
+    );
+
+    // 9-10. Brasil Data Hub
+    if (brasilDataHub) {
+      searchPromises.push(
+        brasilDataHub.from('dim_politicos')
+          .select('id, nome_completo, nome_urna, partido_sigla, cargo_atual')
+          .or(`nome_completo.ilike.${pattern},nome_urna.ilike.${pattern}`)
+          .limit(30)
+          .then(({ data }) => {
+            for (const pol of (data || [])) {
+              addResult(`politico:${pol.id}`, {
+                id: pol.id, type: 'politico',
+                label: pol.nome_urna || pol.nome_completo,
+                subtitle: [pol.partido_sigla, pol.cargo_atual].filter(Boolean).join(' - '),
+                source: 'dim_politicos', weight: SOURCE_WEIGHTS.dim_politicos,
+                data: { partido: pol.partido_sigla, cargo: pol.cargo_atual },
+              });
+            }
+          }),
+        brasilDataHub.from('fato_emendas_parlamentares')
+          .select('id, autor, descricao, localidade, uf, ano, tipo, valor_empenhado')
+          .or(`autor.ilike.${pattern},descricao.ilike.${pattern},localidade.ilike.${pattern}`)
+          .limit(30)
+          .then(({ data }) => {
+            for (const em of (data || [])) {
+              addResult(`emenda:${em.id}`, {
+                id: em.id, type: 'emenda',
+                label: `${(em.autor || '').substring(0, 30)} - ${em.tipo || 'Emenda'} ${em.ano || ''}`,
+                subtitle: [em.localidade, em.uf, em.valor_empenhado ? `R$ ${Number(em.valor_empenhado).toLocaleString('pt-BR')}` : null].filter(Boolean).join(' - '),
+                source: 'fato_emendas', weight: SOURCE_WEIGHTS.fato_emendas,
+                data: { autor: em.autor, tipo: em.tipo, ano: em.ano, uf: em.uf, valor: em.valor_empenhado },
+              });
+            }
+          }),
+        brasilDataHub.from('fato_politicos_mandatos')
+          .select('id, politico_id, cargo, partido_sigla, municipio, ano_eleicao, eleito')
+          .or(`municipio.ilike.${pattern},cargo.ilike.${pattern}`)
+          .limit(30)
+          .then(({ data }) => {
+            for (const m of (data || [])) {
+              const key = `mandato:${m.id}`;
+              addResult(key, {
+                id: m.id, type: 'mandato',
+                label: `${m.cargo || 'Mandato'} ${m.municipio || ''} ${m.ano_eleicao || ''}`.substring(0, 60),
+                subtitle: [m.partido_sigla, m.eleito ? 'Eleito' : 'Nao eleito', m.ano_eleicao].filter(Boolean).join(' - '),
+                source: 'fato_politicos_mandatos', weight: SOURCE_WEIGHTS.fato_politicos_mandatos,
+                data: { cargo: m.cargo, municipio: m.municipio, ano: m.ano_eleicao, partido: m.partido_sigla, eleito: m.eleito },
+              });
+              if (m.politico_id) addLink(key, `politico:${m.politico_id}`, 'mandato', 'eleicao');
+            }
+          })
+      );
+    }
+
+    await Promise.allSettled(searchPromises);
+
+    // ── Fetch REAL relationships from fato_relacoes_entidades ──
+    // Group discovered node IDs by entity type so we can query existing DB edges
+    const idsByType = {};
+    for (const [key] of resultMap) {
+      const [type, id] = key.split(':');
+      if (!idsByType[type]) idsByType[type] = [];
+      idsByType[type].push(id);
+    }
+
+    // Build OR conditions for all discovered entity types
+    const orClauses = [];
+    for (const [type, ids] of Object.entries(idsByType)) {
+      if (ids.length > 0) {
+        orClauses.push(`and(source_type.eq.${type},source_id.in.(${ids.join(',')}))`);
+        orClauses.push(`and(target_type.eq.${type},target_id.in.(${ids.join(',')}))`);
+      }
+    }
+
+    if (orClauses.length > 0) {
+      const { data: dbEdges, error: dbEdgesErr } = await supabase
+        .from('fato_relacoes_entidades')
+        .select('source_type, source_id, target_type, target_id, tipo_relacao, strength')
+        .eq('ativo', true)
+        .or(orClauses.join(','))
+        .limit(500);
+
+      if (!dbEdgesErr && dbEdges) {
+        for (const edge of dbEdges) {
+          const srcKey = `${edge.source_type}:${edge.source_id}`;
+          const tgtKey = `${edge.target_type}:${edge.target_id}`;
+
+          // Only add edge if BOTH endpoints are in our discovered resultMap
+          if (resultMap.has(srcKey) && resultMap.has(tgtKey)) {
+            addLink(srcKey, tgtKey, edge.tipo_relacao, 'database');
+          }
+
+          // Also discover nodes connected to our results but not yet in resultMap
+          // This brings in relationship context (e.g. a pessoa linked to a discovered empresa)
+          const missingKey = !resultMap.has(srcKey) ? srcKey : (!resultMap.has(tgtKey) ? tgtKey : null);
+          if (missingKey) {
+            const [mType, mId] = missingKey.split(':');
+            // Only add 1-hop neighbor nodes (not discovered by search, but linked to results)
+            const presentKey = missingKey === srcKey ? tgtKey : srcKey;
+            if (resultMap.has(presentKey)) {
+              // We don't have this node yet — add a placeholder, will be resolved below
+              addResult(missingKey, {
+                id: mId, type: mType,
+                label: `${mType} #${mId}`,
+                subtitle: 'Conexão descoberta',
+                source: 'fato_relacoes_entidades', weight: 0.7,
+                data: { discovered_via: 'relationship' },
+              });
+              addLink(presentKey, missingKey, edge.tipo_relacao, 'database');
+            }
+          }
+        }
+
+        // Resolve labels for placeholder nodes (discovered via relationships)
+        const placeholders = [...resultMap.entries()].filter(([, v]) => v.label.includes('#') && v.data.discovered_via === 'relationship');
+        if (placeholders.length > 0) {
+          const resolveByType = {};
+          for (const [key, node] of placeholders) {
+            if (!resolveByType[node.type]) resolveByType[node.type] = [];
+            resolveByType[node.type].push({ key, id: node.id });
+          }
+
+          const resolvePromises = [];
+
+          if (resolveByType.empresa?.length > 0) {
+            resolvePromises.push(
+              supabase.from('dim_empresas')
+                .select('id, razao_social, nome_fantasia, cnpj, cidade, estado')
+                .in('id', resolveByType.empresa.map(n => n.id))
+                .then(({ data }) => {
+                  for (const e of (data || [])) {
+                    const node = resultMap.get(`empresa:${e.id}`);
+                    if (node) {
+                      node.label = e.nome_fantasia || e.razao_social || node.label;
+                      node.subtitle = [e.cnpj, e.cidade, e.estado].filter(Boolean).join(' - ');
+                      Object.assign(node.data, { cnpj: e.cnpj, cidade: e.cidade, estado: e.estado });
+                    }
+                  }
+                })
+            );
+          }
+
+          if (resolveByType.pessoa?.length > 0) {
+            resolvePromises.push(
+              supabase.from('dim_pessoas')
+                .select('id, nome_completo, cargo_atual, empresa_atual')
+                .in('id', resolveByType.pessoa.map(n => n.id))
+                .then(({ data }) => {
+                  for (const p of (data || [])) {
+                    const node = resultMap.get(`pessoa:${p.id}`);
+                    if (node) {
+                      node.label = p.nome_completo || node.label;
+                      node.subtitle = [p.cargo_atual, p.empresa_atual].filter(Boolean).join(' @ ');
+                    }
+                  }
+                })
+            );
+          }
+
+          if (resolveByType.politico?.length > 0) {
+            resolvePromises.push(
+              supabase.from('dim_politicos')
+                .select('id, nome_completo, partido_sigla, cargo_atual')
+                .in('id', resolveByType.politico.map(n => n.id))
+                .then(({ data }) => {
+                  for (const p of (data || [])) {
+                    const node = resultMap.get(`politico:${p.id}`);
+                    if (node) {
+                      node.label = p.nome_completo || node.label;
+                      node.subtitle = [p.partido_sigla, p.cargo_atual].filter(Boolean).join(' - ');
+                    }
+                  }
+                })
+            );
+          }
+
+          if (resolveByType.noticia?.length > 0) {
+            resolvePromises.push(
+              supabase.from('dim_noticias')
+                .select('id, titulo, fonte_nome')
+                .in('id', resolveByType.noticia.map(n => n.id))
+                .then(({ data }) => {
+                  for (const n of (data || [])) {
+                    const node = resultMap.get(`noticia:${n.id}`);
+                    if (node) {
+                      node.label = (n.titulo || '').substring(0, 80) || node.label;
+                      node.subtitle = n.fonte_nome || '';
+                    }
+                  }
+                })
+            );
+          }
+
+          await Promise.allSettled(resolvePromises);
+        }
+      }
+
+      logger.info('deep_search_db_edges', {
+        query: q,
+        orClauses: orClauses.length,
+        dbEdgesFound: dbEdges?.length || 0,
+        linkMapSize: linkMap.size,
+      });
+    }
+
+    // ── Resolve missing link endpoints (from search-phase links like societaria) ──
+    // Some links reference nodes not found by the search (e.g. empresa linked to a pessoa via fato_transacao)
+    const missingLinkEndpoints = new Map();
+    for (const [, link] of linkMap) {
+      for (const endpoint of [link.source, link.target]) {
+        if (!resultMap.has(endpoint)) {
+          const [mType, mId] = endpoint.split(':');
+          if (mType && mId) missingLinkEndpoints.set(endpoint, { type: mType, id: mId });
+        }
+      }
+    }
+
+    if (missingLinkEndpoints.size > 0) {
+      // Add placeholder nodes for missing endpoints
+      for (const [key, { type, id }] of missingLinkEndpoints) {
+        addResult(key, {
+          id, type,
+          label: `${type} #${id}`,
+          subtitle: 'Conexão descoberta',
+          source: 'fato_relacoes_entidades', weight: 0.7,
+          data: { discovered_via: 'relationship' },
+        });
+      }
+
+      // Resolve labels for these placeholder nodes
+      const resolveByType2 = {};
+      for (const [, { type, id }] of missingLinkEndpoints) {
+        if (!resolveByType2[type]) resolveByType2[type] = [];
+        resolveByType2[type].push(id);
+      }
+
+      const resolvePromises2 = [];
+
+      if (resolveByType2.empresa?.length > 0) {
+        resolvePromises2.push(
+          supabase.from('dim_empresas')
+            .select('id, razao_social, nome_fantasia, cnpj, cidade, estado')
+            .in('id', resolveByType2.empresa)
+            .then(({ data }) => {
+              for (const e of (data || [])) {
+                const node = resultMap.get(`empresa:${e.id}`);
+                if (node) {
+                  node.label = e.nome_fantasia || e.razao_social || node.label;
+                  node.subtitle = [e.cnpj, e.cidade, e.estado].filter(Boolean).join(' - ');
+                  Object.assign(node.data, { cnpj: e.cnpj, cidade: e.cidade, estado: e.estado });
+                }
+              }
+            })
+        );
+      }
+
+      if (resolveByType2.pessoa?.length > 0) {
+        resolvePromises2.push(
+          supabase.from('dim_pessoas')
+            .select('id, nome_completo, cargo_atual, empresa_atual')
+            .in('id', resolveByType2.pessoa)
+            .then(({ data }) => {
+              for (const p of (data || [])) {
+                const node = resultMap.get(`pessoa:${p.id}`);
+                if (node) {
+                  node.label = p.nome_completo || node.label;
+                  node.subtitle = [p.cargo_atual, p.empresa_atual].filter(Boolean).join(' @ ');
+                }
+              }
+            })
+        );
+      }
+
+      if (resolveByType2.politico?.length > 0) {
+        resolvePromises2.push(
+          supabase.from('dim_politicos')
+            .select('id, nome_completo, partido_sigla, cargo_atual')
+            .in('id', resolveByType2.politico)
+            .then(({ data }) => {
+              for (const p of (data || [])) {
+                const node = resultMap.get(`politico:${p.id}`);
+                if (node) {
+                  node.label = p.nome_completo || node.label;
+                  node.subtitle = [p.partido_sigla, p.cargo_atual].filter(Boolean).join(' - ');
+                }
+              }
+            })
+        );
+      }
+
+      if (resolveByType2.noticia?.length > 0) {
+        resolvePromises2.push(
+          supabase.from('dim_noticias')
+            .select('id, titulo, fonte_nome')
+            .in('id', resolveByType2.noticia)
+            .then(({ data }) => {
+              for (const n of (data || [])) {
+                const node = resultMap.get(`noticia:${n.id}`);
+                if (node) {
+                  node.label = (n.titulo || '').substring(0, 80) || node.label;
+                  node.subtitle = n.fonte_nome || '';
+                }
+              }
+            })
+        );
+      }
+
+      await Promise.allSettled(resolvePromises2);
+      logger.info('deep_search_missing_endpoints_resolved', { count: missingLinkEndpoints.size });
+    }
+
+    // Cross-reference: find text-based connections between results
+    const allResults = [...resultMap.entries()];
+    const qLower = q.toLowerCase();
+
+    for (let i = 0; i < allResults.length; i++) {
+      for (let j = i + 1; j < allResults.length; j++) {
+        const [keyA, nodeA] = allResults[i];
+        const [keyB, nodeB] = allResults[j];
+        if (linkMap.has(`${keyA}::${keyB}`) || linkMap.has(`${keyB}::${keyA}`)) continue;
+
+        const labelA = (nodeA.label || '').toLowerCase();
+        const labelB = (nodeB.label || '').toLowerCase();
+        const dataStrA = JSON.stringify(nodeA.data || {}).toLowerCase();
+        const dataStrB = JSON.stringify(nodeB.data || {}).toLowerCase();
+
+        let connected = false;
+        let relType = 'mencionado_em';
+
+        if (labelA.length >= 4 && dataStrB.includes(labelA)) connected = true;
+        if (labelB.length >= 4 && dataStrA.includes(labelB)) connected = true;
+
+        if (connected) addLink(keyA, keyB, relType, 'cross_reference');
+      }
+    }
+
+    // Build graph output
+    const nodes = [];
+    const edgesOut = [];
+    let edgeId = 0;
+
+    for (const [key, node] of resultMap) {
+      const sourceWeights = node.sources.map(s => s.weight);
+      const confidence = bayesianConfidence(sourceWeights);
+      nodes.push({
+        id: key, type: node.type, label: node.label, hop: 1,
+        data: {
+          ...node.data,
+          subtitle: node.subtitle,
+          sources: node.sources.map(s => s.table),
+          sourceCount: node.sources.length,
+          confidence,
+          evidenceScore: Math.round(sourceWeights.reduce((a, b) => a + b, 0) * 100) / 100,
+          relevance: Math.round(confidence * 100),
+        },
+      });
+    }
+
+    for (const [, link] of linkMap) {
+      const srcNode = resultMap.get(link.source);
+      const tgtNode = resultMap.get(link.target);
+      if (!srcNode || !tgtNode) continue;
+      const srcConf = bayesianConfidence(srcNode.sources.map(s => s.weight));
+      const tgtConf = bayesianConfidence(tgtNode.sources.map(s => s.weight));
+      edgesOut.push({
+        id: `de${++edgeId}`,
+        source: link.source, target: link.target,
+        tipo_relacao: link.tipo_relacao,
+        strength: Math.round(((srcConf + tgtConf) / 2) * 100) / 100,
+        label: link.evidence,
+      });
+    }
+
+    nodes.sort((a, b) => (b.data.confidence || 0) - (a.data.confidence || 0));
+
+    const statsMap = {};
+    for (const n of nodes) statsMap[n.type] = (statsMap[n.type] || 0) + 1;
+
+    logger.info('deep_search', { query: q, nodes: nodes.length, edges: edgesOut.length });
+
+    return res.json({
+      success: true, query: q, nodes, edges: edgesOut, center: null,
+      stats: {
+        total_nodes: nodes.length, total_edges: edgesOut.length,
+        empresas: statsMap['empresa'] || 0, socios: statsMap['pessoa'] || 0,
+        noticias: statsMap['noticia'] || 0, politicos: statsMap['politico'] || 0,
+        emendas: statsMap['emenda'] || 0, mandatos: statsMap['mandato'] || 0,
+      },
+    });
+  } catch (err) {
+    logger.error('deep_search_error', { query: req.query.q, error: err.message, stack: err.stack });
+    return res.status(500).json({ success: false, error: 'Deep search failed' });
+  }
+});
+
 export default router;

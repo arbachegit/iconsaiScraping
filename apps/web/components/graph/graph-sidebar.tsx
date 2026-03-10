@@ -121,6 +121,37 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
         <h3 className="text-sm font-semibold text-white truncate">{node.label}</h3>
         {cnpj && <p className="mt-0.5 text-[10px] text-cyan-400/70 font-mono">{formatCnpj(cnpj)}</p>}
         {!cnpj && <p className="mt-0.5 text-[10px] text-slate-500">ID: {node.id}</p>}
+
+        {/* Relevance badge (deep search nodes) */}
+        {(() => {
+          const rel = typeof node.data?.relevance === 'number' ? node.data.relevance : null;
+          const srcCount = typeof node.data?.sourceCount === 'number' ? node.data.sourceCount : 0;
+          const sources = Array.isArray(node.data?.sources) ? (node.data.sources as string[]) : [];
+          if (rel === null) return null;
+          return (
+            <>
+              <div className="mt-1.5 flex items-center gap-2">
+                <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  rel >= 80 ? 'bg-green-500/20 text-green-400' : rel >= 50 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
+                }`}>
+                  {rel}% confianca
+                </div>
+                {srcCount > 0 && (
+                  <span className="text-[9px] text-slate-500">{srcCount} fonte{srcCount > 1 ? 's' : ''}</span>
+                )}
+              </div>
+              {sources.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {sources.map((src) => (
+                    <span key={src} className="inline-block px-1.5 py-0.5 text-[8px] bg-slate-700/50 text-slate-400 rounded">
+                      {src.replace(/^(dim_|fato_|vw_)/, '')}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Tabs */}
