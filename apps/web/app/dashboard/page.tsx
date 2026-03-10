@@ -392,7 +392,7 @@ export default function DashboardPage() {
           <div className="min-w-0 flex-1">
           {/* Intelligence Modules - Neo Glow Cards (filtered by permissions) */}
           <div className="py-4 mb-1 overflow-visible">
-            <div className="flex flex-wrap justify-center gap-3">
+            <div className="flex flex-nowrap justify-center gap-2">
               {hasModuleAccess(userPermissions, 'empresas') && (
                 <NeoGlowCompactCard
                   icon={Building2}
@@ -690,7 +690,7 @@ function NeoGlowCompactCard({
   const glow = glowConfig[iconColor];
 
   return (
-    <div onClick={onClick} className="relative group cursor-pointer w-[160px] h-[80px]">
+    <div onClick={onClick} className="relative group cursor-pointer min-w-0 flex-1 max-w-[160px] h-[80px]">
       {/* Neo Glow Layer */}
       <div
         className={`absolute -inset-[2px] rounded-lg bg-gradient-to-r ${glow.gradient} blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500 animate-pulse`}

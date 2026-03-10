@@ -296,12 +296,13 @@ export function validateParams(schema) {
 // ============================================
 
 // Entity type enum
-const entityTypeSchema = z.enum(['empresa', 'pessoa', 'politico', 'emenda', 'noticia']);
+const entityTypeSchema = z.enum(['empresa', 'pessoa', 'politico', 'mandato', 'emenda', 'noticia']);
 
 // Relationship type enum
 const relationshipTypeSchema = z.enum([
   'societaria', 'fornecedor', 'concorrente', 'parceiro', 'regulador',
-  'beneficiario', 'mencionado_em', 'cnae_similar', 'geografico', 'politico_empresarial'
+  'beneficiario', 'mencionado_em', 'cnae_similar', 'geografico', 'politico_empresarial',
+  'emenda_beneficiario', 'mandato'
 ]);
 
 // Hybrid search request (POST /search/hybrid)
@@ -504,7 +505,14 @@ export const saveBatchSchema = z.object({
     email: z.string().email().optional().nullable(),
     localizacao: z.string().optional().nullable(),
     resumo_profissional: z.string().optional().nullable(),
-    foto_url: z.string().url().optional().nullable()
+    foto_url: z.string().url().optional().nullable(),
+    telefone: z.string().optional().nullable(),
+    headline: z.string().optional().nullable(),
+    senioridade: z.string().optional().nullable(),
+    departamento: z.string().optional().nullable(),
+    twitter_url: z.string().url().optional().nullable(),
+    raw_apollo_data: z.record(z.string(), z.unknown()).optional().nullable(),
+    _provider: z.string().optional().nullable(),
   })).min(1, 'Mínimo 1 pessoa').max(100, 'Máximo 100 pessoas por lote'),
   aprovado_por: z.string().min(1, 'aprovado_por é obrigatório')
 });

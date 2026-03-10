@@ -14,6 +14,33 @@ import { escapeLike, maskPII } from '../utils/sanitize.js';
 const router = Router();
 
 /**
+ * Parse a localizacao string like "São Paulo - SP" or "São Paulo, SP, Brasil"
+ * into { cidade, estado, pais }.
+ */
+function parseLocalizacao(localizacao) {
+  if (!localizacao) return { cidade: null, estado: null, pais: 'Brasil' };
+
+  const cleaned = localizacao.trim();
+  // Try "Cidade - UF" or "Cidade, UF" patterns
+  const match = cleaned.match(/^([^,\-–]+?)\s*[-–,]\s*([A-Z]{2})\b/i);
+  if (match) {
+    return {
+      cidade: match[1].trim(),
+      estado: match[2].toUpperCase(),
+      pais: 'Brasil',
+    };
+  }
+
+  // Fallback: if it looks like just a state abbreviation
+  if (/^[A-Z]{2}$/.test(cleaned)) {
+    return { cidade: null, estado: cleaned, pais: 'Brasil' };
+  }
+
+  // Fallback: treat entire string as cidade
+  return { cidade: cleaned, estado: null, pais: 'Brasil' };
+}
+
+/**
  * GET /api/people/list
  * List all people in the database
  */
@@ -79,7 +106,7 @@ router.get('/list-enriched', async (req, res) => {
     // 1. Fetch pessoas (avoid full table scan on 22M rows)
     let pessoasQuery = supabase
       .from('dim_pessoas')
-      .select('id, nome_completo, primeiro_nome, email, raw_apollo_data')
+      .select('id, nome_completo, primeiro_nome, email, cidade, estado, cargo_atual, empresa_atual_nome, telefone, headline, sobre, raw_apollo_data')
       .order('nome_completo', { ascending: true });
 
     if (search.length >= 2) {
@@ -196,15 +223,15 @@ router.get('/list-enriched', async (req, res) => {
       return {
         id: p.id,
         nome: p.nome_completo || p.primeiro_nome || '',
-        empresa: emp.nome_fantasia || emp.razao_social || fallbackCompanyName || '',
-        cidade: emp.cidade || rawApollo.city || '',
-        estado: emp.estado || rawApollo.state || '',
+        empresa: p.empresa_atual_nome || emp.nome_fantasia || emp.razao_social || fallbackCompanyName || '',
+        cidade: p.cidade || emp.cidade || rawApollo.city || '',
+        estado: p.estado || emp.estado || rawApollo.state || '',
         cnae: emp.cnae_principal || '',
         descricao: emp.cnae_descricao || '',
         cnae_descricao: emp.cnae_descricao || '',
         email: p.email || rawApollo.email || emp.email || '',
-        phone: apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
-        telefone: apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
+        phone: p.telefone || apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
+        telefone: p.telefone || apolloPhone || emp.telefone_1 || emp.telefone_2 || '',
       };
     });
 
@@ -763,6 +790,7 @@ router.post('/save', async (req, res) => {
 
     // Insert person into dim_pessoas (CPF already normalized above)
     const nomeParts = pessoa.nome_completo?.split(' ') || [];
+    const loc = parseLocalizacao(pessoa.localizacao);
     const { data: novaPessoa, error: pessoaError } = await supabase
       .from('dim_pessoas')
       .insert({
@@ -773,8 +801,18 @@ router.post('/save', async (req, res) => {
         email: pessoa.email || null,
         linkedin_url: pessoa.linkedin_url || null,
         foto_url: pessoa.foto_url || null,
-        pais: pessoa.localizacao?.includes(',') ? pessoa.localizacao.split(',').pop()?.trim() : 'Brasil',
-        fonte: 'perplexity',
+        cidade: loc.cidade,
+        estado: loc.estado,
+        pais: loc.pais,
+        cargo_atual: pessoa.cargo_atual || null,
+        empresa_atual_nome: pessoa.empresa_atual || null,
+        sobre: pessoa.resumo_profissional || null,
+        telefone: pessoa.telefone || null,
+        headline: pessoa.headline || null,
+        senioridade: pessoa.senioridade || null,
+        departamento: pessoa.departamento || null,
+        twitter_url: pessoa.twitter_url || null,
+        fonte: pessoa._provider || 'external',
         raw_apollo_data: pessoa.raw_apollo_data || null
       })
       .select()
@@ -1019,6 +1057,11 @@ router.post('/search-v2', validateBody(searchPersonV2Schema), async (req, res) =
 
         const hasData = empresa || cargo || linkedinUrl || apolloData || descricao;
         if (hasData) {
+          const apolloPhones = apolloData?.phone_numbers;
+          const telefone = Array.isArray(apolloPhones)
+            ? apolloPhones.find(Boolean) || null
+            : (typeof apolloPhones === 'string' ? apolloPhones : null);
+
           externalResults.push({
             cpf: cpf || null,
             nome_completo: apolloData?.name || searchName,
@@ -1029,6 +1072,12 @@ router.post('/search-v2', validateBody(searchPersonV2Schema), async (req, res) =
             localizacao: localizacao || (apolloData ? `${apolloData.city || ''} ${apolloData.state || ''}`.trim() : null),
             resumo_profissional: descricao,
             foto_url: apolloData?.photo_url || null,
+            telefone: telefone,
+            headline: apolloData?.headline || null,
+            senioridade: apolloData?.seniority || null,
+            departamento: Array.isArray(apolloData?.departments) ? apolloData.departments[0] || null : null,
+            twitter_url: apolloData?.twitter || null,
+            raw_apollo_data: apolloData?.raw_apollo || null,
             _source: 'external',
             _provider: 'serper+apollo'
           });
@@ -1253,6 +1302,7 @@ router.post('/save-batch', validateBody(saveBatchSchema), async (req, res) => {
 
         // Insert person
         const nomeParts = pessoa.nome_completo?.split(' ') || [];
+        const loc = parseLocalizacao(pessoa.localizacao);
         const { data: novaPessoa, error: insertError } = await supabase
           .from('dim_pessoas')
           .insert({
@@ -1263,9 +1313,19 @@ router.post('/save-batch', validateBody(saveBatchSchema), async (req, res) => {
             email: pessoa.email || null,
             linkedin_url: pessoa.linkedin_url || null,
             foto_url: pessoa.foto_url || null,
-            pais: pessoa.localizacao?.includes(',') ? pessoa.localizacao.split(',').pop()?.trim() : 'Brasil',
-            fonte: 'batch_insert',
-            raw_apollo_data: null
+            cidade: loc.cidade,
+            estado: loc.estado,
+            pais: loc.pais,
+            cargo_atual: pessoa.cargo_atual || null,
+            empresa_atual_nome: pessoa.empresa_atual || null,
+            sobre: pessoa.resumo_profissional || null,
+            telefone: pessoa.telefone || null,
+            headline: pessoa.headline || null,
+            senioridade: pessoa.senioridade || null,
+            departamento: pessoa.departamento || null,
+            twitter_url: pessoa.twitter_url || null,
+            fonte: pessoa._provider || 'batch_insert',
+            raw_apollo_data: pessoa.raw_apollo_data || null
           })
           .select('id')
           .single();
