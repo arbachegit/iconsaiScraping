@@ -213,7 +213,12 @@ export const RELATIONSHIP_TYPES = {
   MENCIONADO_EM: 'mencionado_em',
   CNAE_SIMILAR: 'cnae_similar',
   GEOGRAFICO: 'geografico',
-  POLITICO_EMPRESARIAL: 'politico_empresarial'
+  POLITICO_EMPRESARIAL: 'politico_empresarial',
+  CLIENTE_DE: 'cliente_de',
+  FORNECEDOR_DE: 'fornecedor_de',
+  CONCORRENTE_DE: 'concorrente_de',
+  PARCEIRO_DE: 'parceiro_de',
+  OPORTUNIDADE: 'oportunidade',
 };
 
 export const ALL_RELATIONSHIP_TYPES = Object.values(RELATIONSHIP_TYPES);
@@ -224,7 +229,97 @@ export const ENTITY_TYPES = {
   PESSOA: 'pessoa',
   POLITICO: 'politico',
   EMENDA: 'emenda',
-  NOTICIA: 'noticia'
+  NOTICIA: 'noticia',
+  MANDATO: 'mandato',
+};
+
+// Ecosystem relationship types
+export const ECOSYSTEM_TYPES = {
+  CLIENTE: 'cliente',
+  FORNECEDOR: 'fornecedor',
+  CONCORRENTE: 'concorrente',
+  PARCEIRO: 'parceiro',
+};
+
+// Evidence types
+export const EVIDENCE_TYPES = {
+  MENCAO_WEBSITE: 'mencao_website',
+  RELACAO_SOCIETARIA: 'relacao_societaria',
+  CONTRATO_PUBLICO: 'contrato_publico',
+  MENCAO_NOTICIA: 'mencao_noticia',
+  CORRELACAO_CNAE: 'correlacao_cnae',
+  PROXIMIDADE_GEO: 'proximidade_geo',
+  INFERENCIA_GEMINI: 'inferencia_gemini',
+  DADO_CADASTRAL: 'dado_cadastral',
+};
+
+// Evidence sources
+export const EVIDENCE_SOURCES = {
+  GEMINI_CRAWL: 'gemini_crawl',
+  CNAE_CORRELACAO: 'cnae_correlacao',
+  GEO_ANALISE: 'geo_analise',
+  NOTICIA: 'noticia',
+  SOCIETARIO: 'societario',
+  BRASILAPI: 'brasilapi',
+  APOLLO: 'apollo',
+};
+
+// Opportunity types
+export const OPPORTUNITY_TYPES = {
+  VENDA_DIRETA: 'venda_direta',
+  PARCERIA: 'parceria',
+  FORNECIMENTO: 'fornecimento',
+  EXPANSAO_GEOGRAFICA: 'expansao_geografica',
+};
+
+// Lead temperature
+export const LEAD_TEMPERATURA = {
+  QUENTE: 'quente',
+  MORNO: 'morno',
+  FRIO: 'frio',
+};
+
+// Opportunity priority
+export const OPORTUNIDADE_PRIORIDADE = {
+  CRITICA: 'critica',
+  ALTA: 'alta',
+  MEDIA: 'media',
+  BAIXA: 'baixa',
+};
+
+// Opportunity scoring weights
+export const OPPORTUNITY_WEIGHTS = {
+  GEOGRAFICO: 0.20,
+  CNAE: 0.25,
+  TRIBUTARIO: 0.15,
+  TEMPORAL: 0.10,
+  EVIDENCIA: 0.30,
+};
+
+// Company porte classification
+export const PORTE_EMPRESA = {
+  MEI: 'MEI',
+  ME: 'ME',
+  EPP: 'EPP',
+  MEDIO: 'MEDIO',
+  GRANDE: 'GRANDE',
+};
+
+// Buyer persona
+export const PERFIL_COMPRADOR = {
+  PRICE_SENSITIVE: 'price_sensitive',
+  VALUE_ORIENTED: 'value_oriented',
+  PREMIUM: 'premium',
+};
+
+// Geographic arc of operation
+export const ARCO_ATUACAO = {
+  LOCAL: 'local',
+  MUNICIPAL: 'municipal',
+  ESTADUAL: 'estadual',
+  REGIONAL: 'regional',
+  NACIONAL: 'nacional',
+  INTERNACIONAL: 'internacional',
 };
 
 export const ALL_ENTITY_TYPES = Object.values(ENTITY_TYPES);

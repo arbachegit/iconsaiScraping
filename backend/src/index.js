@@ -21,6 +21,7 @@ import statsRouter from "./routes/stats.js";
 import graphRouter from "./routes/graph.js";
 import emendasRouter from "./routes/emendas.js";
 import dbModelRouter from "./routes/db-model.js";
+import biRouter from "./routes/bi.js";
 import { logger, requestLogger } from "./utils/logger.js";
 import { initCache } from "./utils/cache.js";
 import { requireAuth, requirePermission } from "./middleware/auth.js";
@@ -79,6 +80,7 @@ export function createApp() {
   app.use("/graph", limiter);
   app.use("/emendas", limiter);
   app.use("/db-model", limiter);
+  app.use("/bi", limiter);
 
   // Routes (nginx strips /api/ prefix, so use /companies directly)
   // All data routes require JWT authentication
@@ -125,6 +127,7 @@ export function createApp() {
   app.use("/stats", requireAuth, statsRouter);
   app.use("/graph", requireAuth, graphRouter);
   app.use("/db-model", requireAuth, dbModelRouter);
+  app.use("/bi", requireAuth, biRouter);
 
   // Health check
   app.get("/health", (req, res) => {
