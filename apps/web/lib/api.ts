@@ -2682,3 +2682,144 @@ export async function triggerBiPipeline(empresaId: string): Promise<void> {
   const res = await fetchWithAuth(`${API_BASE}/bi/pipeline/${empresaId}`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to trigger BI pipeline');
 }
+
+// ═══════════════ Reports API ═══════════════
+
+export interface ReportTemplate {
+  id: string;
+  codigo: string;
+  nome: string;
+  descricao: string | null;
+  categoria: string;
+  template_sections: Array<{ key: string; titulo: string; tipo: string }>;
+}
+
+export interface ReportSection {
+  key: string;
+  titulo: string;
+  tipo: string;
+  data: unknown;
+}
+
+export interface GeneratedReport {
+  id: string;
+  titulo: string;
+  resumo: string | null;
+  sections: ReportSection[];
+  metricas: Record<string, unknown>;
+  score_geral: number | null;
+  graph_analytics: Record<string, unknown> | null;
+  status: string;
+  created_at: string;
+  template?: string;
+  dim_relatorios?: { codigo: string; nome: string; categoria: string };
+}
+
+export interface ReportListItem {
+  id: string;
+  titulo: string;
+  resumo: string | null;
+  score_geral: number | null;
+  status: string;
+  created_at: string;
+  dim_relatorios: { codigo: string; nome: string; categoria: string } | null;
+}
+
+export interface GraphAnalytics {
+  summary: {
+    total_nodes: number;
+    total_edges: number;
+    total_communities: number;
+    total_bridges: number;
+    avg_strength: number;
+    avg_confidence: number;
+    relationship_types: Record<string, number>;
+  };
+  root_metrics: {
+    degree: number;
+    betweenness: number;
+    pagerank: number;
+    closeness: number;
+    community: number;
+    direct_connections: number;
+  };
+  top_influencers: Array<{
+    key: string;
+    type: string;
+    id: string;
+    score: number;
+    degree: number;
+    betweenness: number;
+    pagerank: number;
+  }>;
+  communities: Array<{
+    id: number;
+    size: number;
+    members: Array<{ type: string; id: string }>;
+  }>;
+  bridges: Array<{
+    from: { type: string; id: string };
+    to: { type: string; id: string };
+  }>;
+  duration_ms: number;
+}
+
+export async function getReportCatalog(): Promise<ReportTemplate[]> {
+  const res = await fetchWithAuth(`${API_BASE}/reports/catalog`);
+  if (!res.ok) throw new Error('Failed to fetch report catalog');
+  const json = await res.json();
+  return json.data || [];
+}
+
+export async function generateReportApi(
+  reportCode: string,
+  entityType: string,
+  entityId: string,
+): Promise<GeneratedReport> {
+  const res = await fetchWithAuth(`${API_BASE}/reports/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_code: reportCode, entity_type: entityType, entity_id: entityId }),
+  });
+  if (!res.ok) throw new Error('Failed to generate report');
+  const json = await res.json();
+  return json.data;
+}
+
+export async function listEntityReports(
+  entityType: string,
+  entityId: string,
+): Promise<ReportListItem[]> {
+  const res = await fetchWithAuth(`${API_BASE}/reports/entity/${entityType}/${entityId}`);
+  if (!res.ok) throw new Error('Failed to list reports');
+  const json = await res.json();
+  return json.data || [];
+}
+
+export async function getReportById(reportId: string): Promise<GeneratedReport> {
+  const res = await fetchWithAuth(`${API_BASE}/reports/${reportId}`);
+  if (!res.ok) throw new Error('Failed to fetch report');
+  const json = await res.json();
+  return json.data;
+}
+
+export async function getGraphAnalytics(
+  entityType: string,
+  entityId: string,
+  hops = 2,
+): Promise<GraphAnalytics> {
+  const res = await fetchWithAuth(`${API_BASE}/reports/analytics/${entityType}/${entityId}?hops=${hops}`);
+  if (!res.ok) throw new Error('Failed to fetch graph analytics');
+  const json = await res.json();
+  return json.data;
+}
+
+export async function getInfluenceScore(
+  entityType: string,
+  entityId: string,
+): Promise<{ influence_score: number; degree: number; pagerank: number; connections: number; network_size: number }> {
+  const res = await fetchWithAuth(`${API_BASE}/reports/influence/${entityType}/${entityId}`);
+  if (!res.ok) throw new Error('Failed to fetch influence score');
+  const json = await res.json();
+  return json.data;
+}

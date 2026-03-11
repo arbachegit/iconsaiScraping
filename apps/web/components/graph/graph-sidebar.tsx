@@ -5,7 +5,7 @@ import Image from 'next/image';
 import {
   X, Building2, MapPin, Briefcase, Users,
   Phone, Mail, Globe, Linkedin, Loader2, Receipt, BadgeCheck, CalendarDays,
-  Layers, TrendingUp, Zap, Target, ThermometerSun,
+  Layers, TrendingUp, Zap, Target, ThermometerSun, FileText, Network, ChevronRight,
 } from 'lucide-react';
 import { getGraphEntityId, type GraphNode } from './types';
 import { ENTITY_COLORS } from './styles';
@@ -14,10 +14,17 @@ import {
   getBiProfile,
   getBiOpportunities,
   triggerBiPipeline,
+  listEntityReports,
+  generateReportApi,
+  getReportById,
+  getReportCatalog,
   type GraphNodeDetailsResponse,
   type Socio,
   type BiProfile,
   type BiOpportunity,
+  type ReportListItem,
+  type ReportTemplate,
+  type GeneratedReport,
 } from '@/lib/api';
 
 interface Connection {
@@ -63,7 +70,7 @@ function formatStrength(value?: number | null): string | null {
   return `${Math.round(value)}%`;
 }
 
-type TabKey = 'empresa' | 'fiscal' | 'bi';
+type TabKey = 'empresa' | 'fiscal' | 'bi' | 'reports';
 
 export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) {
   const entityColor = ENTITY_COLORS[node.type] || '#6b7280';
@@ -80,6 +87,13 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
   const [biOpportunities, setBiOpportunities] = useState<BiOpportunity[]>([]);
   const [biLoading, setBiLoading] = useState(false);
   const [biRunning, setBiRunning] = useState(false);
+
+  // Reports state
+  const [reportsList, setReportsList] = useState<ReportListItem[]>([]);
+  const [reportCatalog, setReportCatalog] = useState<ReportTemplate[]>([]);
+  const [selectedReport, setSelectedReport] = useState<GeneratedReport | null>(null);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportGenerating, setReportGenerating] = useState(false);
 
   useEffect(() => { setActiveTab('empresa'); }, [node.id]);
 
@@ -122,8 +136,33 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
     return () => { cancelled = true; };
   }, [activeTab, entityId, isEmpresa, biProfile]);
 
-  // Reset BI state on node change
-  useEffect(() => { setBiProfile(null); setBiOpportunities([]); }, [node.id]);
+  // Reset BI + Reports state on node change
+  useEffect(() => {
+    setBiProfile(null);
+    setBiOpportunities([]);
+    setReportsList([]);
+    setSelectedReport(null);
+  }, [node.id]);
+
+  // Fetch reports when tab switches to 'reports'
+  useEffect(() => {
+    if (activeTab !== 'reports' || !isEmpresa) return;
+    let cancelled = false;
+    setReportsLoading(true);
+
+    Promise.all([
+      listEntityReports('empresa', entityId).catch(() => []),
+      reportCatalog.length > 0 ? Promise.resolve(reportCatalog) : getReportCatalog().catch(() => []),
+    ]).then(([reports, catalog]) => {
+      if (cancelled) return;
+      setReportsList(reports as ReportListItem[]);
+      if (catalog.length > 0) setReportCatalog(catalog as ReportTemplate[]);
+    }).finally(() => {
+      if (!cancelled) setReportsLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [activeTab, entityId, isEmpresa, reportCatalog.length]);
 
   const handleRunBiPipeline = async () => {
     setBiRunning(true);
@@ -138,6 +177,29 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
       setBiOpportunities(opps as BiOpportunity[]);
     } finally {
       setBiRunning(false);
+    }
+  };
+
+  const handleGenerateReport = async (reportCode: string) => {
+    setReportGenerating(true);
+    try {
+      const report = await generateReportApi(reportCode, 'empresa', entityId);
+      setSelectedReport(report);
+      // Refresh list
+      const updated = await listEntityReports('empresa', entityId).catch(() => []);
+      setReportsList(updated);
+    } finally {
+      setReportGenerating(false);
+    }
+  };
+
+  const handleViewReport = async (reportId: string) => {
+    setReportsLoading(true);
+    try {
+      const report = await getReportById(reportId);
+      setSelectedReport(report);
+    } finally {
+      setReportsLoading(false);
     }
   };
 
@@ -253,6 +315,17 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
           >
             <TrendingUp size={11} className="inline mr-1 -mt-0.5" />
             BI
+          </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`flex-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+              activeTab === 'reports'
+                ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <FileText size={11} className="inline mr-1 -mt-0.5" />
+            Reports
           </button>
         </div>
       )}
@@ -614,6 +687,127 @@ export function GraphSidebar({ node, connections, onClose }: GraphSidebarProps) 
           </div>
         )}
 
+        {/* ═══════════════ TAB: Reports ═══════════════ */}
+        {empresa && !isLoading && activeTab === 'reports' && (
+          <div className="flex flex-col">
+            {reportsLoading && !selectedReport && (
+              <div className="flex items-center justify-center gap-2 px-3 py-6">
+                <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+                <span className="text-[10px] text-slate-400">Carregando relatórios...</span>
+              </div>
+            )}
+
+            {/* Selected report detail view */}
+            {selectedReport && (
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-cyan-500/10">
+                  <button
+                    onClick={() => setSelectedReport(null)}
+                    className="text-[10px] text-cyan-400 hover:text-cyan-300"
+                  >
+                    ← Voltar
+                  </button>
+                  <span className="text-[10px] text-slate-400 truncate flex-1 min-w-0">
+                    {selectedReport.titulo}
+                  </span>
+                  {selectedReport.score_geral != null && (
+                    <span className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                      selectedReport.score_geral >= 70 ? 'bg-green-500/20 text-green-400' :
+                      selectedReport.score_geral >= 40 ? 'bg-yellow-500/20 text-yellow-400' :
+                      'bg-red-500/20 text-red-400'
+                    }`}>
+                      {selectedReport.score_geral}
+                    </span>
+                  )}
+                </div>
+                {selectedReport.resumo && (
+                  <div className="px-3 py-2 border-b border-cyan-500/10">
+                    <p className="text-[10px] text-slate-300 leading-relaxed">{selectedReport.resumo}</p>
+                  </div>
+                )}
+                {selectedReport.sections.map((section) => (
+                  <Section key={section.key} icon={<FileText size={10} />} title={section.titulo}>
+                    <ReportSectionView section={section} />
+                  </Section>
+                ))}
+              </div>
+            )}
+
+            {/* Report list + generate */}
+            {!selectedReport && !reportsLoading && (
+              <>
+                {/* Existing reports */}
+                {reportsList.length > 0 && (
+                  <Section icon={<FileText size={10} />} title={`Relatórios (${reportsList.length})`}>
+                    <ul className="space-y-1">
+                      {reportsList.map((r) => (
+                        <li key={r.id}>
+                          <button
+                            onClick={() => handleViewReport(r.id)}
+                            className="w-full text-left rounded bg-slate-800/40 px-2 py-1.5 transition-colors hover:bg-slate-800/60"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="min-w-0 truncate text-[10px] font-medium text-slate-200">
+                                {r.titulo}
+                              </span>
+                              <ChevronRight size={10} className="flex-shrink-0 text-slate-500" />
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2">
+                              <span className="text-[9px] text-slate-500">
+                                {r.dim_relatorios?.categoria?.replace(/_/g, ' ') || ''}
+                              </span>
+                              {r.score_geral != null && (
+                                <span className={`rounded-full px-1 py-0.5 text-[8px] font-bold ${
+                                  r.score_geral >= 70 ? 'bg-green-500/20 text-green-400' :
+                                  r.score_geral >= 40 ? 'bg-yellow-500/20 text-yellow-400' :
+                                  'bg-red-500/20 text-red-400'
+                                }`}>
+                                  {r.score_geral}
+                                </span>
+                              )}
+                              <span className="text-[8px] text-slate-600 ml-auto flex-shrink-0">
+                                {new Date(r.created_at).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </Section>
+                )}
+
+                {/* Generate new report */}
+                <Section icon={<Network size={10} />} title="Gerar Relatório">
+                  <div className="space-y-1">
+                    {reportCatalog.map((tmpl) => (
+                      <button
+                        key={tmpl.codigo}
+                        onClick={() => handleGenerateReport(tmpl.codigo)}
+                        disabled={reportGenerating}
+                        className="w-full flex items-center gap-2 rounded bg-cyan-500/5 border border-cyan-500/10 px-2 py-1.5 text-left transition-colors hover:bg-cyan-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <FileText size={10} className="flex-shrink-0 text-cyan-400" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] font-medium text-slate-200 truncate">{tmpl.nome}</p>
+                          {tmpl.descricao && (
+                            <p className="text-[9px] text-slate-500 truncate">{tmpl.descricao}</p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {reportGenerating && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <Loader2 size={10} className="animate-spin text-cyan-400" />
+                      <span className="text-[10px] text-slate-400">Gerando relatório...</span>
+                    </div>
+                  )}
+                </Section>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Generic data entries (non-empresa) */}
         {dataEntries.length > 0 && (
           <Section icon={null} title="Detalhes">
@@ -701,4 +895,118 @@ function ContactLink({ icon, text, href }: { icon: ReactNode; text: string; href
       <span className="truncate">{text}</span>
     </a>
   );
+}
+
+function ReportSectionView({ section }: { section: { key: string; titulo: string; tipo: string; data: unknown } }) {
+  const { tipo, data } = section;
+
+  if (!data) return <p className="text-[9px] text-slate-500">Sem dados</p>;
+
+  // Text sections
+  if (tipo === 'texto') {
+    return <p className="text-[10px] text-slate-300 leading-relaxed">{String(data)}</p>;
+  }
+
+  // Score section
+  if (tipo === 'score' && typeof data === 'object' && data !== null) {
+    const d = data as { score?: number; label?: string };
+    return (
+      <div className="flex items-center gap-2">
+        <span className={`text-lg font-bold ${
+          (d.score || 0) >= 70 ? 'text-green-400' : (d.score || 0) >= 40 ? 'text-yellow-400' : 'text-red-400'
+        }`}>
+          {d.score}
+        </span>
+        <span className="text-[10px] text-slate-400">{d.label}</span>
+      </div>
+    );
+  }
+
+  // Table section
+  if (tipo === 'tabela' && typeof data === 'object' && data !== null) {
+    return (
+      <div className="space-y-0.5">
+        {Object.entries(data as Record<string, unknown>)
+          .filter(([, v]) => v != null)
+          .map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-2">
+              <dt className="flex-shrink-0 text-[10px] text-slate-500 whitespace-nowrap">{k.replace(/_/g, ' ')}</dt>
+              <dd className="min-w-0 truncate text-right text-[10px] text-slate-300">
+                {typeof v === 'number' ? (v < 1 && v > 0 ? `${Math.round(v * 100)}%` : String(v)) : String(v)}
+              </dd>
+            </div>
+          ))}
+      </div>
+    );
+  }
+
+  // List section
+  if ((tipo === 'lista' || tipo === 'lista_scored') && Array.isArray(data)) {
+    if (data.length === 0) return <p className="text-[9px] text-slate-500">Nenhum item</p>;
+    return (
+      <ul className="space-y-1">
+        {(data as Array<unknown>).slice(0, 10).map((item, i) => {
+          if (typeof item === 'string') {
+            return <li key={i} className="text-[10px] text-slate-300 pl-2 border-l border-cyan-500/20">{item}</li>;
+          }
+          if (typeof item === 'object' && item !== null) {
+            const obj = item as Record<string, unknown>;
+            const label = obj.nome || obj.label || obj.titulo || obj.tipo_oportunidade || obj.key || `Item ${i + 1}`;
+            const score = typeof obj.score === 'number' ? obj.score
+              : typeof obj.score_oportunidade === 'number' ? obj.score_oportunidade
+              : null;
+            return (
+              <li key={i} className="rounded bg-slate-800/30 px-2 py-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[10px] text-slate-200">{String(label)}</span>
+                  {score != null && (
+                    <span className="flex-shrink-0 text-[9px] font-bold text-cyan-400">{score}</span>
+                  )}
+                </div>
+              </li>
+            );
+          }
+          return <li key={i} className="text-[10px] text-slate-300">{JSON.stringify(item)}</li>;
+        })}
+      </ul>
+    );
+  }
+
+  // Graph analytics section
+  if (tipo === 'graph_analytics' && typeof data === 'object' && data !== null) {
+    const d = data as Record<string, unknown>;
+    return (
+      <div className="space-y-0.5">
+        {Object.entries(d)
+          .filter(([, v]) => typeof v === 'number' || typeof v === 'string')
+          .map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-2">
+              <dt className="flex-shrink-0 text-[10px] text-slate-500 whitespace-nowrap">{k.replace(/_/g, ' ')}</dt>
+              <dd className="min-w-0 truncate text-right text-[10px] text-slate-300">
+                {typeof v === 'number' ? (v < 1 && v > 0 ? `${Math.round(v * 100)}%` : String(v)) : String(v)}
+              </dd>
+            </div>
+          ))}
+      </div>
+    );
+  }
+
+  // Fallback: object as key-value or JSON
+  if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+    return (
+      <div className="space-y-0.5">
+        {Object.entries(data as Record<string, unknown>)
+          .filter(([, v]) => v != null)
+          .slice(0, 10)
+          .map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-2">
+              <dt className="flex-shrink-0 text-[10px] text-slate-500 whitespace-nowrap">{k.replace(/_/g, ' ')}</dt>
+              <dd className="min-w-0 truncate text-right text-[10px] text-slate-300">{String(v)}</dd>
+            </div>
+          ))}
+      </div>
+    );
+  }
+
+  return <p className="text-[10px] text-slate-400">{String(data)}</p>;
 }

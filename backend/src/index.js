@@ -22,6 +22,7 @@ import graphRouter from "./routes/graph.js";
 import emendasRouter from "./routes/emendas.js";
 import dbModelRouter from "./routes/db-model.js";
 import biRouter from "./routes/bi.js";
+import reportsRouter from "./routes/reports.js";
 import { logger, requestLogger } from "./utils/logger.js";
 import { initCache } from "./utils/cache.js";
 import { requireAuth, requirePermission } from "./middleware/auth.js";
@@ -128,6 +129,7 @@ export function createApp() {
   app.use("/graph", requireAuth, graphRouter);
   app.use("/db-model", requireAuth, dbModelRouter);
   app.use("/bi", requireAuth, biRouter);
+  app.use("/reports", requireAuth, reportsRouter);
 
   // Health check
   app.get("/health", (req, res) => {
