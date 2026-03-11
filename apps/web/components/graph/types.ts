@@ -55,6 +55,14 @@ export interface GraphControls {
   edgeDensityPercent: number;
   setEdgeDensityPercent: (v: number) => void;
 
+  // Entity type filters
+  hiddenTypes: ReadonlySet<string>;
+  toggleType: (type: string) => void;
+
+  // Graph depth control (hops)
+  depthHops: number;
+  setDepthHops: (h: number) => void;
+
   // Ego network focus
   egoNodeId: string | null;
   egoHops: number;

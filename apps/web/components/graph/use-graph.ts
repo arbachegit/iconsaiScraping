@@ -85,6 +85,16 @@ export function useGraph() {
   const [pathSourceId, setPathSourceId] = useState<string | null>(null);
   const [pathTargetId, setPathTargetId] = useState<string | null>(null);
   const [rankingMetric, setRankingMetric] = useState<RankingMetric>('none');
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+  const [depthHops, setDepthHops] = useState(2);
+
+  const toggleType = useCallback((type: string) => {
+    setHiddenTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      return next;
+    });
+  }, []);
 
   // ─── Computed: centrality ───
   const centralityMap = useMemo(() => {
@@ -467,6 +477,64 @@ export function useGraph() {
     relLabelSel?.attr('fill-opacity', d => neighbors.has(d.id) ? 1 : 0.05);
   }, [highlightNodeId]);
 
+  // Entity type filters → hide/show nodes by type
+  useEffect(() => {
+    const { nodeSel, linkSel, labelSel, relLabelSel } = d3Ref.current;
+    if (!nodeSel) return;
+    if (hiddenTypes.size === 0) {
+      nodeSel.attr('display', null);
+      labelSel?.attr('display', null);
+      relLabelSel?.attr('display', null);
+      linkSel?.attr('display', null);
+      return;
+    }
+    nodeSel.attr('display', d => hiddenTypes.has(d.type) ? 'none' : null);
+    labelSel?.attr('display', d => hiddenTypes.has(d.type) ? 'none' : null);
+    relLabelSel?.attr('display', d => hiddenTypes.has(d.type) ? 'none' : null);
+    linkSel?.attr('display', d => {
+      const [s, t] = edgeId(d);
+      const sNode = d3Ref.current.nodesData.find(n => n.id === s);
+      const tNode = d3Ref.current.nodesData.find(n => n.id === t);
+      if (sNode && hiddenTypes.has(sNode.type)) return 'none';
+      if (tNode && hiddenTypes.has(tNode.type)) return 'none';
+      return null;
+    });
+  }, [hiddenTypes]);
+
+  // Depth filter → hide nodes beyond N hops
+  useEffect(() => {
+    const { nodeSel, linkSel, labelSel, relLabelSel } = d3Ref.current;
+    if (!nodeSel) return;
+    nodeSel.attr('display', d => {
+      if (hiddenTypes.has(d.type)) return 'none';
+      const hop = getNodeHop(d);
+      if (hop !== null && hop > depthHops) return 'none';
+      return null;
+    });
+    labelSel?.attr('display', d => {
+      if (hiddenTypes.has(d.type)) return 'none';
+      const hop = getNodeHop(d);
+      if (hop !== null && hop > depthHops) return 'none';
+      return null;
+    });
+    relLabelSel?.attr('display', d => {
+      if (hiddenTypes.has(d.type)) return 'none';
+      const hop = getNodeHop(d);
+      if (hop !== null && hop > depthHops) return 'none';
+      return null;
+    });
+    const visibleIds = new Set<string>();
+    d3Ref.current.nodesData.forEach(d => {
+      if (hiddenTypes.has(d.type)) return;
+      const hop = getNodeHop(d);
+      if (hop === null || hop <= depthHops) visibleIds.add(d.id);
+    });
+    linkSel?.attr('display', d => {
+      const [s, t] = edgeId(d);
+      return visibleIds.has(s) && visibleIds.has(t) ? null : 'none';
+    });
+  }, [depthHops, hiddenTypes]);
+
   /* ═══ Actions ═══ */
 
   const toggleFreeze = useCallback(() => {
@@ -549,6 +617,8 @@ export function useGraph() {
     zoomLevel,
     evidenceThreshold, setEvidenceThreshold,
     edgeDensityPercent, setEdgeDensityPercent,
+    hiddenTypes, toggleType,
+    depthHops, setDepthHops,
     egoNodeId, egoHops, setEgoNodeId, setEgoHops,
     focusNode, highlightNodeId, clearHighlight,
     pathSourceId, pathTargetId, setPathSourceId, setPathTargetId, pathNodeIds,
@@ -556,6 +626,7 @@ export function useGraph() {
   }), [
     frozen, toggleFreeze, radialDistance, zoomLevel,
     evidenceThreshold, edgeDensityPercent,
+    hiddenTypes, toggleType, depthHops,
     egoNodeId, egoHops, focusNode, highlightNodeId, clearHighlight,
     pathSourceId, pathTargetId, pathNodeIds, rankingMetric,
   ]);
