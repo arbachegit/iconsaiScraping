@@ -17,6 +17,31 @@ export function escapeLike(str) {
   return str.replace(/[%_\\]/g, '\\$&');
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Validate and return a trimmed UUID, or null if invalid.
+ *
+ * @param {string} str - Raw input
+ * @returns {string | null} Valid UUID or null
+ */
+export function sanitizeUUID(str) {
+  if (!str) return null;
+  const trimmed = str.trim();
+  return UUID_RE.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Remove newlines and control characters to prevent log injection.
+ *
+ * @param {string} str - Raw input
+ * @returns {string} Safe string for logging
+ */
+export function sanitizeForLog(str) {
+  if (!str) return '';
+  return String(str).replace(/[\r\n\t\x00-\x1f]/g, ' ').trim();
+}
+
 /**
  * Mask PII (names, emails, etc.) for structured logging.
  * Shows first 3 and last 3 characters, masks the rest.

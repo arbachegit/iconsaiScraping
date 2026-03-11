@@ -14,7 +14,7 @@ import {
   searchCompaniesByName,
 } from '../services/company-search.js';
 import logger from '../utils/logger.js';
-import { escapeLike } from '../utils/sanitize.js';
+import { escapeLike, sanitizeUUID, sanitizeForLog } from '../utils/sanitize.js';
 
 const router = Router();
 
@@ -264,7 +264,7 @@ router.get('/data', async (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/expand/:entityType/:entityId', async (req, res) => {
   try {
-    const { entityType, entityId } = req.params;
+    const { entityType } = req.params;
     const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
 
     const validTypes = ['empresa', 'pessoa', 'politico', 'mandato', 'emenda', 'noticia'];
@@ -272,8 +272,9 @@ router.get('/expand/:entityType/:entityId', async (req, res) => {
       return res.status(400).json({ success: false, error: `Invalid entity type. Must be one of: ${validTypes.join(', ')}` });
     }
 
+    const entityId = sanitizeUUID(req.params.entityId);
     if (!entityId) {
-      return res.status(400).json({ success: false, error: 'Entity ID is required' });
+      return res.status(400).json({ success: false, error: 'Entity ID must be a valid UUID' });
     }
 
     let materialization = null;
@@ -281,7 +282,7 @@ router.get('/expand/:entityType/:entityId', async (req, res) => {
       try {
         materialization = await ensureCompanyGraphMaterialized(entityId, { force: forceRefresh });
       } catch (matErr) {
-        logger.warn('graph_expand_materialization_failed', { entityId, error: matErr.message });
+        logger.warn('graph_expand_materialization_failed', { entityId, error: sanitizeForLog(matErr.message) });
         materialization = { skipped: true, reason: 'materialization_error', error: matErr.message };
       }
     }
@@ -316,7 +317,7 @@ router.get('/expand/:entityType/:entityId', async (req, res) => {
       materialization: entityType === 'empresa' ? materialization : null,
     });
   } catch (err) {
-    logger.error('graph_expand_error', { entityType: req.params.entityType, entityId: req.params.entityId, error: err.message });
+    logger.error('graph_expand_error', { entityType: req.params.entityType, entityId: sanitizeForLog(req.params.entityId), error: sanitizeForLog(err.message) });
     return res.status(500).json({ success: false, error: 'Failed to expand node' });
   }
 });

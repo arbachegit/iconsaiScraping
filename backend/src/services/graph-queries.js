@@ -149,7 +149,7 @@ export async function getNetworkGraph(entityType, entityId, hops = 2, limit = 20
         if (!visited.has(neighborKey)) {
           visited.add(neighborKey);
           nodeMap.set(neighborKey, {
-            id: neighborId,
+            id: String(neighborId),
             type: neighborType,
             hop: curHop + 1
           });
@@ -320,7 +320,7 @@ async function resolveEntityNames(nodes) {
 
     const lookup = new Map((data || []).map(d => [String(d.id), d]));
     for (const node of grouped.empresa) {
-      const info = lookup.get(node.id) || {};
+      const info = lookup.get(String(node.id)) || {};
       resolved.push({
         ...node,
         label: info.nome_fantasia || info.razao_social || `Empresa #${node.id}`,
@@ -341,7 +341,7 @@ async function resolveEntityNames(nodes) {
 
     const lookup = new Map((data || []).map(d => [String(d.id), d]));
     for (const node of grouped.pessoa) {
-      const info = lookup.get(node.id) || {};
+      const info = lookup.get(String(node.id)) || {};
       resolved.push({
         ...node,
         label: info.nome_completo || `Pessoa #${node.id}`,
@@ -361,7 +361,7 @@ async function resolveEntityNames(nodes) {
 
     const lookup = new Map((data || []).map(d => [String(d.id), d]));
     for (const node of grouped.politico) {
-      const info = lookup.get(node.id) || {};
+      const info = lookup.get(String(node.id)) || {};
       resolved.push({
         ...node,
         label: info.nome_completo || `Político #${node.id}`,
@@ -381,7 +381,7 @@ async function resolveEntityNames(nodes) {
 
     const lookup = new Map((data || []).map(d => [String(d.id), d]));
     for (const node of grouped.noticia) {
-      const info = lookup.get(node.id) || {};
+      const info = lookup.get(String(node.id)) || {};
       resolved.push({
         ...node,
         label: info.titulo?.substring(0, 80) || `Notícia #${node.id}`,
@@ -412,7 +412,7 @@ async function resolveEntityNames(nodes) {
 
     const lookup = new Map((data || []).map(d => [String(d.id), d]));
     for (const node of grouped.mandato) {
-      const info = lookup.get(node.id) || {};
+      const info = lookup.get(String(node.id)) || {};
       resolved.push({
         ...node,
         label: `${info.cargo || 'Mandato'} ${info.municipio || ''} ${info.ano_eleicao || ''}`.trim() || `Mandato #${node.id}`,
