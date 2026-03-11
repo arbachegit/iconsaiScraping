@@ -4,25 +4,22 @@ import { useEffect, useState } from 'react';
 import type { GraphData } from './types';
 import { useGraph } from './use-graph';
 import { GraphToolbar } from './graph-toolbar';
-import { GraphSidebar } from './graph-sidebar';
 import { GraphControlsPanel } from './graph-controls-panel';
 
 interface GraphCanvasProps {
   initialData?: GraphData;
   className?: string;
   onInfoClick?: () => void;
+  onStatsClick?: () => void;
 }
 
-export function GraphCanvas({ initialData, className = '' }: GraphCanvasProps) {
+export function GraphCanvas({ initialData, className = '', onStatsClick }: GraphCanvasProps) {
   const {
     containerRef,
     fitView,
     zoomIn,
     zoomOut,
-    selectedNode,
-    setSelectedNode,
     setGraphData,
-    getConnections,
     controls,
   } = useGraph();
 
@@ -45,6 +42,7 @@ export function GraphCanvas({ initialData, className = '' }: GraphCanvasProps) {
           onToggleFreeze={controls.toggleFreeze}
           controlsPanelOpen={controlsPanelOpen}
           onToggleControlsPanel={() => setControlsPanelOpen(prev => !prev)}
+          onStatsClick={onStatsClick}
         />
 
         <div className="relative flex-1">
@@ -64,14 +62,6 @@ export function GraphCanvas({ initialData, className = '' }: GraphCanvasProps) {
           )}
         </div>
       </div>
-
-      {selectedNode && (
-        <GraphSidebar
-          node={selectedNode}
-          connections={getConnections(selectedNode.id)}
-          onClose={() => setSelectedNode(null)}
-        />
-      )}
     </div>
   );
 }

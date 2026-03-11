@@ -11,6 +11,7 @@ import {
   Snowflake,
   Play,
   SlidersHorizontal,
+  BarChart3,
 } from 'lucide-react';
 
 interface GraphToolbarProps {
@@ -21,12 +22,14 @@ interface GraphToolbarProps {
   onToggleFreeze?: () => void;
   controlsPanelOpen?: boolean;
   onToggleControlsPanel?: () => void;
+  onStatsClick?: () => void;
 }
 
 export function GraphToolbar({
   onZoomIn, onZoomOut, onFitView,
   frozen, onToggleFreeze,
   controlsPanelOpen, onToggleControlsPanel,
+  onStatsClick,
 }: GraphToolbarProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -95,6 +98,17 @@ export function GraphToolbar({
           }`}
         >
           <SlidersHorizontal size={16} />
+        </button>
+      )}
+
+      {/* Statistics Modal */}
+      {onStatsClick && (
+        <button
+          onClick={onStatsClick}
+          title="Estatisticas do grafo"
+          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+        >
+          <BarChart3 size={16} />
         </button>
       )}
 

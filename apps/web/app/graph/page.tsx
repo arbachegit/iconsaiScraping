@@ -29,6 +29,7 @@ import {
   Radar,
   Eye,
   Info,
+  HelpCircle,
 } from 'lucide-react';
 
 const ENTITY_COLORS: Record<string, string> = {
@@ -74,7 +75,7 @@ export default function GraphPage() {
   const [deepSearchData, setDeepSearchData] = useState<DeepSearchResponse | null>(null);
 
   // Modal stack: supports stacking multiple modals
-  type ModalEntry = { type: 'category' | 'info' | 'bayesian'; category?: string };
+  type ModalEntry = { type: 'category' | 'info' | 'bayesian' | 'stats'; category?: string };
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
   const pushModal = useCallback((entry: ModalEntry) => setModalStack(prev => [...prev, entry]), []);
   const popModal = useCallback(() => setModalStack(prev => prev.slice(0, -1)), []);
@@ -312,7 +313,8 @@ export default function GraphPage() {
           </div>
 
           {/* Search Bar with Autocomplete + Deep Search Toggle */}
-          <div ref={dropdownRef} className="relative flex-1 max-w-lg mx-4">
+          <div className="flex items-center gap-2 flex-1 max-w-lg mx-4">
+          <div ref={dropdownRef} className="relative flex-1">
             <div className={`flex items-center flex-1 bg-slate-800/60 border rounded-lg px-3 py-1.5 transition-colors ${
               isDeepSearch
                 ? 'border-amber-500/50 focus-within:border-amber-500/80'
@@ -369,15 +371,6 @@ export default function GraphPage() {
                 </button>
               )}
             </div>
-
-            {/* Deep search mode indicator */}
-            {isDeepSearch && (
-              <div className="absolute -bottom-5 left-0 right-0 flex justify-center">
-                <span className="text-[9px] text-amber-400/70 font-medium tracking-wider uppercase">
-                  Deep Search — Bayesian Evidence Model
-                </span>
-              </div>
-            )}
 
             {/* Autocomplete Dropdown — only in normal mode */}
             {!isDeepSearch && showDropdown && suggestions.length > 0 && (() => {
@@ -436,6 +429,20 @@ export default function GraphPage() {
             )}
           </div>
 
+          {/* Deep Search Help Button */}
+          {isDeepSearch && (
+            <button
+              type="button"
+              onClick={() => pushModal({ type: 'bayesian' })}
+              className="flex-shrink-0 flex items-center gap-1.5 h-8 px-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-[10px] font-medium hover:bg-amber-500/20 transition-colors"
+              title="Como funciona o Deep Search?"
+            >
+              <HelpCircle size={14} />
+              <span className="hidden sm:inline">Como funciona?</span>
+            </button>
+          )}
+          </div>
+
           <nav className="flex items-center gap-2">
             <Link
               href="/dashboard"
@@ -461,115 +468,6 @@ export default function GraphPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Legend Panel (deep search mode only) */}
-        {isDeepSearch && deepSearchData && deepSearchData.nodes.length > 0 && (
-          <div className="flex-shrink-0 w-48 bg-[#0f1629]/90 border-r border-cyan-500/10 overflow-y-auto p-3">
-            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80 mb-3">
-              Categorias
-            </h3>
-            <div className="space-y-1.5">
-              {Object.entries(ENTITY_COLORS).map(([type, color]) => {
-                const count = getStatsCount(deepSearchData.stats, type);
-                if (count === 0) return null;
-                const isHidden = hiddenCategories.has(type);
-                return (
-                  <div key={type} className="flex items-center gap-1.5 w-full rounded-md px-1.5 py-1 group">
-                    {/* Toggle on/off */}
-                    <button
-                      type="button"
-                      onClick={() => setHiddenCategories(prev => {
-                        const next = new Set(prev);
-                        if (next.has(type)) next.delete(type); else next.add(type);
-                        return next;
-                      })}
-                      className="flex-shrink-0"
-                      title={isHidden ? `Mostrar ${ENTITY_LABELS[type]}` : `Ocultar ${ENTITY_LABELS[type]}`}
-                    >
-                      <div
-                        className={`h-3 w-3 rounded-full transition-all ${isHidden ? 'opacity-20 scale-75' : 'opacity-100'}`}
-                        style={{ backgroundColor: color }}
-                      />
-                    </button>
-                    <span className={`text-xs min-w-0 truncate flex-1 transition-colors ${isHidden ? 'text-slate-600 line-through' : 'text-slate-300'}`}>
-                      {ENTITY_LABELS[type]}
-                    </span>
-                    <span className="text-[10px] text-slate-500 flex-shrink-0 tabular-nums">{count}</span>
-                    {/* Eye icon → open category variables modal */}
-                    <button
-                      type="button"
-                      onClick={() => pushModal({ type: 'category', category: type })}
-                      className="flex-shrink-0 p-0.5 rounded text-slate-600 hover:text-cyan-400 transition-colors"
-                      title={`Ver variaveis de ${ENTITY_LABELS[type]}`}
-                    >
-                      <Eye size={12} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-700/50">
-              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80 mb-2">
-                Modelo
-              </h3>
-              <div className="space-y-1.5 text-[10px] text-slate-400 leading-tight">
-                <div className="flex items-start gap-1.5">
-                  <div className="h-2 w-2 mt-0.5 rounded-full bg-green-400 flex-shrink-0" />
-                  <span>&gt;80% Forte</span>
-                </div>
-                <div className="flex items-start gap-1.5">
-                  <div className="h-2 w-2 mt-0.5 rounded-full bg-yellow-400 flex-shrink-0" />
-                  <span>50-80% Possivel</span>
-                </div>
-                <div className="flex items-start gap-1.5">
-                  <div className="h-2 w-2 mt-0.5 rounded-full bg-red-400 flex-shrink-0" />
-                  <span>&lt;50% Fraco</span>
-                </div>
-              </div>
-              <p className="mt-2 text-[9px] text-slate-500 leading-tight">
-                Bayesian: C = 1 - ∏(1 - p_i)
-              </p>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-700/50">
-              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80 mb-2">
-                Fontes
-              </h3>
-              <div className="space-y-1 text-[10px] text-slate-400">
-                <div>Contrato Social: 1.00</div>
-                <div>Cadastro Gov: 0.95</div>
-                <div>Politicos: 0.90</div>
-                <div>Emendas: 0.85</div>
-                <div>Bens/Receitas: 0.80</div>
-                <div>Noticias: 0.50</div>
-                <div>Topicos: 0.40</div>
-              </div>
-
-              {/* Bayesian Model explanation button */}
-              <button
-                type="button"
-                onClick={() => pushModal({ type: 'bayesian' })}
-                className="mt-3 w-full text-left px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400 font-medium hover:bg-amber-500/20 transition-colors"
-              >
-                Bayesian Evidence Model →
-              </button>
-            </div>
-
-            {/* Info button (same as normal mode) */}
-            <div className="mt-4 pt-3 border-t border-slate-700/50">
-              <button
-                type="button"
-                onClick={() => pushModal({ type: 'info' })}
-                className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-[10px] text-red-400 font-medium hover:bg-red-500/20 transition-colors"
-                style={{ animation: 'beacon-pulse 2s ease-in-out infinite' }}
-              >
-                <Info size={14} />
-                Legenda do Grafo
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="flex-1 relative">
           {/* Empty State */}
           {!canvasData && !isLoading && !error && (
@@ -625,6 +523,7 @@ export default function GraphPage() {
               initialData={canvasData}
               className="h-full"
               onInfoClick={() => pushModal({ type: 'info' })}
+              onStatsClick={() => pushModal({ type: 'stats' })}
             />
           )}
 
@@ -846,7 +745,7 @@ export default function GraphPage() {
           );
         }
 
-        // Bayesian Evidence Model modal
+        // Bayesian Evidence Model — comprehensive explanation modal
         if (modal.type === 'bayesian') {
           return (
             <div
@@ -856,76 +755,457 @@ export default function GraphPage() {
               onClick={popModal}
             >
               <div
-                className="relative w-full max-w-lg max-h-[85vh] bg-[#0f1629] border border-amber-500/20 rounded-xl shadow-2xl flex flex-col overflow-hidden mx-4"
+                className="relative w-full max-w-4xl max-h-[90vh] bg-[#0f1629] border border-amber-500/20 rounded-xl shadow-2xl flex flex-col overflow-hidden mx-4"
+                style={{ transform: `translate(${offset}px, ${offset}px)` }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 flex-shrink-0">
+                  <div className="flex items-center gap-3">
+                    <Radar className="h-5 w-5 text-amber-400" />
+                    <div>
+                      <h2 className="text-base font-semibold text-amber-400">Deep Search — Bayesian Evidence Model</h2>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Como o grafo cruza informacoes e calcula conexoes</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={popModal} className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors">
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+
+                  {/* Section 1: What is Deep Search — with main SVG graph */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-200 mb-3">O que e o Deep Search?</h3>
+                    <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                      Diferente da busca normal (que encontra uma entidade e expande suas conexoes diretas),
+                      o <strong className="text-amber-400">Deep Search</strong> varre <strong className="text-slate-300">TODAS as tabelas do banco de dados</strong> simultaneamente —
+                      empresas, socios, politicos, mandatos, emendas e noticias — procurando qualquer mencao ao termo buscado.
+                      Em seguida, aplica o <strong className="text-amber-400">Modelo Bayesiano de Evidencia</strong> para calcular a forca de cada conexao encontrada.
+                    </p>
+
+                    {/* Main SVG — Example graph showing how evidence combines */}
+                    <div className="flex flex-col lg:flex-row gap-5">
+                      <div className="flex-1 bg-slate-800/40 rounded-xl p-4 border border-slate-700/30">
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3 text-center">Grafo Principal — Exemplo de busca: &quot;Construtora Alpha&quot;</p>
+                        <svg viewBox="0 0 500 320" className="w-full" xmlns="http://www.w3.org/2000/svg">
+                          {/* Edges with varying thickness = evidence strength */}
+                          <line x1="250" y1="140" x2="100" y2="60" stroke="#22c55e" strokeWidth="4" strokeOpacity="0.7" />
+                          <line x1="250" y1="140" x2="400" y2="60" stroke="#22c55e" strokeWidth="3.5" strokeOpacity="0.7" />
+                          <line x1="250" y1="140" x2="80" y2="220" stroke="#eab308" strokeWidth="2" strokeOpacity="0.6" />
+                          <line x1="250" y1="140" x2="420" y2="200" stroke="#eab308" strokeWidth="2.5" strokeOpacity="0.6" />
+                          <line x1="250" y1="140" x2="250" y2="290" stroke="#ef4444" strokeWidth="1" strokeOpacity="0.4" />
+                          <line x1="100" y1="60" x2="400" y2="60" stroke="#06b6d4" strokeWidth="1.5" strokeOpacity="0.3" strokeDasharray="4,3" />
+                          <line x1="400" y1="60" x2="420" y2="200" stroke="#a855f7" strokeWidth="1.5" strokeOpacity="0.4" strokeDasharray="4,3" />
+                          <line x1="80" y1="220" x2="250" y2="290" stroke="#06b6d4" strokeWidth="1" strokeOpacity="0.3" strokeDasharray="2,3" />
+
+                          {/* Center node — empresa */}
+                          <circle cx="250" cy="140" r="28" fill="#ef4444" fillOpacity="0.2" stroke="#ef4444" strokeWidth="2" />
+                          <text x="250" y="136" textAnchor="middle" fill="#fca5a5" fontSize="9" fontWeight="600">Construtora</text>
+                          <text x="250" y="148" textAnchor="middle" fill="#fca5a5" fontSize="9" fontWeight="600">Alpha</text>
+
+                          {/* Socio 1 — strong evidence */}
+                          <circle cx="100" cy="60" r="20" fill="#f97316" fillOpacity="0.2" stroke="#f97316" strokeWidth="2" />
+                          <text x="100" y="57" textAnchor="middle" fill="#fdba74" fontSize="8" fontWeight="600">Joao Silva</text>
+                          <text x="100" y="68" textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="700">97%</text>
+
+                          {/* Socio 2 — strong evidence */}
+                          <circle cx="400" cy="60" r="20" fill="#f97316" fillOpacity="0.2" stroke="#f97316" strokeWidth="2" />
+                          <text x="400" y="57" textAnchor="middle" fill="#fdba74" fontSize="8" fontWeight="600">Maria Costa</text>
+                          <text x="400" y="68" textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="700">92%</text>
+
+                          {/* Politico — medium evidence */}
+                          <circle cx="80" cy="220" r="18" fill="#3b82f6" fillOpacity="0.2" stroke="#3b82f6" strokeWidth="1.5" />
+                          <text x="80" y="217" textAnchor="middle" fill="#93c5fd" fontSize="7.5" fontWeight="600">Dep. Santos</text>
+                          <text x="80" y="228" textAnchor="middle" fill="#eab308" fontSize="7.5" fontWeight="700">65%</text>
+
+                          {/* Emenda — medium evidence */}
+                          <circle cx="420" cy="200" r="16" fill="#06b6d4" fillOpacity="0.2" stroke="#06b6d4" strokeWidth="1.5" />
+                          <text x="420" y="197" textAnchor="middle" fill="#67e8f9" fontSize="7" fontWeight="600">Emenda</text>
+                          <text x="420" y="208" textAnchor="middle" fill="#eab308" fontSize="7" fontWeight="700">72%</text>
+
+                          {/* Noticia — weak evidence */}
+                          <circle cx="250" cy="290" r="14" fill="#22c55e" fillOpacity="0.15" stroke="#22c55e" strokeWidth="1" />
+                          <text x="250" y="287" textAnchor="middle" fill="#86efac" fontSize="7" fontWeight="600">Noticia</text>
+                          <text x="250" y="298" textAnchor="middle" fill="#ef4444" fontSize="7" fontWeight="700">35%</text>
+
+                          {/* Legend labels on edges */}
+                          <text x="160" y="90" fill="#94a3b8" fontSize="7" transform="rotate(-25, 160, 90)">Contrato Social + Gov</text>
+                          <text x="310" y="88" fill="#94a3b8" fontSize="7" transform="rotate(25, 310, 88)">Contrato + Emenda</text>
+                          <text x="150" y="190" fill="#94a3b8" fontSize="7" transform="rotate(50, 150, 190)">Emenda beneficiario</text>
+                          <text x="250" y="220" fill="#94a3b8" fontSize="7">Mencionado</text>
+                        </svg>
+                      </div>
+
+                      {/* Side legend — how to read the graph */}
+                      <div className="w-full lg:w-56 space-y-4 flex-shrink-0">
+                        <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/30">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Como ler o grafo</p>
+                          <div className="space-y-2 text-[11px] text-slate-400">
+                            <div className="flex items-start gap-2">
+                              <svg width="16" height="16" className="flex-shrink-0 mt-0.5"><circle cx="8" cy="8" r="7" fill="none" stroke="#ef4444" strokeWidth="1.5"/></svg>
+                              <span><strong className="text-red-400">Circulo grande</strong> = entidade central (mais conexoes)</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <svg width="16" height="16" className="flex-shrink-0 mt-0.5"><circle cx="8" cy="8" r="5" fill="none" stroke="#94a3b8" strokeWidth="1"/></svg>
+                              <span><strong className="text-slate-300">Circulo pequeno</strong> = entidade periferica</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <svg width="20" height="8" className="flex-shrink-0 mt-1"><line x1="0" y1="4" x2="20" y2="4" stroke="#22c55e" strokeWidth="3"/></svg>
+                              <span><strong className="text-green-400">Linha grossa</strong> = conexao forte (&gt;80%)</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <svg width="20" height="8" className="flex-shrink-0 mt-1"><line x1="0" y1="4" x2="20" y2="4" stroke="#eab308" strokeWidth="1.5"/></svg>
+                              <span><strong className="text-yellow-400">Linha media</strong> = conexao possivel (50-80%)</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <svg width="20" height="8" className="flex-shrink-0 mt-1"><line x1="0" y1="4" x2="20" y2="4" stroke="#ef4444" strokeWidth="0.8" strokeOpacity="0.5"/></svg>
+                              <span><strong className="text-red-400">Linha fina</strong> = conexao fraca (&lt;50%)</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <svg width="20" height="8" className="flex-shrink-0 mt-1"><line x1="0" y1="4" x2="20" y2="4" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3,2"/></svg>
+                              <span><strong className="text-slate-300">Tracejada</strong> = conexao indireta</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/30">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Cores dos nos</p>
+                          <div className="space-y-1.5">
+                            {Object.entries(ENTITY_COLORS).map(([type, color]) => (
+                              <div key={type} className="flex items-center gap-2 text-[11px]">
+                                <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                <span className="text-slate-300">{ENTITY_LABELS[type]}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 2: The Bayesian Formula — visual */}
+                  <div className="border-t border-slate-700/50 pt-5">
+                    <h3 className="text-sm font-semibold text-slate-200 mb-3">Como a evidencia e calculada?</h3>
+                    <div className="flex flex-col lg:flex-row gap-5">
+                      {/* Mini graph — single connection with multiple sources */}
+                      <div className="flex-shrink-0 bg-slate-800/40 rounded-xl p-4 border border-slate-700/30 w-full lg:w-64">
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2 text-center">Evidencia combinada</p>
+                        <svg viewBox="0 0 240 180" className="w-full" xmlns="http://www.w3.org/2000/svg">
+                          {/* Source arrows pointing to the connection */}
+                          <line x1="60" y1="90" x2="180" y2="90" stroke="#22c55e" strokeWidth="4" strokeOpacity="0.8" />
+
+                          {/* Node A */}
+                          <circle cx="60" cy="90" r="22" fill="#ef4444" fillOpacity="0.2" stroke="#ef4444" strokeWidth="2" />
+                          <text x="60" y="87" textAnchor="middle" fill="#fca5a5" fontSize="8" fontWeight="600">Empresa</text>
+                          <text x="60" y="98" textAnchor="middle" fill="#fca5a5" fontSize="8" fontWeight="600">Alpha</text>
+
+                          {/* Node B */}
+                          <circle cx="180" cy="90" r="18" fill="#f97316" fillOpacity="0.2" stroke="#f97316" strokeWidth="2" />
+                          <text x="180" y="87" textAnchor="middle" fill="#fdba74" fontSize="8" fontWeight="600">Joao</text>
+                          <text x="180" y="98" textAnchor="middle" fill="#fdba74" fontSize="8" fontWeight="600">Silva</text>
+
+                          {/* Evidence sources feeding into the connection */}
+                          <line x1="120" y1="30" x2="120" y2="78" stroke="#06b6d4" strokeWidth="1" strokeOpacity="0.5" strokeDasharray="3,2" />
+                          <line x1="50" y1="155" x2="95" y2="102" stroke="#06b6d4" strokeWidth="1" strokeOpacity="0.5" strokeDasharray="3,2" />
+                          <line x1="190" y1="155" x2="145" y2="102" stroke="#06b6d4" strokeWidth="1" strokeOpacity="0.5" strokeDasharray="3,2" />
+
+                          {/* Source labels */}
+                          <rect x="70" y="14" width="100" height="18" rx="4" fill="#0f1629" stroke="#334155" strokeWidth="0.5" />
+                          <text x="120" y="27" textAnchor="middle" fill="#67e8f9" fontSize="8">Contrato Social (0.95)</text>
+
+                          <rect x="2" y="148" width="96" height="18" rx="4" fill="#0f1629" stroke="#334155" strokeWidth="0.5" />
+                          <text x="50" y="161" textAnchor="middle" fill="#67e8f9" fontSize="8">Cadastro Gov (0.90)</text>
+
+                          <rect x="142" y="148" width="96" height="18" rx="4" fill="#0f1629" stroke="#334155" strokeWidth="0.5" />
+                          <text x="190" y="161" textAnchor="middle" fill="#67e8f9" fontSize="8">Noticia (0.50)</text>
+
+                          {/* Result badge */}
+                          <rect x="87" y="67" width="66" height="18" rx="9" fill="#22c55e" fillOpacity="0.2" stroke="#22c55e" strokeWidth="1" />
+                          <text x="120" y="79" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="700">97.5%</text>
+                        </svg>
+                      </div>
+
+                      {/* Explanation */}
+                      <div className="flex-1 space-y-3">
+                        <div className="bg-slate-800/40 rounded-lg px-4 py-3 border border-slate-700/30">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Formula Bayesiana</p>
+                          <div className="font-mono text-center text-base text-cyan-400 py-2">
+                            C = 1 - ∏(1 - p<sub>i</sub>)
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                            Cada fonte de dados atribui uma <strong className="text-slate-300">probabilidade independente</strong> (p<sub>i</sub>) de que a conexao exista.
+                            A formula combina todas as evidencias: quanto mais fontes confirmam, mais forte a conexao.
+                          </p>
+                        </div>
+
+                        <div className="bg-slate-800/40 rounded-lg px-4 py-3 border border-slate-700/30">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Exemplo passo a passo</p>
+                          <div className="space-y-1.5 text-[11px] text-slate-400 font-mono">
+                            <p>Joao Silva aparece em 3 fontes:</p>
+                            <div className="pl-2 border-l-2 border-cyan-500/30 space-y-1 mt-1">
+                              <p>Contrato Social → p₁ = <span className="text-cyan-400">0.95</span></p>
+                              <p>Cadastro Gov → p₂ = <span className="text-cyan-400">0.90</span></p>
+                              <p>Noticia → p₃ = <span className="text-cyan-400">0.50</span></p>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-slate-700/50">
+                              <p>C = 1 - (1-0.95) × (1-0.90) × (1-0.50)</p>
+                              <p>C = 1 - 0.05 × 0.10 × 0.50</p>
+                              <p>C = 1 - 0.0025 = <span className="text-green-400 font-bold">99.75%</span></p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          <strong className="text-slate-400">Intuicao:</strong> Se alguem consta no Contrato Social (95%) E no Cadastro do Governo (90%) E
+                          foi mencionado em noticias (50%), a chance de ser socio real e praticamente 100%.
+                          Cada fonte adicional <em>reduz a duvida restante</em>, nunca a aumenta.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Source weights */}
+                  <div className="border-t border-slate-700/50 pt-5">
+                    <h3 className="text-sm font-semibold text-slate-200 mb-3">Pesos das fontes de dados</h3>
+                    <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                      Cada fonte de informacao tem um peso diferente conforme sua confiabilidade.
+                      Fontes oficiais (governo, contratos) tem peso maior que fontes indiretas (noticias, topicos).
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        { name: 'Contrato Social', weight: 1.00, desc: 'Documento oficial da Junta Comercial', color: '#22c55e' },
+                        { name: 'Cadastro Gov', weight: 0.95, desc: 'Receita Federal, CNPJ ativo', color: '#22c55e' },
+                        { name: 'Politicos', weight: 0.90, desc: 'TSE, registros de candidatura', color: '#22c55e' },
+                        { name: 'Emendas', weight: 0.85, desc: 'Portal da Transparencia', color: '#22c55e' },
+                        { name: 'Bens/Receitas', weight: 0.80, desc: 'Declaracoes patrimoniais', color: '#eab308' },
+                        { name: 'Noticias', weight: 0.50, desc: 'Mencoes em veiculos de imprensa', color: '#eab308' },
+                        { name: 'Topicos', weight: 0.40, desc: 'Analise semantica de texto', color: '#ef4444' },
+                      ].map(src => (
+                        <div key={src.name} className="flex items-center gap-3 bg-slate-800/40 rounded-lg px-3 py-2 border border-slate-700/30">
+                          <div className="flex-shrink-0 w-10 text-right font-mono text-sm font-bold" style={{ color: src.color }}>
+                            {src.weight.toFixed(2)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs text-slate-200 font-medium truncate">{src.name}</div>
+                            <div className="text-[10px] text-slate-500 truncate">{src.desc}</div>
+                          </div>
+                          {/* Visual bar */}
+                          <div className="flex-shrink-0 w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${src.weight * 100}%`, backgroundColor: src.color }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section 4: Confidence bands */}
+                  <div className="border-t border-slate-700/50 pt-5">
+                    <h3 className="text-sm font-semibold text-slate-200 mb-3">Faixas de confianca</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-green-400 mb-1">&gt;80%</div>
+                        <div className="text-xs font-semibold text-green-400 mb-1">Forte</div>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          Confirmado por multiplas fontes oficiais. Alta confianca — pode ser usado para tomada de decisao.
+                        </p>
+                      </div>
+                      <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-yellow-400 mb-1">50-80%</div>
+                        <div className="text-xs font-semibold text-yellow-400 mb-1">Possivel</div>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          Evidencia parcial de fontes mistas. Recomenda-se verificacao adicional antes de conclusoes.
+                        </p>
+                      </div>
+                      <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 text-center">
+                        <div className="text-2xl font-bold text-red-400 mb-1">&lt;50%</div>
+                        <div className="text-xs font-semibold text-red-400 mb-1">Fraco</div>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          Pouca evidencia, geralmente de fontes indiretas (noticias, topicos). Conexao nao confirmada.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 5: Real-world use cases */}
+                  <div className="border-t border-slate-700/50 pt-5">
+                    <h3 className="text-sm font-semibold text-slate-200 mb-3">Casos de uso praticos</h3>
+                    <div className="space-y-3">
+                      <div className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/30">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="h-2 w-2 rounded-full bg-red-400 flex-shrink-0" />
+                          <h4 className="text-xs font-semibold text-slate-200">Due Diligence empresarial</h4>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Ao buscar &quot;Construtora Alpha&quot;, o Deep Search revela que o socio Joao Silva tambem aparece
+                          como beneficiario de emendas parlamentares do Dep. Santos. A conexao empresa→politico,
+                          que seria invisivel em buscas normais, emerge com 72% de confianca — suficiente para
+                          investigacao aprofundada de possivel conflito de interesse.
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/30">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="h-2 w-2 rounded-full bg-blue-400 flex-shrink-0" />
+                          <h4 className="text-xs font-semibold text-slate-200">Mapeamento de redes politicas</h4>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Buscando o nome de um politico, o grafo mostra todas as empresas que receberam emendas,
+                          os socios dessas empresas e suas conexoes com outros politicos. Conexoes com peso &gt;80%
+                          indicam relacoes formais (sociedade, cargo). Conexoes 50-80% sugerem relacoes indiretas
+                          que merecem atencao (beneficiario de emenda, mencionado junto em noticias).
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/30">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="h-2 w-2 rounded-full bg-orange-400 flex-shrink-0" />
+                          <h4 className="text-xs font-semibold text-slate-200">Identificacao de pessoas-chave</h4>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Ao buscar uma pessoa, o modelo cruza dados de contratos sociais, cadastros governamentais
+                          e emendas para revelar todas as empresas e politicos associados. Um individuo que aparece
+                          como socio em multiplas empresas que recebem emendas do mesmo politico cria um padrao
+                          de &quot;hub&quot; no grafo — visualmente identificavel pelo tamanho do no e quantidade de conexoes.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 6: How to analyze */}
+                  <div className="border-t border-slate-700/50 pt-5">
+                    <h3 className="text-sm font-semibold text-slate-200 mb-3">Como analisar o grafo</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] text-slate-400">
+                      <div className="space-y-2">
+                        <p><strong className="text-amber-400">1. Comece pelo centro:</strong> O no central e o termo buscado. Nos maiores ao redor sao as conexoes mais fortes.</p>
+                        <p><strong className="text-amber-400">2. Observe as cores:</strong> Vermelho = empresa, laranja = pessoa, azul = politico. Mistura de cores indica rede complexa.</p>
+                        <p><strong className="text-amber-400">3. Avalie a espessura:</strong> Linhas grossas = multiplas fontes confirmam. Linhas finas = evidencia fragil.</p>
+                      </div>
+                      <div className="space-y-2">
+                        <p><strong className="text-amber-400">4. Procure clusters:</strong> Grupos de nos conectados entre si sugerem estruturas organizacionais ou redes de influencia.</p>
+                        <p><strong className="text-amber-400">5. Identifique hubs:</strong> Nos com muitas conexoes sao &quot;pontos de controle&quot; — pessoas ou empresas que conectam diferentes grupos.</p>
+                        <p><strong className="text-amber-400">6. Verifique a %:</strong> Sempre confira a porcentagem de cada no. Conexoes &lt;50% precisam de verificacao manual.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Stats modal
+        if (modal.type === 'stats') {
+          return (
+            <div
+              key={`modal-${idx}`}
+              className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+              style={{ zIndex }}
+              onClick={popModal}
+            >
+              <div
+                className="relative w-full max-w-lg max-h-[85vh] bg-[#0f1629] border border-cyan-500/20 rounded-xl shadow-2xl flex flex-col overflow-hidden mx-4"
                 style={{ transform: `translate(${offset}px, ${offset}px)` }}
                 onClick={e => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-700/50 flex-shrink-0">
-                  <h2 className="text-sm font-semibold text-amber-400">Bayesian Evidence Model</h2>
+                  <h2 className="text-sm font-semibold text-cyan-400">Estatisticas do Grafo</h2>
                   <button type="button" onClick={popModal} className="p-1 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors">
                     <X size={16} />
                   </button>
                 </div>
-                <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 text-xs text-slate-300 leading-relaxed">
-                  <div>
-                    <h4 className="text-sm font-semibold text-amber-400 mb-2">O que e?</h4>
-                    <p className="text-slate-400">
-                      O Bayesian Evidence Model e um modelo probabilistico que combina evidencias de multiplas fontes independentes
-                      para calcular a probabilidade composta de uma conexao entre entidades no grafo.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Formula</h4>
-                    <div className="bg-slate-800/60 rounded-lg px-4 py-3 font-mono text-center text-sm text-cyan-400">
-                      C = 1 - ∏(1 - p<sub>i</sub>)
+                <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+                  {/* Summary */}
+                  {activeStats && (
+                    <div>
+                      <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Resumo</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-slate-800/60 rounded-lg px-3 py-2">
+                          <div className="text-[10px] text-slate-500 uppercase">Total Nos</div>
+                          <div className="text-lg font-bold text-cyan-400 tabular-nums">{activeStats.total_nodes}</div>
+                        </div>
+                        <div className="bg-slate-800/60 rounded-lg px-3 py-2">
+                          <div className="text-[10px] text-slate-500 uppercase">Total Conexoes</div>
+                          <div className="text-lg font-bold text-cyan-400 tabular-nums">{activeStats.total_edges}</div>
+                        </div>
+                      </div>
                     </div>
-                    <p className="mt-2 text-slate-400">
-                      Onde <strong className="text-slate-300">C</strong> e a confianca combinada e cada <strong className="text-slate-300">p<sub>i</sub></strong> e
-                      a probabilidade individual de cada fonte de evidencia.
-                    </p>
-                  </div>
+                  )}
 
+                  {/* Categories with toggles */}
                   <div>
-                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Como funciona no grafo</h4>
-                    <ol className="space-y-2 text-slate-400 list-decimal list-inside">
-                      <li>Cada fonte de dados (Contrato Social, Cadastro Gov, Noticias, etc.) atribui uma probabilidade <strong className="text-slate-300">p<sub>i</sub></strong> a cada relacao encontrada.</li>
-                      <li>Se a mesma relacao aparece em multiplas fontes, as probabilidades sao combinadas usando a formula bayesiana.</li>
-                      <li>Quanto mais fontes confirmam uma conexao, maior a confianca final <strong className="text-slate-300">C</strong>.</li>
-                      <li>A relevancia (%) exibida nos nos do grafo reflete esse calculo.</li>
-                    </ol>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Exemplo</h4>
-                    <p className="text-slate-400">
-                      Se &quot;Contrato Social&quot; indica 95% de certeza e &quot;Noticia&quot; indica 50%:
-                    </p>
-                    <div className="mt-2 bg-slate-800/60 rounded-lg px-4 py-2 font-mono text-[11px] text-slate-300">
-                      C = 1 - (1 - 0.95) × (1 - 0.50) = 1 - 0.025 = <span className="text-green-400 font-bold">97.5%</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Faixas de confianca</h4>
+                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Categorias</h4>
                     <div className="space-y-1.5">
+                      {Object.entries(ENTITY_COLORS).map(([type, color]) => {
+                        const count = activeStats ? getStatsCount(activeStats, type) : 0;
+                        if (count === 0) return null;
+                        const isHidden = hiddenCategories.has(type);
+                        return (
+                          <div key={type} className="flex items-center gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setHiddenCategories(prev => {
+                                const next = new Set(prev);
+                                if (next.has(type)) next.delete(type); else next.add(type);
+                                return next;
+                              })}
+                              className={`relative flex-shrink-0 w-8 h-4 rounded-full transition-colors ${isHidden ? 'bg-slate-700' : 'bg-slate-600'}`}
+                            >
+                              <div
+                                className={`absolute top-0.5 h-3 w-3 rounded-full transition-all ${isHidden ? 'left-0.5 opacity-40' : 'left-[18px]'}`}
+                                style={{ backgroundColor: color }}
+                              />
+                            </button>
+                            <span className={`flex-1 min-w-0 truncate ${isHidden ? 'text-slate-600 line-through' : 'text-slate-300'}`}>
+                              {ENTITY_LABELS[type]}
+                            </span>
+                            <span className="text-[10px] text-slate-500 tabular-nums flex-shrink-0">{count}</span>
+                            <button
+                              type="button"
+                              onClick={() => pushModal({ type: 'category', category: type })}
+                              className="flex-shrink-0 p-0.5 rounded text-slate-600 hover:text-cyan-400 transition-colors"
+                              title={`Ver variaveis de ${ENTITY_LABELS[type]}`}
+                            >
+                              <Eye size={12} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Bayesian model info (always shown) */}
+                  <div>
+                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Modelo de Evidencia</h4>
+                    <div className="space-y-1.5 text-[10px] text-slate-400 leading-tight">
                       <div className="flex items-center gap-2">
                         <div className="h-2.5 w-2.5 rounded-full bg-green-400 flex-shrink-0" />
-                        <span className="text-slate-400"><strong className="text-green-400">&gt;80%</strong> — Forte: evidencia confirmada por multiplas fontes</span>
+                        <span>&gt;80% Forte</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="h-2.5 w-2.5 rounded-full bg-yellow-400 flex-shrink-0" />
-                        <span className="text-slate-400"><strong className="text-yellow-400">50-80%</strong> — Possivel: evidencia parcial, pode necessitar confirmacao</span>
+                        <span>50-80% Possivel</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="h-2.5 w-2.5 rounded-full bg-red-400 flex-shrink-0" />
-                        <span className="text-slate-400"><strong className="text-red-400">&lt;50%</strong> — Fraco: poucas evidencias, baixa confianca</span>
+                        <span>&lt;50% Fraco</span>
                       </div>
                     </div>
+                    <p className="mt-2 text-[10px] text-slate-500">
+                      Bayesian: C = 1 - ∏(1 - p<sub>i</sub>)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => pushModal({ type: 'bayesian' })}
+                      className="mt-2 w-full text-left px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400 font-medium hover:bg-amber-500/20 transition-colors"
+                    >
+                      Bayesian Evidence Model →
+                    </button>
                   </div>
 
+                  {/* Sources */}
                   <div>
-                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Pesos das fontes</h4>
+                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Fontes</h4>
                     <div className="bg-slate-800/60 rounded-lg px-4 py-3 space-y-1 text-[11px] font-mono">
                       <div className="flex justify-between"><span className="text-slate-400">Contrato Social</span><span className="text-cyan-400">1.00</span></div>
                       <div className="flex justify-between"><span className="text-slate-400">Cadastro Gov</span><span className="text-cyan-400">0.95</span></div>
@@ -935,6 +1215,18 @@ export default function GraphPage() {
                       <div className="flex justify-between"><span className="text-slate-400">Noticias</span><span className="text-cyan-400">0.50</span></div>
                       <div className="flex justify-between"><span className="text-slate-400">Topicos</span><span className="text-cyan-400">0.40</span></div>
                     </div>
+                  </div>
+
+                  {/* Legend button */}
+                  <div className="pt-2 border-t border-slate-700/50">
+                    <button
+                      type="button"
+                      onClick={() => pushModal({ type: 'info' })}
+                      className="flex items-center gap-2 w-full px-3 py-2 rounded-md bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-medium hover:bg-red-500/20 transition-colors"
+                    >
+                      <Info size={14} />
+                      Legenda do Grafo
+                    </button>
                   </div>
                 </div>
               </div>
