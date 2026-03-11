@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabase, enrichCompanyRows } from '../database/supabase.js';
+import { supabase, enrichCompanyRows, resolveCodigosIbge } from '../database/supabase.js';
 import logger from '../utils/logger.js';
 import { searchPerson as searchPersonApollo } from '../services/apollo.js';
 import { searchPerson as searchPersonPerplexity } from '../services/perplexity.js';
@@ -207,7 +207,13 @@ router.get('/list-enriched', async (req, res) => {
       }
     }
 
-    // 3. Build enriched list
+    // 3. Resolve codigo_ibge → cidade/estado via iconsaiBrasil
+    const ibgeCodes = enrichedCompanies
+      .map(c => c.codigo_ibge)
+      .filter(Boolean);
+    const ibgeMap = await resolveCodigosIbge(ibgeCodes);
+
+    // 4. Build enriched list
     const enriched = pessoas.map(p => {
       const tx = latestTx[p.id];
       const rawApollo = p.raw_apollo_data || {};
@@ -216,14 +222,16 @@ router.get('/list-enriched', async (req, res) => {
       const fallbackCompany = companyLookupByName.get(normalizeCompanyNameKey(fallbackCompanyName)) || {};
       const emp = companyLookupById.get(txCompanyId) || fallbackCompany || {};
       const apolloPhone = getApolloPhone(rawApollo);
+      const empIbge = String(emp.codigo_ibge || '');
+      const geo = ibgeMap.get(empIbge) || {};
       return {
         id: p.id,
         nome: p.nome_completo || p.primeiro_nome || '',
         empresa: p.empresa_atual_nome || emp.nome_fantasia || emp.razao_social || fallbackCompanyName || '',
+        cargo: tx?.cargo || tx?.qualificacao || '',
         codigo_ibge: p.codigo_ibge || emp.codigo_ibge || '',
-        codigo_ibge_uf: p.codigo_ibge_uf || emp.codigo_ibge_uf || '',
-        cidade: p.cidade || emp.cidade || rawApollo.city || '',
-        estado: p.estado || emp.estado || rawApollo.state || '',
+        cidade: p.cidade || emp.cidade || geo.nome || rawApollo.city || '',
+        estado: p.estado || emp.estado || geo.uf || rawApollo.state || '',
         cnae: emp.cnae_principal || emp.cnae_id || '',
         descricao: emp.cnae_descricao || '',
         cnae_descricao: emp.cnae_descricao || '',

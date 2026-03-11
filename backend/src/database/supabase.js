@@ -38,6 +38,47 @@ if (readReplicaUrl) {
 }
 
 /**
+ * Brasil Data Hub client (iconsaiBrasil Supabase) for geo_municipios lookups.
+ */
+const brasilHubUrl = process.env.BRASIL_DATA_HUB_URL;
+const brasilHubKey = process.env.BRASIL_DATA_HUB_KEY;
+const brasilDataHub = brasilHubUrl && brasilHubKey
+  ? createClient(brasilHubUrl, brasilHubKey)
+  : null;
+
+/**
+ * Resolve codigo_ibge values to { nome, uf } via iconsaiBrasil vw_geo_municipios.
+ * Returns a Map<string, { nome: string, uf: string }>.
+ */
+export async function resolveCodigosIbge(codigos) {
+  const map = new Map();
+  if (!brasilDataHub || !codigos || codigos.length === 0) return map;
+
+  const unique = [...new Set(codigos.map(String).filter(Boolean))];
+  if (unique.length === 0) return map;
+
+  try {
+    const { data, error } = await brasilDataHub
+      .from('vw_geo_municipios')
+      .select('codigo_ibge, nome, uf')
+      .in('codigo_ibge', unique);
+
+    if (error) {
+      logger.warn('resolveCodigosIbge error', { error: error.message });
+      return map;
+    }
+
+    for (const row of (data || [])) {
+      map.set(String(row.codigo_ibge), { nome: row.nome, uf: row.uf });
+    }
+  } catch (err) {
+    logger.warn('resolveCodigosIbge exception', { error: err.message });
+  }
+
+  return map;
+}
+
+/**
  * Insert company into dim_empresas
  * Sources: BrasilAPI (official) + Serper (enrichment)
  * @param {Object} company - Company data
