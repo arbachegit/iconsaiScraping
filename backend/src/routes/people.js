@@ -13,6 +13,27 @@ import { escapeLike, maskPII } from '../utils/sanitize.js';
 
 const router = Router();
 
+async function getPeopleListCount() {
+  const { data: rpcCount, error: rpcError } = await supabase.rpc('count_pessoas_estimate', {});
+  if (!rpcError && rpcCount != null) {
+    return rpcCount;
+  }
+
+  if (rpcError) {
+    logger.warn('count_pessoas_estimate unavailable for people/list', {
+      error: rpcError.message,
+      code: rpcError.code,
+    });
+  }
+
+  const { count, error } = await supabase
+    .from('dim_pessoas')
+    .select('id', { count: 'estimated', head: true });
+
+  if (error) throw error;
+  return count || 0;
+}
+
 /**
  * Parse a localizacao string like "São Paulo - SP" or "São Paulo, SP, Brasil"
  * into { cidade, estado, pais }.
@@ -48,11 +69,16 @@ router.get('/list', validateQuery(peopleListSchema), async (req, res) => {
   try {
     const { limit, offset } = req.query;
 
-    const { data, error, count } = await supabase
-      .from('dim_pessoas')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const [dataResult, count] = await Promise.all([
+      supabase
+        .from('dim_pessoas')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1),
+      getPeopleListCount(),
+    ]);
+
+    const { data, error } = dataResult;
 
     if (error) {
       logger.error('Error listing people', { error: error.message });

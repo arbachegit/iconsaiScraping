@@ -202,6 +202,7 @@ export default function DashboardPage() {
     queryFn: () => getStatsCurrent(),
     enabled: snapshotReady,
     staleTime: 55_000,
+    retry: false,
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
   });
@@ -211,6 +212,7 @@ export default function DashboardPage() {
     queryFn: () => getStatsHistory(365),
     enabled: snapshotReady,
     staleTime: 55_000,
+    retry: false,
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
   });
@@ -347,9 +349,9 @@ export default function DashboardPage() {
       <div className="flex-shrink-0">
         <StatsCounterLine
           stats={counterStats}
-          countdown={countdown}
-          maxCountdown={COUNTDOWN_MAX}
-          onRefreshComplete={handleRefreshComplete}
+          countdown={statsErrorMessage ? undefined : countdown}
+          maxCountdown={statsErrorMessage ? undefined : COUNTDOWN_MAX}
+          onRefreshComplete={statsErrorMessage ? undefined : handleRefreshComplete}
           isLoading={!statsQuery.data}
         />
       </div>

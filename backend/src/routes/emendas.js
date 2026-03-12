@@ -7,6 +7,8 @@ import {
   validateParams,
   listEmendasSchema,
   searchEmendasSchema,
+  timeSeriesEmendasSchema,
+  listEmendasSubnacionaisSchema,
   integerIdParamSchema
 } from '../validation/schemas.js';
 
@@ -146,7 +148,7 @@ router.get('/search', validateQuery(searchEmendasSchema), async (req, res) => {
     }
 
     if (error) {
-      logger.error('Error searching emendas', { error: error.message, query: q });
+      logger.error('Error searching emendas', { error: error.message, query: q.replace(/[\r\n]/g, ' ') });
       return res.status(500).json({ success: false, error: error.message });
     }
 
@@ -249,12 +251,13 @@ router.get('/aggregation', async (req, res) => {
  * Answers: "Como evolui o orçamento ao longo dos anos?"
  * Optional filters: funcao, uf, autor, tipo_emenda
  */
-router.get('/time-series', async (req, res) => {
+router.get('/time-series', validateQuery(timeSeriesEmendasSchema), async (req, res) => {
   try {
     if (!brasilDataHub) {
       return res.status(503).json({ success: false, error: 'Brasil Data Hub not configured.' });
     }
 
+    // Query params already validated and trimmed by Zod
     const { funcao, uf, autor, tipo_emenda } = req.query;
 
     const [general, byFuncao, concentration] = await Promise.all([
@@ -294,7 +297,7 @@ router.get('/time-series', async (req, res) => {
  * GET /api/emendas/subnacionais
  * List subnational emendas (estaduais + municipais) with filters
  */
-router.get('/subnacionais', validateQuery(listEmendasSchema), async (req, res) => {
+router.get('/subnacionais', validateQuery(listEmendasSubnacionaisSchema), async (req, res) => {
   try {
     if (!brasilDataHub) {
       return res.status(503).json({
@@ -303,8 +306,8 @@ router.get('/subnacionais', validateQuery(listEmendasSchema), async (req, res) =
       });
     }
 
-    const { limit, offset, autor, uf, ano, tipo } = req.query;
-    const esfera = req.query.esfera; // 'estadual' | 'municipal'
+    // All query params (including esfera) validated and trimmed by Zod
+    const { limit, offset, autor, uf, ano, tipo, esfera } = req.query;
 
     let query = brasilDataHub
       .from('fato_emendas_subnacionais')
@@ -371,7 +374,7 @@ router.get('/:id/context', validateParams(integerIdParamSchema), async (req, res
       // Top beneficiaries for this emenda's author + funcao combo
       brasilDataHub
         .from('fato_emendas_favorecidos')
-        .select('tipo_favorecido, nome_favorecido, uf_favorecido, municipio_favorecido, valor_recebido')
+        .select('tipo_favorecido, favorecido, uf_favorecido, municipio_favorecido, valor_recebido')
         .eq('codigo_emenda', emenda.codigo_emenda)
         .order('valor_recebido', { ascending: false })
         .limit(10),
@@ -467,7 +470,7 @@ router.get('/:id/context', validateParams(integerIdParamSchema), async (req, res
       // Beneficiaries (top 10 for this emenda)
       favorecidos: (favorecidosResult.data || []).map(f => ({
         tipo: f.tipo_favorecido,
-        nome: f.nome_favorecido,
+        nome: f.favorecido,
         uf: f.uf_favorecido,
         municipio: f.municipio_favorecido,
         valor: f.valor_recebido,

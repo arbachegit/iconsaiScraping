@@ -499,6 +499,42 @@ export const listEmendasSchema = z.object({
   tipo: safeStringSchema.optional()
 });
 
+// Emendas time-series query params (GET /api/emendas/time-series)
+export const timeSeriesEmendasSchema = z.object({
+  funcao: safeStringSchema.optional(),
+  uf: z.string()
+    .max(2)
+    .transform(val => val?.toUpperCase())
+    .refine(val => !val || /^[A-Z]{2}$/.test(val), {
+      message: 'UF deve ter 2 letras'
+    })
+    .optional(),
+  autor: safeStringSchema.optional(),
+  tipo_emenda: safeStringSchema.optional()
+});
+
+// Emendas subnacionais query params (extends listEmendasSchema + esfera)
+export const listEmendasSubnacionaisSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+  autor: safeStringSchema.optional(),
+  uf: z.string()
+    .max(2)
+    .transform(val => val?.toUpperCase())
+    .refine(val => !val || /^[A-Z]{2}$/.test(val), {
+      message: 'UF deve ter 2 letras'
+    })
+    .optional(),
+  ano: z.coerce
+    .number()
+    .int()
+    .min(2000, 'Ano minimo: 2000')
+    .max(2030, 'Ano maximo: 2030')
+    .optional(),
+  tipo: safeStringSchema.optional(),
+  esfera: z.enum(['estadual', 'municipal']).optional()
+});
+
 // Emendas search query params (GET /api/emendas/search)
 export const searchEmendasSchema = z.object({
   q: z.string()
