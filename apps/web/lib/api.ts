@@ -2715,6 +2715,7 @@ export interface PipelinePhaseStatus {
 
 export interface PipelineRun {
   id: string;
+  runId?: string;
   empresa_id: string;
   status: 'running' | 'completed' | 'completed_with_errors' | 'error';
   started_at: string;

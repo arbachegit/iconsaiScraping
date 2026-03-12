@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import logger from '../utils/logger.js';
 import { sanitizeUUID, sanitizeForLog } from '../utils/sanitize.js';
+import { validateQuery, biOpportunitiesQuerySchema, biLeadsQuerySchema, biEvidenceQuerySchema } from '../validation/schemas.js';
 import { buildCnaeProfile, findCnaeRelationships } from '../services/cnae-correlator.js';
 import { buildTaxProfile } from '../services/tax-profiler.js';
 import { classifyCompany } from '../services/taxonomy-classifier.js';
@@ -171,11 +172,10 @@ router.get('/ecosystem/:empresaId', async (req, res) => {
  * GET /api/bi/opportunities/:empresaId
  * List opportunities with score for a company.
  */
-router.get('/opportunities/:empresaId', async (req, res) => {
+router.get('/opportunities/:empresaId', validateQuery(biOpportunitiesQuerySchema), async (req, res) => {
   try {
     const { empresaId } = uuidParam.parse(req.params);
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const status = req.query.status || null;
+    const { limit, status } = req.query;
 
     let query = supabase
       .from('fato_oportunidades')
@@ -203,11 +203,10 @@ router.get('/opportunities/:empresaId', async (req, res) => {
  * GET /api/bi/opportunities/:empresaId/leads
  * List leads with temperature for a company.
  */
-router.get('/opportunities/:empresaId/leads', async (req, res) => {
+router.get('/opportunities/:empresaId/leads', validateQuery(biLeadsQuerySchema), async (req, res) => {
   try {
     const { empresaId } = uuidParam.parse(req.params);
-    const temperatura = req.query.temperatura || null;
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const { temperatura, limit } = req.query;
 
     let query = supabase
       .from('fato_oportunidades')
@@ -238,14 +237,15 @@ router.get('/opportunities/:empresaId/leads', async (req, res) => {
  * GET /api/bi/evidence/:entityType/:entityId
  * List evidence for an entity.
  */
-router.get('/evidence/:entityType/:entityId', async (req, res) => {
+router.get('/evidence/:entityType/:entityId', validateQuery(biEvidenceQuerySchema), async (req, res) => {
   try {
     const { entityType, entityId } = entityParams.parse(req.params);
+    const { tipo, fonte, min_confianca } = req.query;
     const filters = {
-      tipo_evidencia: req.query.tipo || undefined,
-      fonte: req.query.fonte || undefined,
-      min_confianca: req.query.min_confianca ? parseFloat(req.query.min_confianca) : undefined,
-      limit: parseInt(req.query.limit) || 100,
+      tipo_evidencia: tipo || undefined,
+      fonte: fonte || undefined,
+      min_confianca: min_confianca || undefined,
+      limit: 100,
     };
 
     const evidences = await getEvidenceForEntity(entityType, entityId, filters);

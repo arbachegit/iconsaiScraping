@@ -4,8 +4,8 @@ import logger from '../utils/logger.js';
 import { searchPerson as searchPersonApollo } from '../services/apollo.js';
 import { searchPerson as searchPersonPerplexity } from '../services/perplexity.js';
 import { search as serperSearch, findPersonLinkedin } from '../services/serper.js';
-import { validateBody } from '../validation/schemas.js';
-import { searchPersonByCpfSchema, searchPersonV2Schema, saveBatchSchema } from '../validation/schemas.js';
+import { validateBody, validateQuery } from '../validation/schemas.js';
+import { searchPersonByCpfSchema, searchPersonV2Schema, saveBatchSchema, peopleListSchema, peopleListEnrichedSchema } from '../validation/schemas.js';
 import { runGuardrail, maskCpf } from '../services/people-guardrail.js';
 import { analyzeQuery, estimateCardinality, rankResults, buildRefinementResponse, logEvidence } from '../services/search-orchestrator.js';
 import { runQualityGate } from '../services/quality-gate.js';
@@ -44,10 +44,9 @@ function parseLocalizacao(localizacao) {
  * GET /api/people/list
  * List all people in the database
  */
-router.get('/list', async (req, res) => {
+router.get('/list', validateQuery(peopleListSchema), async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-    const offset = parseInt(req.query.offset) || 0;
+    const { limit, offset } = req.query;
 
     const { data, error, count } = await supabase
       .from('dim_pessoas')
@@ -76,11 +75,9 @@ router.get('/list', async (req, res) => {
  * GET /api/people/list-enriched
  * List people with joined empresa data (nome, empresa, cidade, CNAE, telefone)
  */
-router.get('/list-enriched', async (req, res) => {
+router.get('/list-enriched', validateQuery(peopleListEnrichedSchema), async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 200, 500);
-    const offset = parseInt(req.query.offset) || 0;
-    const search = (req.query.search || '').trim();
+    const { limit, offset, search } = req.query;
     const normalizeCompanyNameKey = (value) =>
       String(value || '')
         .toLowerCase()

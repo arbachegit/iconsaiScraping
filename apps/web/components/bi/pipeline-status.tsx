@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Loader2,
@@ -38,6 +38,9 @@ interface PipelineStatusProps {
 }
 
 export function PipelineStatus({ run: initialRun, runId, onComplete }: PipelineStatusProps) {
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   const isRunning = initialRun?.status === 'running';
 
   const { data: polledRun } = useQuery({
@@ -50,14 +53,14 @@ export function PipelineStatus({ run: initialRun, runId, onComplete }: PipelineS
   const run = polledRun || initialRun;
 
   useEffect(() => {
-    if (run && run.status !== 'running' && onComplete) {
-      onComplete(run);
+    if (run && run.status !== 'running' && onCompleteRef.current) {
+      onCompleteRef.current(run);
     }
-  }, [run?.status, onComplete, run]);
+  }, [run?.status, run]);
 
   if (!run) return null;
 
-  const phases = Object.values(run.phases).sort((a, b) => a.order - b.order);
+  const phases = Object.values(run.phases || {}).sort((a, b) => a.order - b.order);
   const completedCount = phases.filter((p) => p.status === 'success').length;
   const totalActive = phases.filter((p) => p.status !== 'skipped').length;
   const progressPct = totalActive > 0 ? Math.round((completedCount / totalActive) * 100) : 0;

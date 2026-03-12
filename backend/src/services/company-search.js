@@ -201,6 +201,23 @@ export async function searchCompaniesByName({
       estado,
       limit: safeLimit,
     });
+  } else if (trimmedQuery.length <= 8) {
+    // For short queries, RPC full-text/substring matching may return irrelevant
+    // results (e.g. "cesla" matching "Venceslau"). Also run word-start matching
+    // and prioritize those results.
+    const startMatches = await fallbackSearch({
+      query: trimmedQuery,
+      cidade,
+      estado,
+      limit: safeLimit,
+    });
+    if (startMatches && startMatches.length > 0) {
+      const seen = new Set(startMatches.map(c => c.id));
+      companies = [
+        ...startMatches,
+        ...companies.filter(c => !seen.has(c.id)),
+      ].slice(0, safeLimit);
+    }
   }
 
   await cacheSet(cacheKey, companies, CACHE_TTL.SEARCH);

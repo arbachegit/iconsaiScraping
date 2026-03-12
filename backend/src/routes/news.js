@@ -3,9 +3,11 @@ import { supabase } from '../database/supabase.js';
 import logger from '../utils/logger.js';
 import { transformToSearchPrompt } from '../services/anthropic.js';
 import { searchNews as perplexitySearchNews, getTrustedSources } from '../services/perplexity.js';
-import { validateQuery } from '../validation/schemas.js';
-import { newsSearchSchema, newsListSchema } from '../validation/schemas.js';
-import { escapeLike } from '../utils/sanitize.js';
+import { validateQuery, validateBody } from '../validation/schemas.js';
+import { newsSearchSchema, newsListSchema, newsClassifyBatchSchema, newsEnrichBatchSchema, newsSearchAiSchema } from '../validation/schemas.js';
+import { escapeLike, sanitizeForLog } from '../utils/sanitize.js';
+import { runClassificationPipeline, countUnclassified } from '../services/news-classifier.js';
+import { runEnrichmentPipeline, countUnenriched } from '../services/news-enricher.js';
 
 const router = Router();
 
@@ -19,7 +21,7 @@ router.get('/list', validateQuery(newsListSchema), async (req, res) => {
 
     let query = supabase
       .from('dim_noticias')
-      .select('id, titulo, resumo, fonte_nome, url, segmento, data_publicacao, relevancia_geral', { count: 'exact' })
+      .select('id, titulo, resumo, fonte_nome, url, segmento, data_publicacao, relevancia_geral, tipo_classificacao, credibilidade_score, tema_principal', { count: 'exact' })
       .order('data_publicacao', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -102,28 +104,18 @@ router.get('/search', validateQuery(newsSearchSchema), async (req, res) => {
  * AI-powered news search using Claude + Perplexity
  * Transforms keywords into optimized query and searches in real-time
  */
-router.get('/search-ai', async (req, res) => {
+router.get('/search-ai', validateQuery(newsSearchAiSchema), async (req, res) => {
   try {
-    const q = req.query.q?.trim();
-    const fonte = req.query.fonte?.trim() || null;
-    const idioma = req.query.idioma || 'pt';
-    const pais = req.query.pais || 'BR';
-    const dataInicio = req.query.data_inicio || null;
-    const dataFim = req.query.data_fim || null;
-    const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+    const { q, fonte, idioma, pais, data_inicio: dataInicio, data_fim: dataFim, limit } = req.query;
 
-    if (!q) {
-      return res.status(400).json({ success: false, error: 'Query parameter "q" is required' });
-    }
-
-    logger.info('[NEWS-AI] Starting search', { q, fonte, idioma, pais });
+    logger.info('news_ai_search', { q: sanitizeForLog(q), fonte: fonte ? sanitizeForLog(fonte) : null, idioma, pais });
 
     // Step 1: Transform keywords using Claude
     const transformResult = await transformToSearchPrompt(q, fonte, idioma, pais);
 
-    logger.info('[NEWS-AI] Keywords transformed', {
-      original: q,
-      transformed: transformResult.searchQuery,
+    logger.info('news_ai_transformed', {
+      original: sanitizeForLog(q),
+      transformed: sanitizeForLog(transformResult.searchQuery),
       expanded: transformResult.expanded
     });
 
@@ -181,6 +173,193 @@ router.get('/sources/trusted', (req, res) => {
     count: sources.length,
     sources: sources.map(name => ({ nome: name, ativo: true }))
   });
+});
+
+/**
+ * GET /api/news/aggregation
+ * Aggregated stats for news dashboard
+ */
+router.get('/aggregation', async (req, res) => {
+  try {
+    // Run queries in parallel
+    const [bySegmento, byFonte, recentCount, totalResult, byClassificacao, byTema, byCredibilidade] = await Promise.all([
+      // By segmento
+      supabase.from('dim_noticias').select('segmento').not('segmento', 'is', null),
+      // By fonte
+      supabase.from('dim_noticias').select('fonte_nome').not('fonte_nome', 'is', null),
+      // Recent 7 days count
+      supabase.from('dim_noticias').select('data_publicacao').gte('data_publicacao', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      // Total count
+      supabase.from('dim_noticias').select('*', { count: 'exact', head: true }),
+      // By tipo_classificacao
+      supabase.from('dim_noticias').select('tipo_classificacao').not('tipo_classificacao', 'is', null),
+      // By tema_principal
+      supabase.from('dim_noticias').select('tema_principal').not('tema_principal', 'is', null),
+      // By credibilidade_score
+      supabase.from('dim_noticias').select('credibilidade_score').not('credibilidade_score', 'is', null),
+    ]);
+
+    // Aggregate segmento
+    const segmentoGrouped = {};
+    for (const r of (bySegmento.data || [])) {
+      segmentoGrouped[r.segmento] = (segmentoGrouped[r.segmento] || 0) + 1;
+    }
+    const by_segmento = Object.entries(segmentoGrouped)
+      .map(([segmento, count]) => ({ segmento, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Aggregate fonte
+    const fonteGrouped = {};
+    for (const r of (byFonte.data || [])) {
+      fonteGrouped[r.fonte_nome] = (fonteGrouped[r.fonte_nome] || 0) + 1;
+    }
+    const by_fonte = Object.entries(fonteGrouped)
+      .map(([fonte, count]) => ({ fonte, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
+
+    // Aggregate tipo_classificacao
+    const classificacaoGrouped = {};
+    for (const r of (byClassificacao.data || [])) {
+      classificacaoGrouped[r.tipo_classificacao] = (classificacaoGrouped[r.tipo_classificacao] || 0) + 1;
+    }
+    const by_classificacao = Object.entries(classificacaoGrouped)
+      .map(([tipo, count]) => ({ tipo, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Aggregate tema_principal
+    const temaGrouped = {};
+    for (const r of (byTema.data || [])) {
+      temaGrouped[r.tema_principal] = (temaGrouped[r.tema_principal] || 0) + 1;
+    }
+    const by_tema = Object.entries(temaGrouped)
+      .map(([tema, count]) => ({ tema, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Aggregate credibilidade into layers
+    const credLayers = { alta: 0, media: 0, baixa: 0 };
+    for (const r of (byCredibilidade.data || [])) {
+      const s = parseFloat(r.credibilidade_score);
+      if (s >= 0.8) credLayers.alta++;
+      else if (s >= 0.5) credLayers.media++;
+      else credLayers.baixa++;
+    }
+
+    res.json({
+      success: true,
+      totals: {
+        total_noticias: totalResult.count || 0,
+        ultimos_7_dias: recentCount.data?.length || 0,
+      },
+      by_segmento,
+      by_fonte,
+      by_classificacao,
+      by_tema,
+      credibilidade: credLayers,
+    });
+  } catch (error) {
+    logger.error('Error getting news aggregation', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/news/classify-status
+ * Check how many news articles still need classification
+ */
+router.get('/classify-status', async (req, res) => {
+  try {
+    const unclassified = await countUnclassified();
+
+    const { count: total } = await supabase
+      .from('dim_noticias')
+      .select('id', { count: 'exact', head: true });
+
+    res.json({
+      success: true,
+      total: total || 0,
+      unclassified,
+      classified: (total || 0) - unclassified,
+      coverage: total ? (((total - unclassified) / total) * 100).toFixed(1) + '%' : '0%',
+    });
+  } catch (error) {
+    logger.error('Error getting classify status', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/news/classify-batch
+ * Run the AI classification pipeline on unclassified news
+ * Body: { maxBatches?: number (1-100, default 10), batchSize?: number (5-50, default 25) }
+ */
+router.post('/classify-batch', validateBody(newsClassifyBatchSchema), async (req, res) => {
+  try {
+    const { maxBatches, batchSize } = req.body;
+
+    logger.info('Classification batch triggered', { maxBatches, batchSize });
+
+    const stats = await runClassificationPipeline({ maxBatches, batchSize });
+
+    res.json({
+      success: true,
+      stats,
+    });
+  } catch (error) {
+    logger.error('Classification batch error', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/news/enrich-status
+ * Check how many classified news still need enrichment (signals + entities + relevance)
+ */
+router.get('/enrich-status', async (req, res) => {
+  try {
+    const unenriched = await countUnenriched();
+
+    const { count: classified } = await supabase
+      .from('dim_noticias')
+      .select('id', { count: 'exact', head: true })
+      .not('tipo_classificacao', 'is', null);
+
+    const enriched = (classified || 0) - unenriched;
+
+    res.json({
+      success: true,
+      classified: classified || 0,
+      unenriched,
+      enriched,
+      coverage: classified ? ((enriched / classified) * 100).toFixed(1) + '%' : '0%',
+    });
+  } catch (error) {
+    logger.error('Error getting enrich status', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/news/enrich-batch
+ * Run the AI enrichment pipeline (signals + entities + relevance)
+ * Body: { maxBatches?: number (1-100, default 10), batchSize?: number (5-30, default 15) }
+ */
+router.post('/enrich-batch', validateBody(newsEnrichBatchSchema), async (req, res) => {
+  try {
+    const { maxBatches, batchSize } = req.body;
+
+    logger.info('Enrichment batch triggered', { maxBatches, batchSize });
+
+    const stats = await runEnrichmentPipeline({ maxBatches, batchSize });
+
+    res.json({
+      success: true,
+      stats,
+    });
+  } catch (error) {
+    logger.error('Enrichment batch error', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 /**

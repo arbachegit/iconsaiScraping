@@ -17,6 +17,7 @@ import {
   Database,
   LayoutDashboard,
   BookOpen,
+  Brain,
 } from 'lucide-react';
 import {
   getUser,
@@ -39,6 +40,7 @@ import {
   PessoasListingModal,
   NoticiasListingModal,
   PoliticosListingModal,
+  MandatosListingModal,
   EmendasListingModal,
 } from '@/components/modals/listing-modal';
 import { StatsBadgeCard, StatsCounterLine } from '@/components/stats/stats-badge-card';
@@ -77,6 +79,7 @@ export default function DashboardPage() {
   const [pessoasListingOpen, setPessoasListingOpen] = useState(false);
   const [noticiasListingOpen, setNoticiasListingOpen] = useState(false);
   const [politicosListingOpen, setPoliticosListingOpen] = useState(false);
+  const [mandatosListingOpen, setMandatosListingOpen] = useState(false);
   const [emendasListingOpen, setEmendasListingOpen] = useState(false);
 
   // Selected values from picker modals
@@ -235,7 +238,7 @@ export default function DashboardPage() {
   }
 
   function openEmendasFromCard() {
-    setEmendasListingOpen(true);
+    router.push('/emendas');
   }
 
   // ==========================================================================
@@ -290,6 +293,13 @@ export default function DashboardPage() {
             >
               <Network className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Graph</span>
+            </a>
+            <a
+              href="/inteligencia"
+              className="inline-flex items-center gap-1.5 h-9 px-3 bg-cyan-500/15 border border-cyan-500/50 text-cyan-400 rounded-lg text-xs font-semibold hover:bg-cyan-500 hover:text-white transition-colors"
+            >
+              <Brain className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Inteligência</span>
             </a>
             {isAdmin && (
               <a
@@ -371,6 +381,24 @@ export default function DashboardPage() {
                     description="Relações entre entidades"
                   />
                   <DashboardNavLink
+                    href="/emendas"
+                    icon={Receipt}
+                    title="Emendas"
+                    description="Emendas parlamentares e orçamento"
+                  />
+                  <DashboardNavLink
+                    href="/noticias"
+                    icon={Newspaper}
+                    title="Notícias"
+                    description="Monitoramento de notícias"
+                  />
+                  <DashboardNavLink
+                    href="/inteligencia"
+                    icon={Brain}
+                    title="Inteligência"
+                    description="Pipeline BI e oportunidades"
+                  />
+                  <DashboardNavLink
                     href="/modelo-estatistico"
                     icon={BookOpen}
                     title="Modelo Estatístico"
@@ -437,7 +465,7 @@ export default function DashboardPage() {
                   iconColor="purple"
                   title="Mandatos"
                   description="Cargos e mandatos"
-                  onClick={openPoliticosFromCard}
+                  onClick={() => setMandatosListingOpen(true)}
                 />
               )}
               {hasModuleAccess(userPermissions, 'emendas') && (
@@ -455,7 +483,7 @@ export default function DashboardPage() {
                   iconColor="green"
                   title="Notícias"
                   description="Monitore notícias"
-                  onClick={() => setNewsModalOpen(true)}
+                  onClick={() => router.push('/noticias')}
                 />
               )}
             </div>
@@ -611,6 +639,11 @@ export default function DashboardPage() {
       <PoliticosListingModal
         isOpen={politicosListingOpen}
         onClose={() => setPoliticosListingOpen(false)}
+      />
+
+      <MandatosListingModal
+        isOpen={mandatosListingOpen}
+        onClose={() => setMandatosListingOpen(false)}
       />
 
       <EmendasListingModal

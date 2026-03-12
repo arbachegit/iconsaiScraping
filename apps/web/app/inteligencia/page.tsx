@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Brain,
   Search,
@@ -44,6 +44,7 @@ interface CompanyOption {
 
 export default function InteligenciaPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [authReady, setAuthReady] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -73,12 +74,69 @@ export default function InteligenciaPage() {
     queryKey: ['company-search-bi', debouncedSearch],
     queryFn: async () => {
       if (debouncedSearch.length < 2) return [];
+
+      const query = debouncedSearch.trim();
+      // Detect CNPJ: only digits, dots, slashes, dashes (min 8 digits)
+      const digitsOnly = query.replace(/[^\d]/g, '');
+      const isCnpj = digitsOnly.length >= 8 && /^[\d.\-/]+$/.test(query);
+
+      if (isCnpj) {
+        // Search by CNPJ via POST /companies/details
+        try {
+          const res = await fetchWithAuth(`${API_BASE}/companies/details`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cnpj: digitsOnly }),
+          });
+          if (res.ok) {
+            const json = await res.json();
+            const empresa = json.empresa;
+            if (empresa?.id) {
+              return [{
+                id: empresa.id,
+                razao_social: empresa.razao_social || '',
+                nome_fantasia: empresa.nome_fantasia || null,
+                cnpj: empresa.cnpj || digitsOnly,
+                cidade: empresa.cidade || null,
+                estado: empresa.estado || null,
+              }] as CompanyOption[];
+            }
+          }
+        } catch {
+          // CNPJ lookup failed, fall through to name search
+        }
+      }
+
+      // Search by name: try /companies/list first
       const res = await fetchWithAuth(
-        `${API_BASE}/companies/list?search=${encodeURIComponent(debouncedSearch)}&limit=10`
+        `${API_BASE}/companies/list?nome=${encodeURIComponent(query)}&limit=20`
       );
-      if (!res.ok) return [];
-      const json = await res.json();
-      return (json.data || []) as CompanyOption[];
+      if (res.ok) {
+        const json = await res.json();
+        const empresas = json.empresas || [];
+        if (empresas.length > 0) return empresas as CompanyOption[];
+      }
+
+      // Fallback: graph search (broader, no module permission needed)
+      const fallback = await fetchWithAuth(
+        `${API_BASE}/graph/search?q=${encodeURIComponent(query)}&limit=20`
+      );
+      if (!fallback.ok) return [];
+      const fbJson = await fallback.json();
+      const empresaResults = (fbJson.results || [])
+        .filter((r: { type: string }) => r.type === 'empresa')
+        .map((item: { id: string; label: string; subtitle: string }) => {
+          const parts = (item.subtitle || '').split(' - ').map((s: string) => s.trim());
+          return {
+            id: item.id,
+            razao_social: item.label || '',
+            nome_fantasia: null,
+            cnpj: parts[0] || '',
+            cidade: parts[1] || null,
+            estado: parts[2] || null,
+          };
+        });
+      return empresaResults as CompanyOption[];
     },
     enabled: authReady && debouncedSearch.length >= 2,
     staleTime: 30_000,
@@ -114,15 +172,14 @@ export default function InteligenciaPage() {
       executePipeline(selectedCompany!.id, options),
     onSuccess: (data) => {
       if (data.status === 'running') {
-        setPipelineRunId(data.id);
+        setPipelineRunId(data.runId || data.id);
         setPipelineRun(data);
       } else {
         setPipelineRun(data);
         setPipelineRunId(null);
-        // Refetch data
-        profileQuery.refetch();
-        opportunitiesQuery.refetch();
-        ecosystemQuery.refetch();
+        queryClient.invalidateQueries({ queryKey: ['bi-profile'] });
+        queryClient.invalidateQueries({ queryKey: ['bi-opportunities'] });
+        queryClient.invalidateQueries({ queryKey: ['bi-ecosystem'] });
       }
     },
   });
@@ -130,10 +187,10 @@ export default function InteligenciaPage() {
   const handlePipelineComplete = useCallback((run: PipelineRun) => {
     setPipelineRun(run);
     setPipelineRunId(null);
-    profileQuery.refetch();
-    opportunitiesQuery.refetch();
-    ecosystemQuery.refetch();
-  }, [profileQuery, opportunitiesQuery, ecosystemQuery]);
+    queryClient.invalidateQueries({ queryKey: ['bi-profile'] });
+    queryClient.invalidateQueries({ queryKey: ['bi-opportunities'] });
+    queryClient.invalidateQueries({ queryKey: ['bi-ecosystem'] });
+  }, [queryClient]);
 
   const handleSelectCompany = (company: CompanyOption) => {
     setSelectedCompany(company);

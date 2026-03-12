@@ -15,6 +15,7 @@ import { executeStreamingSearch } from '../services/sse-stream.js';
 import { proxyToIntelligence } from '../services/intelligence-proxy.js';
 import { searchCompanySchema, detailsCompanySchema, sociosSchema, approveCompanySchema, recalculateSchema, listCompaniesSchema, networkQuerySchema, relationshipsQuerySchema, hybridSearchSchema, streamSearchSchema, validateBody, validateQuery } from '../validation/schemas.js';
 import logger from '../utils/logger.js';
+import { sanitizeForLog, maskPII } from '../utils/sanitize.js';
 // escapeLike moved to listCompanies() in supabase.js
 import { analyzeQuery, estimateCardinality, rankResults, buildRefinementResponse, logEvidence } from '../services/search-orchestrator.js';
 
@@ -361,7 +362,7 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
         .eq('empresa_id', existing.id);
 
       if (transErr && transErr.code !== 'PGRST116') {
-        console.error('[DETAILS] Error fetching transacoes:', transErr.message);
+        logger.error('details_transacoes_error', { error: transErr.message });
       }
 
       const dbSocios = transacoes || [];
@@ -372,7 +373,7 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
         const brasilData = await brasilapi.getCompanyByCnpj(cleanCnpj);
         qsaAtual = brasilData?.socios || [];
       } catch (err) {
-        console.warn('[DETAILS] Erro ao buscar QSA da Receita:', err.message);
+        logger.warn('details_qsa_error', { error: err.message });
       }
 
       // Normalize name for comparison (uppercase, remove accents)
@@ -453,7 +454,7 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
     // ========================================
     // 1. DADOS OFICIAIS - BrasilAPI (Receita Federal)
     // ========================================
-    console.log(`[BRASILAPI] Buscando CNPJ: ${cleanCnpj}`);
+    logger.info('brasilapi_search', { cnpj: sanitizeForLog(cleanCnpj) });
     const brasilData = await brasilapi.getCompanyByCnpj(cleanCnpj);
 
     if (!brasilData) {
@@ -476,19 +477,19 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
     // ========================================
     // 2. ENRIQUECIMENTO - Apollo (LinkedIn empresa)
     // ========================================
-    console.log(`[APOLLO] Buscando empresa: ${searchName}`);
+    logger.info('apollo_company_search', { empresa: maskPII(searchName) });
     const apolloData = await apollo.searchCompany(searchName, brasilData.estado);
 
     // ========================================
     // 3. ENRIQUECIMENTO - Serper (Website via Google)
     // ========================================
-    console.log(`[SERPER] Buscando website: ${searchName}`);
+    logger.info('serper_website_search', { empresa: maskPII(searchName) });
     let website = apolloData?.website || null;
     if (!website) {
       website = await serper.findCompanyWebsite(searchName, brasilData.cidade);
     }
     if (!website) {
-      console.log(`[GEMINI] Buscando website: ${searchName}`);
+      logger.info('gemini_website_search', { empresa: maskPII(searchName) });
       website = await gemini.findCompanyWebsite(searchName, brasilData.cidade, brasilData.estado);
     }
 
@@ -497,7 +498,7 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
     // ========================================
     let linkedin = apolloData?.linkedin || null;
     if (!linkedin) {
-      console.log(`[SERPER] Buscando LinkedIn empresa: ${searchName}`);
+      logger.info('serper_linkedin_search', { empresa: maskPII(searchName) });
       linkedin = await serper.findCompanyLinkedin(searchName);
     }
     // Mark as NAO_POSSUI if not found (important for analysis)
@@ -510,14 +511,14 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
     // ========================================
     let websiteContacts = { emails: [], phones: [], social: {} };
     if (website && website !== LINKEDIN_STATUS.NAO_POSSUI) {
-      console.log(`[SERPER] Extraindo contatos de: ${website}`);
+      logger.info('serper_contacts_extract', { website: sanitizeForLog(website) });
       websiteContacts = await serper.extractContactsFromWebsite(website);
     }
 
     // ========================================
     // 6. REGIME TRIBUTÁRIO - CNPJá (histórico)
     // ========================================
-    console.log(`[CNPJA] Buscando regime tributário: ${cleanCnpj}`);
+    logger.info('cnpja_regime_search', { cnpj: sanitizeForLog(cleanCnpj) });
     const cnpjaData = await cnpja.getRegimeTributario(cleanCnpj);
 
     // ========================================
@@ -616,7 +617,7 @@ router.post('/details', validateBody(detailsCompanySchema), async (req, res) => 
     });
 
   } catch (error) {
-    console.error('[DETAILS ERROR]', error);
+    logger.error('details_error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Erro ao buscar detalhes',
       details: error.message
@@ -642,12 +643,12 @@ router.post('/socios', validateBody(sociosSchema), async (req, res) => {
       searchName = searchName.split(/\s+/)[0];
     }
 
-    logger.info('Enriching socios', { count: socios.length, empresa: searchName });
+    logger.info('enriching_socios', { count: socios.length, empresa: maskPII(searchName) });
 
     const enrichedSocios = [];
 
     for (const socio of socios.slice(0, 10)) { // Limit to 10
-      console.log(`[APOLLO] Buscando pessoa: ${socio.nome}`);
+      logger.info('apollo_person_search', { nome: maskPII(socio.nome) });
 
       // Try Apollo first
       const apolloPerson = await apollo.searchPerson(socio.nome, searchName);
@@ -685,7 +686,7 @@ router.post('/socios', validateBody(sociosSchema), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[SOCIOS ERROR]', error);
+    logger.error('socios_error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Erro ao enriquecer socios',
       details: error.message
@@ -856,7 +857,7 @@ router.post('/approve', validateBody(approveCompanySchema), async (req, res) => 
       logger.warn('graph_enrichment_failed', { empresa_id: insertedCompany.id, error: graphError.message });
     }
 
-    console.log(`[APPROVED] Empresa ${cleanCnpj} aprovada por ${aprovado_por} com ${insertedSocios.length} socios`);
+    logger.info('company_approved', { cnpj: sanitizeForLog(cleanCnpj), aprovado_por: maskPII(aprovado_por), socios_count: insertedSocios.length });
 
     // Invalidate approved companies cache so new company appears in searches
     invalidateApprovedCache();
@@ -870,7 +871,7 @@ router.post('/approve', validateBody(approveCompanySchema), async (req, res) => 
     });
 
   } catch (error) {
-    console.error('[APPROVE ERROR]', error);
+    logger.error('approve_error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Erro ao aprovar empresa',
       details: error.message
@@ -1086,7 +1087,7 @@ router.get('/:id/analysis', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[ANALYSIS ERROR]', error);
+    logger.error('analysis_error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Erro ao analisar empresa',
       details: error.message
@@ -1138,7 +1139,7 @@ router.post('/:id/recalculate', validateBody(recalculateSchema), async (req, res
     });
 
   } catch (error) {
-    console.error('[RECALCULATE ERROR]', error);
+    logger.error('recalculate_error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Erro ao recalcular inferencia',
       details: error.message
@@ -1164,7 +1165,7 @@ router.post('/:id/update-regime', async (req, res) => {
     const cleanCnpj = empresa.cnpj.replace(/[^\d]/g, '');
 
     // Fetch CNPJá data
-    console.log(`[CNPJA] Atualizando regime para CNPJ: ${cleanCnpj}`);
+    logger.info('cnpja_regime_update', { cnpj: sanitizeForLog(cleanCnpj) });
     const cnpjaData = await cnpja.getRegimeTributario(cleanCnpj);
 
     if (!cnpjaData) {
@@ -1231,7 +1232,7 @@ router.post('/:id/update-regime', async (req, res) => {
     const varInferencia = calcularInferenciaVAR(empresa, regimes, fullData.socios);
     await updateInferenciaLimites(id, varInferencia);
 
-    console.log(`[UPDATE-REGIME] Empresa ${cleanCnpj} atualizada: ${regimeTributario}`);
+    logger.info('regime_updated', { cnpj: sanitizeForLog(cleanCnpj), regime: regimeTributario });
 
     return res.json({
       success: true,
@@ -1246,7 +1247,7 @@ router.post('/:id/update-regime', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[UPDATE-REGIME ERROR]', error);
+    logger.error('update_regime_error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Erro ao atualizar regime',
       details: error.message
@@ -1301,7 +1302,7 @@ router.get('/:id/founders-history', async (req, res) => {
         .neq('empresa_id', id);
 
       if (error) {
-        console.error('Error fetching other companies:', error);
+        logger.error('founders_history_fetch_error', { error: error.message });
         continue;
       }
 
@@ -1333,7 +1334,7 @@ router.get('/:id/founders-history', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[FOUNDERS-HISTORY ERROR]', error);
+    logger.error('founders_history_error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Erro ao buscar historico dos fundadores',
       details: error.message
@@ -1365,7 +1366,7 @@ router.get('/segments', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[SEGMENTS ERROR]', error);
+    logger.error('segments_error', { error: error.message });
     res.status(500).json({
       error: 'Erro ao listar segmentos',
       details: error.message
@@ -1413,7 +1414,7 @@ router.get('/cnae', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[CNAE ERROR]', error);
+    logger.error('cnae_error', { error: error.message });
     res.status(500).json({
       success: false,
       error: 'Erro ao listar CNAEs',
@@ -1529,7 +1530,7 @@ router.get('/:id/sis', async (req, res) => {
       durationMs: Date.now() - startTime
     });
   } catch (error) {
-    logger.error('sis_error', { id: req.params.id, error: error.message });
+    logger.error('sis_error', { id: sanitizeForLog(req.params.id), error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Erro ao calcular SIS', details: error.message });
   }
 });
@@ -1561,7 +1562,7 @@ router.get('/:id/relationships', validateQuery(relationshipsQuerySchema), async 
       durationMs: Date.now() - startTime
     });
   } catch (error) {
-    logger.error('relationships_error', { id: req.params.id, error: error.message });
+    logger.error('relationships_error', { id: sanitizeForLog(req.params.id), error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Erro ao buscar relacionamentos', details: error.message });
   }
 });
@@ -1585,7 +1586,7 @@ router.get('/:id/network', validateQuery(networkQuerySchema), async (req, res) =
       durationMs: Date.now() - startTime
     });
   } catch (error) {
-    logger.error('network_error', { id: req.params.id, error: error.message });
+    logger.error('network_error', { id: sanitizeForLog(req.params.id), error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Erro ao buscar rede', details: error.message });
   }
 });
@@ -1608,7 +1609,7 @@ router.get('/:id/network-stats', async (req, res) => {
       durationMs: Date.now() - startTime
     });
   } catch (error) {
-    logger.error('network_stats_error', { id: req.params.id, error: error.message });
+    logger.error('network_stats_error', { id: sanitizeForLog(req.params.id), error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Erro ao buscar estatísticas da rede', details: error.message });
   }
 });

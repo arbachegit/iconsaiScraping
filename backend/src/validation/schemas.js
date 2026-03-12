@@ -449,11 +449,29 @@ export const newsSearchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50)
 });
 
+// People list query params (GET /api/people/list)
+export const peopleListSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
 // News list query params (GET /api/news/list)
 export const newsListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
   segmento: z.string().max(100).transform(val => val?.trim()).optional()
+});
+
+// News classify batch body (POST /api/news/classify-batch)
+export const newsClassifyBatchSchema = z.object({
+  maxBatches: z.coerce.number().int().min(1).max(100).default(10),
+  batchSize: z.coerce.number().int().min(5).max(50).default(25),
+});
+
+// News enrich batch body (POST /api/news/enrich-batch)
+export const newsEnrichBatchSchema = z.object({
+  maxBatches: z.coerce.number().int().min(1).max(100).default(10),
+  batchSize: z.coerce.number().int().min(5).max(30).default(15),
 });
 
 // ============================================
@@ -488,6 +506,58 @@ export const searchEmendasSchema = z.object({
     .max(300, 'Query muito longa (maximo 300 caracteres)')
     .transform(val => val.trim()),
   limit: z.coerce.number().int().min(1).max(100).default(50)
+});
+
+// ============================================
+// NEWS AI SEARCH SCHEMA
+// ============================================
+
+// News AI search query params (GET /api/news/search-ai)
+export const newsSearchAiSchema = z.object({
+  q: z.string()
+    .min(1, 'Query "q" é obrigatória')
+    .max(300, 'Query muito longa (máximo 300 caracteres)')
+    .transform(val => val.trim()),
+  fonte: z.string().max(100).transform(val => val?.trim()).optional().nullable(),
+  idioma: z.enum(['pt', 'en', 'es']).default('pt'),
+  pais: z.string().max(5).default('BR'),
+  data_inicio: z.string().max(20).optional().nullable(),
+  data_fim: z.string().max(20).optional().nullable(),
+  limit: z.coerce.number().int().min(1).max(20).default(10),
+});
+
+// ============================================
+// PEOPLE ENRICHED LIST SCHEMA
+// ============================================
+
+// People list-enriched query params (GET /api/people/list-enriched)
+export const peopleListEnrichedSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+  offset: z.coerce.number().int().min(0).default(0),
+  search: z.string().max(200).transform(val => val?.trim()).optional().default(''),
+});
+
+// ============================================
+// BI QUERY SCHEMAS
+// ============================================
+
+// BI opportunities query params (GET /api/bi/opportunities/:empresaId)
+export const biOpportunitiesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  status: z.enum(['quente', 'morno', 'frio', 'todos']).optional(),
+});
+
+// BI leads query params (GET /api/bi/opportunities/:empresaId/leads)
+export const biLeadsQuerySchema = z.object({
+  temperatura: z.enum(['quente', 'morno', 'frio']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+// BI evidence query params
+export const biEvidenceQuerySchema = z.object({
+  tipo: z.string().max(50).transform(val => val?.trim()).optional(),
+  fonte: z.string().max(100).transform(val => val?.trim()).optional(),
+  min_confianca: z.coerce.number().min(0).max(1).optional(),
 });
 
 // ============================================

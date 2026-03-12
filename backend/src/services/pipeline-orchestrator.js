@@ -200,7 +200,7 @@ export async function executePipeline(empresaId, options = {}) {
   // Verify company exists
   const { data: empresa, error: empError } = await supabase
     .from('dim_empresas')
-    .select('id, razao_social, nome_fantasia, cnpj, website, cidade, estado, cnae_principal')
+    .select('id, razao_social, nome_fantasia, cnpj, cidade, estado, cnae_id')
     .eq('id', id)
     .single();
 
@@ -383,7 +383,7 @@ export async function executePipeline(empresaId, options = {}) {
           nome: empresa.nome_fantasia || empresa.razao_social,
           cidade: empresa.cidade,
           estado: empresa.estado,
-          cnae: empresa.cnae_principal,
+          cnae: empresa.cnae_id,
           socios: (socios || []).map((s) => ({
             pessoa_id: s.pessoa_id,
             qualificacao: s.qualificacao_socio,
