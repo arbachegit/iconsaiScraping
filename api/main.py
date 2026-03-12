@@ -340,8 +340,14 @@ class StatsHistoryResponse(BaseModel):
 
 
 def _get_safe_count(client, table: str) -> int:
-    """Safe count that handles empty/missing tables."""
+    """Safe count that handles empty/missing tables.
+    Uses RPC for dim_empresas (pg_class, instant) to avoid timeout on 64M+ rows.
+    """
     try:
+        if table == "dim_empresas":
+            r = client.rpc("count_empresas_estimate", {}).execute()
+            if r.data is not None and r.data > 0:
+                return r.data
         r = client.from_(table).select("id", count="estimated", head=True).execute()
         return r.count or 0
     except Exception:
@@ -787,6 +793,10 @@ async def create_stats_snapshot(request: Request):
         # Contagens atuais - use safe_count to handle empty/missing tables
         def safe_count(client, table):
             try:
+                if table == "dim_empresas":
+                    r = client.rpc("count_empresas_estimate", {}).execute()
+                    if r.data is not None and r.data > 0:
+                        return r.data
                 r = client.from_(table).select("id", count="estimated", head=True).execute()
                 return r.count or 0
             except Exception:
