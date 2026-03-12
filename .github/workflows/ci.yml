@@ -80,7 +80,9 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    # DESABILITADO: Deploy legado (systemd) substituido por deploy.yml (Docker)
+    # Manter ci.yml apenas para testes. O deploy.yml cuida do deploy em producao.
+    if: false  # was: github.ref == 'refs/heads/main'
     permissions:
       contents: write
 

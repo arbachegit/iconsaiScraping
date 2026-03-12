@@ -363,6 +363,25 @@ jobs:
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM=${{ secrets.EMAIL_FROM }}
 
+          # Inter-service URLs (Docker network)
+          PYTHON_API_URL=http://api:8000
+          NODEJS_API_URL=http://backend:3001
+
+          # Redis
+          REDIS_URL=redis://redis:6379
+
+          # Database (direct Postgres for LISTEN/NOTIFY — opcional)
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+
+          # OpenAI (fallback LLM)
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+
+          # DigitalOcean Spaces (Data Lake — opcional, pipeline-worker usa se disponivel)
+          DO_SPACES_KEY=${{ secrets.DO_SPACES_KEY }}
+          DO_SPACES_SECRET=${{ secrets.DO_SPACES_SECRET }}
+          DO_SPACES_REGION=nyc3
+          DO_SPACES_BUCKET=iconsai-data-lake
+
           # Scheduler
           SCHEDULER_ENABLED=true
           SCHEDULER_HOUR=2

@@ -4,6 +4,7 @@ Executa a cada 5 minutos para atualizar estatisticas do dashboard.
 """
 
 import asyncio
+import os
 from datetime import datetime
 
 import httpx
@@ -33,8 +34,8 @@ class StatsSnapshotJob:
         Cria snapshot chamando o endpoint /api/stats/snapshot.
         """
         try:
-            # URL do backend Python
-            base_url = "http://localhost:8000"
+            # URL do backend Python (usar env var em produção)
+            base_url = os.getenv("PYTHON_API_URL", "http://localhost:8000")
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(f"{base_url}/api/stats/snapshot")

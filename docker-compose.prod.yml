@@ -92,6 +92,10 @@ services:
       - EMAIL_FROM=${EMAIL_FROM:-noreply@iconsai.ai}
       # Atlas LLM
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Cron self-call URL
+      - PYTHON_API_URL=http://localhost:8000
+      # Redis
+      - REDIS_URL=redis://redis:6379
       # Version tracking
       - GIT_SHA=${GIT_SHA}
       - BUILD_DATE=${BUILD_DATE}

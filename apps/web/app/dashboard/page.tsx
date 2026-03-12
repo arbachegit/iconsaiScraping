@@ -679,11 +679,8 @@ function DashboardNavLink({
       <div className={`mt-0.5 rounded-lg p-2 ${active ? 'bg-cyan-500/15 text-cyan-300' : 'bg-slate-900/80 text-slate-500 group-hover:text-cyan-300'}`}>
         <Icon className="h-4 w-4" />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex items-center">
         <div className="text-sm font-semibold">{title}</div>
-        <div className="mt-0.5 text-xs leading-relaxed text-slate-500 group-hover:text-slate-400">
-          {description}
-        </div>
       </div>
     </Link>
   );
@@ -756,9 +753,6 @@ function NeoGlowCompactCard({
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-slate-500 truncate group-hover:opacity-0 transition-opacity">
-              {description}
-            </p>
           </div>
         </div>
       </div>
