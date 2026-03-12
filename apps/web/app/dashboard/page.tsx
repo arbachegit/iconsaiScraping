@@ -371,45 +371,45 @@ export default function DashboardPage() {
                     href="/dashboard"
                     icon={LayoutDashboard}
                     title="Dashboard"
-                    description="Visão operacional e estatísticas"
+
                     active
                   />
                   <DashboardNavLink
                     href="/graph"
                     icon={Network}
                     title="Graph"
-                    description="Relações entre entidades"
+
                   />
                   <DashboardNavLink
                     href="/emendas"
                     icon={Receipt}
                     title="Emendas"
-                    description="Emendas parlamentares e orçamento"
+
                   />
                   <DashboardNavLink
                     href="/noticias"
                     icon={Newspaper}
                     title="Notícias"
-                    description="Monitoramento de notícias"
+
                   />
                   <DashboardNavLink
                     href="/inteligencia"
                     icon={Brain}
                     title="Inteligência"
-                    description="Pipeline BI e oportunidades"
+
                   />
                   <DashboardNavLink
                     href="/modelo-estatistico"
                     icon={BookOpen}
                     title="Modelo Estatístico"
-                    description="Fórmula, vantagens, riscos e casos"
+
                   />
                   {isAdmin && (
                     <DashboardNavLink
                       href="/db"
                       icon={Database}
                       title="DB"
-                      description="Modelo e exploração de tabelas"
+
                     />
                   )}
                 </div>
@@ -437,7 +437,7 @@ export default function DashboardPage() {
                   icon={Building2}
                   iconColor="red"
                   title="Empresas"
-                  description="CNPJ via BrasilAPI + Serper"
+
                   onClick={() => setCompanyModalOpen(true)}
                 />
               )}
@@ -446,7 +446,7 @@ export default function DashboardPage() {
                   icon={Users}
                   iconColor="orange"
                   title="Pessoas"
-                  description="Perfis profissionais"
+
                   onClick={() => setPessoasListingOpen(true)}
                 />
               )}
@@ -455,7 +455,7 @@ export default function DashboardPage() {
                   icon={Flag}
                   iconColor="blue"
                   title="Políticos"
-                  description="Perfis e percepção"
+
                   onClick={openPoliticosFromCard}
                 />
               )}
@@ -464,7 +464,7 @@ export default function DashboardPage() {
                   icon={Vote}
                   iconColor="purple"
                   title="Mandatos"
-                  description="Cargos e mandatos"
+
                   onClick={() => setMandatosListingOpen(true)}
                 />
               )}
@@ -473,7 +473,7 @@ export default function DashboardPage() {
                   icon={Receipt}
                   iconColor="cyan"
                   title="Emendas"
-                  description="Emendas parlamentares"
+
                   onClick={openEmendasFromCard}
                 />
               )}
@@ -482,7 +482,7 @@ export default function DashboardPage() {
                   icon={Newspaper}
                   iconColor="green"
                   title="Notícias"
-                  description="Monitore notícias"
+
                   onClick={() => router.push('/noticias')}
                 />
               )}
@@ -658,13 +658,11 @@ function DashboardNavLink({
   href,
   icon: Icon,
   title,
-  description,
   active = false,
 }: {
   href: string;
   icon: typeof Building2;
   title: string;
-  description: string;
   active?: boolean;
 }) {
   return (
@@ -690,14 +688,12 @@ function NeoGlowCompactCard({
   icon: Icon,
   iconColor,
   title,
-  description,
   badge,
   onClick,
 }: {
   icon: typeof Building2;
   iconColor: 'red' | 'orange' | 'blue' | 'green' | 'cyan' | 'purple';
   title: string;
-  description: string;
   badge?: string;
   onClick: () => void;
 }) {
