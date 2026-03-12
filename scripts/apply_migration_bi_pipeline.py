@@ -22,7 +22,6 @@ Usage:
 
 import os
 import sys
-import re
 from pathlib import Path
 
 import httpx
@@ -95,7 +94,7 @@ def split_sql_statements(sql: str) -> list[str]:
         # Split on ; only when NOT in a $$ block
         if not in_dollar_block and stripped.endswith(";"):
             stmt = "\n".join(current).strip()
-            if stmt and not all(l.strip().startswith("--") for l in current if l.strip()):
+            if stmt and not all(line.strip().startswith("--") for line in current if line.strip()):
                 statements.append(stmt)
             current = []
 
