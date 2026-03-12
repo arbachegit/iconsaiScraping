@@ -28,7 +28,6 @@ import csv
 import hashlib
 import io
 import json
-import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
