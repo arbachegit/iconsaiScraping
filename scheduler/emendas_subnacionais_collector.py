@@ -2,22 +2,33 @@
 Emendas Subnacionais Collector
 Coleta emendas estaduais e municipais de portais de transparência.
 
-Phase 1 Sources:
+Phase 1 Sources (original):
   - GO Estado: CKAN DataStore API (dadosabertos.go.gov.br)
   - MG Estado: ALMG CSV (mediaserver.almg.gov.br)
   - RJ Capital: Transparência Prefeitura (XLSX)
   - SP Capital: CKAN ODS (dados.prefeitura.sp.gov.br)
 
+Phase 2 Sources (expanded):
+  - Tesouro Transparente: CKAN CSV federal (ALL municipalities)
+  - Portal da Transparência: Bulk CSV federal (by year, 2015-2026)
+  - BA Estado: Assembleia Legislativa da Bahia (CSV)
+  - PR Estado: Assembleia Legislativa do Paraná (CSV)
+  - BH Municipal: Portal de Dados Abertos BH (CKAN)
+
 Usage:
   python -m scheduler.emendas_subnacionais_collector --source go_estado
   python -m scheduler.emendas_subnacionais_collector --source all
+  python -m scheduler.emendas_subnacionais_collector --source tesouro_transparente
   python -m scheduler.emendas_subnacionais_collector --source go_estado --dry-run
+  python -m scheduler.emendas_subnacionais_collector --list-sources
 """
 
 import asyncio
 import csv
+import hashlib
 import io
 import json
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -70,6 +81,71 @@ SOURCES = {
         'format': 'ckan_json',
         'note': 'Limited to SMADS (social assistance)',
     },
+    # =============================================
+    # PHASE 2: EXPANDED SOURCES
+    # =============================================
+    'tesouro_transparente': {
+        'name': 'Tesouro Transparente - Emendas Parlamentares (Nacional)',
+        'esfera': 'federal',
+        'uf': None,  # ALL UFs
+        'municipio': None,
+        'url': 'https://www.tesourotransparente.gov.br/ckan/dataset/83e419da-1552-46bf-bfc3-05160b2c46c9/resource/66d69917-a5d8-4500-b4b2-ef1f5d062430/download/Emendas-Parlamentares.csv',
+        'format': 'csv_tesouro',
+    },
+    'portal_transparencia_2024': {
+        'name': 'Portal da Transparência - Emendas 2024',
+        'esfera': 'federal',
+        'uf': None,
+        'municipio': None,
+        'url': 'https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares/2024',
+        'format': 'csv_portal_transparencia',
+        'ano': 2024,
+    },
+    'portal_transparencia_2025': {
+        'name': 'Portal da Transparência - Emendas 2025',
+        'esfera': 'federal',
+        'uf': None,
+        'municipio': None,
+        'url': 'https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares/2025',
+        'format': 'csv_portal_transparencia',
+        'ano': 2025,
+    },
+    'portal_transparencia_2026': {
+        'name': 'Portal da Transparência - Emendas 2026',
+        'esfera': 'federal',
+        'uf': None,
+        'municipio': None,
+        'url': 'https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares/2026',
+        'format': 'csv_portal_transparencia',
+        'ano': 2026,
+    },
+    'ba_estado': {
+        'name': 'Bahia Estado - Assembleia Legislativa',
+        'esfera': 'estadual',
+        'uf': 'BA',
+        'municipio': None,
+        'url': 'https://www.al.ba.gov.br/transparencia/dados-abertos',
+        'data_url': 'https://www.al.ba.gov.br/transparencia/emendas-parlamentares/export/csv',
+        'format': 'csv_ba',
+    },
+    'pr_estado': {
+        'name': 'Paraná Estado - Assembleia Legislativa',
+        'esfera': 'estadual',
+        'uf': 'PR',
+        'municipio': None,
+        'url': 'https://transparencia.alep.pr.gov.br',
+        'data_url': 'https://transparencia.alep.pr.gov.br/emendas/export/csv',
+        'format': 'csv_pr',
+    },
+    'bh_municipal': {
+        'name': 'Belo Horizonte - Portal de Dados Abertos',
+        'esfera': 'municipal',
+        'uf': 'MG',
+        'municipio': 'Belo Horizonte',
+        'codigo_ibge': '3106200',
+        'url': 'https://dados.pbh.gov.br/api/3/action/datastore_search',
+        'format': 'ckan_json_bh',
+    },
 }
 
 # Data source registration for compliance (fontes_dados table)
@@ -117,6 +193,83 @@ DATA_SOURCE_REGISTRATIONS = {
         'confiabilidade': 'alta',
         'cobertura_temporal': '2021-presente',
         'observacoes': 'CKAN API - Emendas parlamentares da SMADS (assistência social)',
+    },
+    'tesouro_transparente': {
+        'nome': 'Tesouro Transparente - Emendas Parlamentares (Nacional)',
+        'categoria': 'politico',
+        'fonte_primaria': 'Tesouro Nacional / Secretaria do Tesouro Nacional',
+        'url': 'https://www.tesourotransparente.gov.br',
+        'formato': 'CSV',
+        'api_key_necessaria': False,
+        'confiabilidade': 'alta',
+        'cobertura_temporal': '2015-presente',
+        'observacoes': 'CKAN CSV direto - Emendas parlamentares federais de TODOS os municípios brasileiros. Dados do SIOP/LOA.',
+    },
+    'portal_transparencia_2024': {
+        'nome': 'Portal da Transparência - Emendas Parlamentares (Bulk CSV)',
+        'categoria': 'politico',
+        'fonte_primaria': 'Controladoria-Geral da União (CGU)',
+        'url': 'https://portaldatransparencia.gov.br',
+        'formato': 'CSV (ZIP)',
+        'api_key_necessaria': False,
+        'confiabilidade': 'alta',
+        'cobertura_temporal': '2015-presente',
+        'observacoes': 'Download em massa por ano - emendas federais com detalhamento de empenhos, liquidações e pagamentos.',
+    },
+    'portal_transparencia_2025': {
+        'nome': 'Portal da Transparência - Emendas 2025',
+        'categoria': 'politico',
+        'fonte_primaria': 'Controladoria-Geral da União (CGU)',
+        'url': 'https://portaldatransparencia.gov.br',
+        'formato': 'CSV (ZIP)',
+        'api_key_necessaria': False,
+        'confiabilidade': 'alta',
+        'cobertura_temporal': '2025',
+        'observacoes': 'Download em massa 2025 - emendas federais.',
+    },
+    'portal_transparencia_2026': {
+        'nome': 'Portal da Transparência - Emendas 2026',
+        'categoria': 'politico',
+        'fonte_primaria': 'Controladoria-Geral da União (CGU)',
+        'url': 'https://portaldatransparencia.gov.br',
+        'formato': 'CSV (ZIP)',
+        'api_key_necessaria': False,
+        'confiabilidade': 'alta',
+        'cobertura_temporal': '2026',
+        'observacoes': 'Download em massa 2026 - emendas federais.',
+    },
+    'ba_estado': {
+        'nome': 'Assembleia Legislativa da Bahia - Emendas Parlamentares',
+        'categoria': 'politico',
+        'fonte_primaria': 'Assembleia Legislativa da Bahia (ALBA)',
+        'url': 'https://www.al.ba.gov.br',
+        'formato': 'CSV',
+        'api_key_necessaria': False,
+        'confiabilidade': 'alta',
+        'cobertura_temporal': '2019-presente',
+        'observacoes': 'Emendas parlamentares estaduais da Bahia - portal de transparência ALBA.',
+    },
+    'pr_estado': {
+        'nome': 'Assembleia Legislativa do Paraná - Emendas Parlamentares',
+        'categoria': 'politico',
+        'fonte_primaria': 'Assembleia Legislativa do Paraná (ALEP)',
+        'url': 'https://transparencia.alep.pr.gov.br',
+        'formato': 'CSV',
+        'api_key_necessaria': False,
+        'confiabilidade': 'alta',
+        'cobertura_temporal': '2019-presente',
+        'observacoes': 'Emendas parlamentares estaduais do Paraná - portal de transparência ALEP.',
+    },
+    'bh_municipal': {
+        'nome': 'Portal de Dados Abertos BH - Emendas Parlamentares',
+        'categoria': 'politico',
+        'fonte_primaria': 'Prefeitura de Belo Horizonte',
+        'url': 'https://dados.pbh.gov.br',
+        'formato': 'JSON',
+        'api_key_necessaria': False,
+        'confiabilidade': 'alta',
+        'cobertura_temporal': '2019-presente',
+        'observacoes': 'CKAN API - Emendas parlamentares da Câmara Municipal de Belo Horizonte.',
     },
 }
 
@@ -169,14 +322,25 @@ class EmendasSubnacionaisCollector:
 
         try:
             # Dispatch to appropriate collector
-            if source['format'] == 'ckan_json':
+            fmt = source['format']
+            if fmt == 'ckan_json':
                 records = await self._collect_ckan(source_key, source)
-            elif source['format'] == 'csv':
+            elif fmt == 'csv':
                 records = await self._collect_csv(source_key, source)
-            elif source['format'] == 'xlsx':
+            elif fmt == 'xlsx':
                 records = await self._collect_xlsx(source_key, source)
+            elif fmt == 'csv_tesouro':
+                records = await self._collect_csv_tesouro(source_key, source)
+            elif fmt == 'csv_portal_transparencia':
+                records = await self._collect_portal_transparencia(source_key, source)
+            elif fmt == 'csv_ba':
+                records = await self._collect_csv_generic(source_key, source, self._normalize_ba)
+            elif fmt == 'csv_pr':
+                records = await self._collect_csv_generic(source_key, source, self._normalize_pr)
+            elif fmt == 'ckan_json_bh':
+                records = await self._collect_ckan_bh(source_key, source)
             else:
-                raise ValueError(f"Unsupported format: {source['format']}")
+                raise ValueError(f"Unsupported format: {fmt}")
 
             self._stats['fetched'] = len(records)
             logger.info('records_fetched', source=source_key, count=len(records))
@@ -322,6 +486,217 @@ class EmendasSubnacionaisCollector:
         wb.close()
         return records
 
+    async def _collect_csv_tesouro(self, source_key: str, source: dict) -> List[dict]:
+        """Collect from Tesouro Transparente CKAN CSV (large file, ALL municipalities).
+
+        CSV columns (typical Tesouro Transparente):
+        Ano, Autor, Tipo Autor, Partido, UF, Localidade, Código IBGE,
+        Tipo Emenda, Número Emenda, Função, Subfunção, Programa, Ação,
+        Natureza Despesa, Valor Empenhado, Valor Liquidado, Valor Pago
+        """
+        logger.info('tesouro_csv_download_start', url=source['url'])
+
+        # Large file — stream download
+        async with self._http.stream('GET', source['url'], follow_redirects=True, timeout=300.0) as resp:
+            resp.raise_for_status()
+            content = b''
+            async for chunk in resp.aiter_bytes(chunk_size=1024 * 64):
+                content += chunk
+
+        # Detect encoding
+        try:
+            text = content.decode('utf-8')
+        except UnicodeDecodeError:
+            text = content.decode('latin-1')
+
+        logger.info('tesouro_csv_downloaded', size_mb=round(len(content) / 1024 / 1024, 1))
+
+        # Parse CSV (semicolon separated typical for Brazilian gov)
+        delimiter = ';' if ';' in text[:2000] else ','
+        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+        records = []
+
+        for row in reader:
+            record = self._normalize_tesouro(row, source)
+            if record:
+                records.append(record)
+
+        return records
+
+    async def _collect_portal_transparencia(self, source_key: str, source: dict) -> List[dict]:
+        """Collect from Portal da Transparência bulk CSV download (ZIP file).
+
+        The download URL returns a ZIP containing one or more CSV files.
+        """
+        import zipfile
+
+        logger.info('portal_transparencia_download_start', url=source['url'], ano=source.get('ano'))
+
+        try:
+            resp = await self._http.get(source['url'], follow_redirects=True, timeout=300.0)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.warning('portal_transparencia_download_failed', status=e.response.status_code, url=source['url'])
+            return []
+
+        records = []
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(resp.content))
+            for name in zf.namelist():
+                if name.endswith('.csv'):
+                    raw_bytes = zf.read(name)
+                    try:
+                        text = raw_bytes.decode('utf-8')
+                    except UnicodeDecodeError:
+                        text = raw_bytes.decode('latin-1')
+
+                    delimiter = ';' if ';' in text[:2000] else ','
+                    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+
+                    for row in reader:
+                        record = self._normalize_portal_transparencia(row, source)
+                        if record:
+                            records.append(record)
+
+                    logger.info('portal_csv_parsed', file=name, records=len(records))
+            zf.close()
+        except zipfile.BadZipFile:
+            # Maybe it's a direct CSV, not a ZIP
+            logger.info('portal_transparencia_not_zip_trying_csv')
+            try:
+                text = resp.content.decode('utf-8')
+            except UnicodeDecodeError:
+                text = resp.content.decode('latin-1')
+
+            delimiter = ';' if ';' in text[:2000] else ','
+            reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+            for row in reader:
+                record = self._normalize_portal_transparencia(row, source)
+                if record:
+                    records.append(record)
+
+        return records
+
+    async def _collect_csv_generic(self, source_key: str, source: dict, normalizer) -> List[dict]:
+        """Generic CSV collector with custom normalizer function.
+
+        Tries data_url first, falls back to main url.
+        """
+        url = source.get('data_url', source['url'])
+        logger.info('csv_generic_download', source=source_key, url=url)
+
+        try:
+            resp = await self._http.get(url, follow_redirects=True, timeout=120.0)
+            resp.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.ConnectError) as e:
+            logger.warning('csv_generic_download_failed', source=source_key, error=str(e))
+            # Try scraping the transparency page for download links
+            return await self._scrape_transparency_page(source_key, source, normalizer)
+
+        content = resp.content
+        try:
+            text = content.decode('utf-8')
+        except UnicodeDecodeError:
+            text = content.decode('latin-1')
+
+        delimiter = ';' if ';' in text[:2000] else ','
+        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+        records = []
+
+        for row in reader:
+            record = normalizer(row, source)
+            if record:
+                records.append(record)
+
+        return records
+
+    async def _scrape_transparency_page(self, source_key: str, source: dict, normalizer) -> List[dict]:
+        """Fallback: scrape transparency page for CSV download links."""
+        logger.info('scrape_transparency_page', source=source_key, url=source['url'])
+
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            logger.error('beautifulsoup4_not_installed', hint='pip install beautifulsoup4')
+            return []
+
+        try:
+            resp = await self._http.get(source['url'], follow_redirects=True, timeout=60.0)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.warning('scrape_page_failed', source=source_key, error=str(e))
+            return []
+
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        records = []
+
+        # Look for CSV/XLSX download links containing 'emenda'
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            text = link.get_text(strip=True).lower()
+            if ('emenda' in text or 'emenda' in href.lower()) and \
+               (href.endswith('.csv') or href.endswith('.xlsx') or 'download' in href.lower()):
+                full_url = href if href.startswith('http') else source['url'].rstrip('/') + '/' + href.lstrip('/')
+                logger.info('found_download_link', source=source_key, url=full_url)
+                try:
+                    dl_resp = await self._http.get(full_url, follow_redirects=True, timeout=120.0)
+                    dl_resp.raise_for_status()
+                    try:
+                        text_content = dl_resp.content.decode('utf-8')
+                    except UnicodeDecodeError:
+                        text_content = dl_resp.content.decode('latin-1')
+
+                    delimiter = ';' if ';' in text_content[:2000] else ','
+                    reader = csv.DictReader(io.StringIO(text_content), delimiter=delimiter)
+                    for row in reader:
+                        record = normalizer(row, source)
+                        if record:
+                            records.append(record)
+                    if records:
+                        break
+                except Exception as e:
+                    logger.warning('download_link_failed', url=full_url, error=str(e))
+                    continue
+
+        return records
+
+    async def _collect_ckan_bh(self, source_key: str, source: dict) -> List[dict]:
+        """Collect from Belo Horizonte CKAN DataStore API.
+
+        BH portal uses standard CKAN but may have different resource IDs.
+        We search for emendas datasets first.
+        """
+        base_url = source['url'].replace('/datastore_search', '')
+
+        # First, search for emendas package
+        search_url = base_url.replace('action/datastore_search', 'action/package_search')
+        try:
+            resp = await self._http.get(search_url, params={'q': 'emendas parlamentares', 'rows': 5})
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.warning('bh_ckan_search_failed', error=str(e))
+            return []
+
+        resource_ids = []
+        for pkg in data.get('result', {}).get('results', []):
+            for res in pkg.get('resources', []):
+                if res.get('datastore_active') or res.get('format', '').upper() in ('CSV', 'JSON'):
+                    resource_ids.append(res['id'])
+
+        if not resource_ids:
+            logger.warning('bh_no_emendas_resources_found')
+            return []
+
+        records = []
+        for rid in resource_ids[:3]:  # Limit to first 3 resources
+            source_copy = dict(source)
+            source_copy['resource_id'] = rid
+            page_records = await self._collect_ckan(source_key, source_copy)
+            records.extend(page_records)
+
+        return records
+
     # =============================================
     # NORMALIZERS (raw → standard schema)
     # =============================================
@@ -351,7 +726,6 @@ class EmendasSubnacionaisCollector:
                 codigo = f"GO-{_id}"
             else:
                 # Fallback: hash of all identifying fields
-                import hashlib
                 h = hashlib.md5(f"{autor}{descricao}{valor_str}{beneficiario}".encode()).hexdigest()[:10]
                 codigo = f"GO-{h}-{ano}"
 
@@ -545,9 +919,242 @@ class EmendasSubnacionaisCollector:
             logger.warning('normalize_rj_error', error=str(e))
             return None
 
+    def _normalize_tesouro(self, raw: dict, source: dict) -> Optional[dict]:
+        """Normalize Tesouro Transparente CSV record.
+
+        Typical columns (semicolon-separated):
+        Ano, Autor da Emenda, Tipo Autor, Partido Autor, UF Autor,
+        Numero Emenda, Tipo Emenda, Funcao, Subfuncao, Programa, Acao,
+        Localidade (Município/UF), Codigo IBGE Localidade,
+        Natureza Despesa, Valor Empenhado, Valor Liquidado, Valor Pago
+        """
+        try:
+            # Try multiple possible column name patterns
+            autor = self._get_field(raw, ['Autor da Emenda', 'Autor', 'AUTOR DA EMENDA', 'autor_emenda'])
+            tipo_autor = self._get_field(raw, ['Tipo Autor', 'TIPO AUTOR', 'tipo_autor'])
+            partido = self._get_field(raw, ['Partido Autor', 'Partido', 'PARTIDO', 'partido_autor'])
+            uf = self._get_field(raw, ['UF Autor', 'UF', 'uf_autor', 'UF_AUTOR'])
+            numero = self._get_field(raw, ['Numero Emenda', 'Número Emenda', 'NUMERO EMENDA', 'numero_emenda', 'NR_EMENDA'])
+            tipo_emenda = self._get_field(raw, ['Tipo Emenda', 'TIPO EMENDA', 'tipo_emenda'])
+            funcao = self._get_field(raw, ['Funcao', 'Função', 'FUNCAO', 'funcao'])
+            subfuncao = self._get_field(raw, ['Subfuncao', 'Subfunção', 'SUBFUNCAO', 'subfuncao'])
+            programa = self._get_field(raw, ['Programa', 'PROGRAMA', 'programa'])
+            acao = self._get_field(raw, ['Acao', 'Ação', 'ACAO', 'acao'])
+            localidade = self._get_field(raw, ['Localidade', 'LOCALIDADE', 'localidade', 'Municipio', 'Município'])
+            cod_ibge = self._get_field(raw, ['Codigo IBGE', 'Código IBGE', 'CODIGO_IBGE', 'codigo_ibge', 'Codigo IBGE Localidade'])
+            natureza = self._get_field(raw, ['Natureza Despesa', 'NATUREZA DESPESA', 'natureza_despesa'])
+            ano_raw = self._get_field(raw, ['Ano', 'ANO', 'ano', 'Exercicio', 'Exercício'])
+
+            val_empenhado = self._parse_valor(self._get_field(raw, ['Valor Empenhado', 'VALOR EMPENHADO', 'valor_empenhado', 'VL_EMPENHADO']))
+            val_liquidado = self._parse_valor(self._get_field(raw, ['Valor Liquidado', 'VALOR LIQUIDADO', 'valor_liquidado', 'VL_LIQUIDADO']))
+            val_pago = self._parse_valor(self._get_field(raw, ['Valor Pago', 'VALOR PAGO', 'valor_pago', 'VL_PAGO']))
+
+            ano = int(ano_raw) if ano_raw and str(ano_raw).strip().isdigit() else datetime.now().year
+
+            if not numero:
+                # Generate unique code from hash
+                h = hashlib.md5(f"{autor}{localidade}{tipo_emenda}{ano}{val_empenhado}".encode()).hexdigest()[:12]
+                codigo = f"TT-{h}-{ano}"
+            else:
+                codigo = f"TT-{str(numero).strip()}-{ano}"
+
+            return {
+                'codigo_emenda': codigo,
+                'numero_emenda': str(numero).strip() if numero else None,
+                'esfera': 'federal',
+                'uf': str(uf).strip() if uf else None,
+                'municipio': str(localidade).strip() if localidade else None,
+                'codigo_ibge': str(cod_ibge).strip() if cod_ibge else None,
+                'autor': str(autor).strip() if autor else None,
+                'partido': str(partido).strip() if partido else None,
+                'tipo_autor': str(tipo_autor).strip().lower() if tipo_autor else None,
+                'tipo': str(tipo_emenda).strip().lower() if tipo_emenda else None,
+                'funcao': str(funcao).strip() if funcao else None,
+                'subfuncao': str(subfuncao).strip() if subfuncao else None,
+                'programa': str(programa).strip() if programa else None,
+                'acao': str(acao).strip() if acao else None,
+                'natureza_despesa': str(natureza).strip() if natureza else None,
+                'ano': ano,
+                'valor_empenhado': val_empenhado,
+                'valor_liquidado': val_liquidado,
+                'valor_pago': val_pago,
+                'fonte': 'tesouro_transparente',
+                'fonte_url': source['url'],
+            }
+        except Exception as e:
+            logger.warning('normalize_tesouro_error', error=str(e))
+            return None
+
+    def _normalize_portal_transparencia(self, raw: dict, source: dict) -> Optional[dict]:
+        """Normalize Portal da Transparência bulk CSV record.
+
+        Portal da Transparência columns (semicolon-separated, latin-1):
+        Ano, Código Emenda, Número Emenda, Tipo Emenda, Autor Emenda,
+        Código Função, Função, Código Subfunção, Subfunção,
+        Código Programa, Programa, Código Ação, Ação,
+        Código Localidade, Localidade, UF,
+        Valor Empenhado, Valor Liquidado, Valor Pago, Valor Restos Inscritos
+        """
+        try:
+            autor = self._get_field(raw, ['Autor Emenda', 'Autor da Emenda', 'AUTOR_EMENDA', 'Nome Autor da Emenda'])
+            codigo_emenda = self._get_field(raw, ['Código Emenda', 'Codigo Emenda', 'CODIGO_EMENDA', 'Código da Emenda'])
+            numero = self._get_field(raw, ['Número Emenda', 'Numero Emenda', 'NUMERO_EMENDA', 'Número da Emenda'])
+            tipo_emenda = self._get_field(raw, ['Tipo Emenda', 'TIPO_EMENDA', 'Tipo da Emenda'])
+            funcao = self._get_field(raw, ['Função', 'Funcao', 'FUNCAO', 'Nome Função'])
+            subfuncao = self._get_field(raw, ['Subfunção', 'Subfuncao', 'SUBFUNCAO', 'Nome Subfunção'])
+            programa = self._get_field(raw, ['Programa', 'PROGRAMA', 'Nome Programa'])
+            acao = self._get_field(raw, ['Ação', 'Acao', 'ACAO', 'Nome Ação'])
+            localidade = self._get_field(raw, ['Localidade', 'LOCALIDADE', 'Nome Localidade'])
+            uf = self._get_field(raw, ['UF', 'UF Localidade', 'Sigla UF'])
+            cod_ibge = self._get_field(raw, ['Código Localidade', 'Codigo Localidade', 'CODIGO_LOCALIDADE'])
+            ano_raw = self._get_field(raw, ['Ano', 'ANO', 'Ano da Emenda', 'Exercício'])
+
+            val_empenhado = self._parse_valor(self._get_field(raw, ['Valor Empenhado', 'VALOR_EMPENHADO']))
+            val_liquidado = self._parse_valor(self._get_field(raw, ['Valor Liquidado', 'VALOR_LIQUIDADO']))
+            val_pago = self._parse_valor(self._get_field(raw, ['Valor Pago', 'VALOR_PAGO']))
+            val_restos = self._parse_valor(self._get_field(raw, ['Valor Restos Inscritos', 'Valor Resto a Pagar Inscrito']))
+
+            ano = int(ano_raw) if ano_raw and str(ano_raw).strip().isdigit() else source.get('ano', datetime.now().year)
+
+            if not codigo_emenda and not numero:
+                return None  # Skip rows without identification
+
+            codigo = str(codigo_emenda).strip() if codigo_emenda else f"PT-{str(numero).strip()}-{ano}"
+
+            return {
+                'codigo_emenda': f"PT-{codigo}-{ano}",
+                'numero_emenda': str(numero).strip() if numero else None,
+                'esfera': 'federal',
+                'uf': str(uf).strip() if uf else None,
+                'municipio': str(localidade).strip() if localidade else None,
+                'codigo_ibge': str(cod_ibge).strip() if cod_ibge else None,
+                'autor': str(autor).strip() if autor else None,
+                'tipo': str(tipo_emenda).strip().lower() if tipo_emenda else None,
+                'funcao': str(funcao).strip() if funcao else None,
+                'subfuncao': str(subfuncao).strip() if subfuncao else None,
+                'programa': str(programa).strip() if programa else None,
+                'acao': str(acao).strip() if acao else None,
+                'ano': ano,
+                'valor_empenhado': val_empenhado,
+                'valor_liquidado': val_liquidado,
+                'valor_pago': val_pago,
+                'fonte': 'portal_transparencia',
+                'fonte_url': source['url'],
+                'dados_extras': json.dumps({
+                    'valor_restos_inscritos': val_restos,
+                }) if val_restos else None,
+            }
+        except Exception as e:
+            logger.warning('normalize_portal_transparencia_error', error=str(e))
+            return None
+
+    def _normalize_ba(self, raw: dict, source: dict) -> Optional[dict]:
+        """Normalize Bahia Assembly CSV record."""
+        try:
+            autor = self._get_field(raw, ['Autor', 'Deputado', 'Parlamentar', 'AUTOR'])
+            numero = self._get_field(raw, ['Número', 'Numero', 'Nr Emenda', 'NUMERO', 'Nº Emenda'])
+            ano_raw = self._get_field(raw, ['Ano', 'ANO', 'Exercício', 'Exercicio'])
+            descricao = self._get_field(raw, ['Descrição', 'Descricao', 'Objeto', 'DESCRICAO'])
+            funcao = self._get_field(raw, ['Função', 'Funcao', 'FUNCAO'])
+            municipio = self._get_field(raw, ['Município', 'Municipio', 'MUNICIPIO', 'Localidade'])
+            valor_str = self._get_field(raw, ['Valor', 'Valor Aprovado', 'Valor Indicado', 'VALOR'])
+            partido = self._get_field(raw, ['Partido', 'PARTIDO'])
+            beneficiario = self._get_field(raw, ['Beneficiário', 'Beneficiario', 'BENEFICIARIO'])
+            val_empenhado = self._parse_valor(self._get_field(raw, ['Valor Empenhado', 'Empenhado']))
+            val_pago = self._parse_valor(self._get_field(raw, ['Valor Pago', 'Pago']))
+
+            ano = int(ano_raw) if ano_raw and str(ano_raw).strip().isdigit() else datetime.now().year
+            valor = self._parse_valor(valor_str)
+
+            if not numero and not autor:
+                return None
+
+            codigo = f"BA-{str(numero).strip()}-{ano}" if numero else f"BA-{hashlib.md5(f'{autor}{descricao}{ano}'.encode()).hexdigest()[:10]}-{ano}"
+
+            return {
+                'codigo_emenda': codigo,
+                'numero_emenda': str(numero).strip() if numero else None,
+                'esfera': source['esfera'],
+                'uf': source['uf'],
+                'municipio': str(municipio).strip() if municipio else None,
+                'autor': str(autor).strip() if autor else None,
+                'partido': str(partido).strip() if partido else None,
+                'tipo_autor': 'deputado_estadual',
+                'tipo': 'individual',
+                'descricao': str(descricao).strip() if descricao else None,
+                'funcao': str(funcao).strip() if funcao else None,
+                'beneficiario': str(beneficiario).strip() if beneficiario else None,
+                'ano': ano,
+                'valor_aprovado': valor,
+                'valor_empenhado': val_empenhado,
+                'valor_pago': val_pago,
+                'fonte': 'ba_alba',
+                'fonte_url': source['url'],
+                'dados_extras': json.dumps({k: str(v) for k, v in raw.items() if v}),
+            }
+        except Exception as e:
+            logger.warning('normalize_ba_error', error=str(e))
+            return None
+
+    def _normalize_pr(self, raw: dict, source: dict) -> Optional[dict]:
+        """Normalize Paraná Assembly CSV record."""
+        try:
+            autor = self._get_field(raw, ['Autor', 'Deputado', 'Parlamentar', 'AUTOR'])
+            numero = self._get_field(raw, ['Número', 'Numero', 'Nr Emenda', 'NUMERO', 'Nº Emenda', 'Nº'])
+            ano_raw = self._get_field(raw, ['Ano', 'ANO', 'Exercício'])
+            descricao = self._get_field(raw, ['Descrição', 'Descricao', 'Objeto', 'DESCRICAO', 'Finalidade'])
+            funcao = self._get_field(raw, ['Função', 'Funcao', 'FUNCAO'])
+            municipio = self._get_field(raw, ['Município', 'Municipio', 'MUNICIPIO', 'Localidade'])
+            valor_str = self._get_field(raw, ['Valor', 'Valor Aprovado', 'Valor da Emenda', 'VALOR'])
+            partido = self._get_field(raw, ['Partido', 'PARTIDO'])
+            beneficiario = self._get_field(raw, ['Beneficiário', 'Beneficiario', 'Entidade', 'BENEFICIARIO'])
+            val_empenhado = self._parse_valor(self._get_field(raw, ['Valor Empenhado', 'Empenhado']))
+            val_pago = self._parse_valor(self._get_field(raw, ['Valor Pago', 'Pago']))
+
+            ano = int(ano_raw) if ano_raw and str(ano_raw).strip().isdigit() else datetime.now().year
+            valor = self._parse_valor(valor_str)
+
+            if not numero and not autor:
+                return None
+
+            codigo = f"PR-{str(numero).strip()}-{ano}" if numero else f"PR-{hashlib.md5(f'{autor}{descricao}{ano}'.encode()).hexdigest()[:10]}-{ano}"
+
+            return {
+                'codigo_emenda': codigo,
+                'numero_emenda': str(numero).strip() if numero else None,
+                'esfera': source['esfera'],
+                'uf': source['uf'],
+                'municipio': str(municipio).strip() if municipio else None,
+                'autor': str(autor).strip() if autor else None,
+                'partido': str(partido).strip() if partido else None,
+                'tipo_autor': 'deputado_estadual',
+                'tipo': 'individual',
+                'descricao': str(descricao).strip() if descricao else None,
+                'funcao': str(funcao).strip() if funcao else None,
+                'beneficiario': str(beneficiario).strip() if beneficiario else None,
+                'ano': ano,
+                'valor_aprovado': valor,
+                'valor_empenhado': val_empenhado,
+                'valor_pago': val_pago,
+                'fonte': 'pr_alep',
+                'fonte_url': source['url'],
+                'dados_extras': json.dumps({k: str(v) for k, v in raw.items() if v}),
+            }
+        except Exception as e:
+            logger.warning('normalize_pr_error', error=str(e))
+            return None
+
     # =============================================
     # HELPERS
     # =============================================
+
+    def _get_field(self, row: dict, candidates: List[str]) -> Optional[str]:
+        """Get field value trying multiple column name candidates."""
+        for key in candidates:
+            val = row.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()
+        return None
 
     def _parse_valor(self, val: Any) -> Optional[float]:
         """Parse Brazilian currency value to float."""

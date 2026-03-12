@@ -187,6 +187,30 @@ export const DATA_SOURCES = {
     confiabilidade: 'alta',
     cobertura_temporal: '2019-presente',
     observacoes: 'Emendas estaduais e municipais (GO, MG, RJ, SP) via fato_emendas_subnacionais'
+  },
+  TESOURO_TRANSPARENTE: {
+    nome: 'Tesouro Transparente - Emendas Parlamentares (Nacional)',
+    categoria: 'politico',
+    fonte_primaria: 'Secretaria do Tesouro Nacional',
+    url: 'https://www.tesourotransparente.gov.br',
+    documentacao_url: 'https://www.tesourotransparente.gov.br/ckan/dataset/emendas-parlamentares',
+    formato: 'CSV',
+    api_key_necessaria: false,
+    confiabilidade: 'alta',
+    cobertura_temporal: '2015-presente',
+    observacoes: 'CSV federal cobrindo TODOS os municípios - dados SIOP/LOA'
+  },
+  PORTAL_TRANSPARENCIA: {
+    nome: 'Portal da Transparência - Emendas Parlamentares (CGU)',
+    categoria: 'politico',
+    fonte_primaria: 'Controladoria-Geral da União (CGU)',
+    url: 'https://portaldatransparencia.gov.br',
+    documentacao_url: 'https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares',
+    formato: 'CSV (ZIP)',
+    api_key_necessaria: false,
+    confiabilidade: 'alta',
+    cobertura_temporal: '2015-presente',
+    observacoes: 'Download em massa por ano - emendas federais com empenhos, liquidações e pagamentos'
   }
 };
 
