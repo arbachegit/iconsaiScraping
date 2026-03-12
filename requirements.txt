@@ -76,6 +76,6 @@ mcp==1.26.0
 apscheduler==3.11.2
 
 # Development
-black==26.1.0
+black==26.3.0
 ruff==0.15.4
 mypy==1.19.1
