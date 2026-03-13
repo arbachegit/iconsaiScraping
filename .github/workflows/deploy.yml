@@ -157,7 +157,7 @@ jobs:
 
       # --- Web (Next.js) ---
       - name: Build and Push — web
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./apps/web
           file: ./apps/web/Dockerfile
@@ -174,7 +174,7 @@ jobs:
 
       # --- API (Python FastAPI) ---
       - name: Build and Push — api
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -190,7 +190,7 @@ jobs:
 
       # --- Backend (Node.js Express) ---
       - name: Build and Push — backend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./backend/Dockerfile
@@ -206,7 +206,7 @@ jobs:
 
       # --- Pipeline Worker (Python) ---
       - name: Build and Push — pipeline-worker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./services/pipeline-worker
           file: ./services/pipeline-worker/Dockerfile
@@ -222,7 +222,7 @@ jobs:
 
       # --- Scheduler (Python) ---
       - name: Build and Push — scheduler
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./scheduler/Dockerfile
