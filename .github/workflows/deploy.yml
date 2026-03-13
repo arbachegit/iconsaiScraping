@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -237,7 +237,7 @@ jobs:
             org.opencontainers.image.revision=${{ steps.vars.outputs.sha_full }}
 
       - name: Set up Python for SBOM
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
